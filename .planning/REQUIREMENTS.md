@@ -142,26 +142,79 @@ Explicitly excluded for v1 (and likely beyond). Documented to prevent scope cree
 
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
+Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DSL-01 through DSL-10 | TBD | Pending |
-| EXT-01 through EXT-06 | TBD | Pending |
-| PARSE-01 through PARSE-06 | TBD | Pending |
-| INTRP-01 through INTRP-07 | TBD | Pending |
-| ACT-01 through ACT-06 | TBD | Pending |
-| WORK-01 through WORK-03 | TBD | Pending |
-| VAL-01 through VAL-03 | TBD | Pending |
-| TEST-01 through TEST-05 | TBD | Pending |
-| CLI-01 through CLI-05 | TBD | Pending |
-| EX-01 through EX-04 | TBD | Pending |
+| DSL-01 | Phase 1 | Pending |
+| DSL-02 | Phase 1 | Pending |
+| DSL-03 | Phase 1 | Pending |
+| DSL-04 | Phase 1 | Pending |
+| DSL-05 | Phase 1 | Pending |
+| DSL-06 | Phase 1 | Pending |
+| DSL-07 | Phase 1 | Pending |
+| DSL-08 | Phase 1 | Pending |
+| DSL-09 | Phase 1 | Pending |
+| DSL-10 | Phase 1 | Pending |
+| EXT-01 | Phase 1 | Pending |
+| EXT-02 | Phase 1 | Pending |
+| EXT-03 | Phase 1 | Pending |
+| EXT-04 | Phase 1 | Pending |
+| EXT-05 | Phase 1 | Pending |
+| EXT-06 | Phase 1 | Pending |
+| PARSE-01 | Phase 1 | Pending |
+| PARSE-02 | Phase 1 | Pending |
+| PARSE-03 | Phase 1 | Pending |
+| PARSE-04 | Phase 1 | Pending |
+| PARSE-05 | Phase 1 | Pending |
+| PARSE-06 | Phase 1 | Pending |
+| ACT-01 | Phase 2 | Pending |
+| ACT-02 | Phase 2 | Pending |
+| ACT-03 | Phase 2 | Pending |
+| ACT-04 | Phase 2 | Pending |
+| ACT-05 | Phase 2 | Pending |
+| ACT-06 | Phase 2 | Pending |
+| INTRP-01 | Phase 3 | Pending |
+| INTRP-02 | Phase 3 | Pending |
+| INTRP-03 | Phase 3 | Pending |
+| INTRP-04 | Phase 3 | Pending |
+| INTRP-05 | Phase 3 | Pending |
+| INTRP-06 | Phase 3 | Pending |
+| INTRP-07 | Phase 3 | Pending |
+| WORK-01 | Phase 3 | Pending |
+| WORK-02 | Phase 3 | Pending |
+| WORK-03 | Phase 3 | Pending |
+| VAL-01 | Phase 4 | Pending |
+| VAL-02 | Phase 4 | Pending |
+| VAL-03 | Phase 4 | Pending |
+| CLI-01 | Phase 4 | Pending |
+| CLI-02 | Phase 4 | Pending |
+| CLI-03 | Phase 5 | Pending |
+| CLI-04 | Phase 4 | Pending |
+| CLI-05 | Phase 4 | Pending |
+| TEST-01 | Phase 5 | Pending |
+| TEST-02 | Phase 5 | Pending |
+| TEST-03 | Phase 5 | Pending |
+| TEST-04 | Phase 5 | Pending |
+| TEST-05 | Phase 5 | Pending |
+| EX-01 | Phase 6 | Pending |
+| EX-02 | Phase 6 | Pending |
+| EX-03 | Phase 6 | Pending |
+| EX-04 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 51 total
-- Mapped to phases: 0 (will be populated by roadmap)
-- Unmapped: 51 ⚠️
+- v1 requirements: 55 total (header previously stated 51 — actual enumerated count is 55)
+- Mapped to phases: 55 ✓
+- Unmapped: 0
+
+**Phase summary:**
+- Phase 1 (Type Spine + Extension Contract + Parser/Bridge Foundations): 22 requirements (DSL-01..10, EXT-01..06, PARSE-01..06)
+- Phase 2 (Generic Activity + Block-Batch Dispatch + Credentials): 6 requirements (ACT-01..06)
+- Phase 3 (Lambda-Serialization Decision + Interpreter + Worker): 10 requirements (INTRP-01..07, WORK-01..03)
+- Phase 4 (Static Validation Tier + CLI Skeleton): 7 requirements (VAL-01..03, CLI-01, CLI-02, CLI-04, CLI-05)
+- Phase 5 (Tier-3 E2E Test Harness): 6 requirements (TEST-01..05, CLI-03)
+- Phase 6 (Example Project): 4 requirements (EX-01..04)
 
 ---
 *Requirements defined: 2026-04-26*
-*Last updated: 2026-04-26 after initial definition*
+*Last updated: 2026-04-26 — traceability populated by roadmap creation*
