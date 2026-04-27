@@ -22,12 +22,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Extension SDK
 
-- [ ] **EXT-01**: An `Extension` Go interface exposes `Name()`, `Initialize(thread, kwargs)`, and `Operations() map[string]OperationFunc`
-- [ ] **EXT-02**: Extension factory methods (Starlark-callable) return `ActionRef` intents — they never register Temporal activities
-- [ ] **EXT-03**: Operation functions take `context.Context` (stdlib), never `workflow.Context`; they may not import `go.temporal.io/sdk/activity`
-- [ ] **EXT-04**: Each extension declares per-operation `Idempotent bool` so the activity can decide whether to batch the action
-- [ ] **EXT-05**: A `Credential` typed value (with redacted `String()`) is the only legal way for an extension to receive a secret — workflow state stores only the credential's string ID
-- [ ] **EXT-06**: Extensions are registered statically (Go imports) or dynamically (runtime registry calls) before parsing — no plugin / gRPC / out-of-process loading in v1
+- [x] **EXT-01**: An `Extension` Go interface exposes `Name()`, `Initialize(thread, kwargs)`, and `Operations() map[string]OperationFunc`
+- [x] **EXT-02**: Extension factory methods (Starlark-callable) return `ActionRef` intents — they never register Temporal activities
+- [x] **EXT-03**: Operation functions take `context.Context` (stdlib), never `workflow.Context`; they may not import `go.temporal.io/sdk/activity`
+- [x] **EXT-04**: Each extension declares per-operation `Idempotent bool` so the activity can decide whether to batch the action
+- [x] **EXT-05**: A `Credential` typed value (with redacted `String()`) is the only legal way for an extension to receive a secret — workflow state stores only the credential's string ID
+- [x] **EXT-06**: Extensions are registered statically (Go imports) or dynamically (runtime registry calls) before parsing — no plugin / gRPC / out-of-process loading in v1
 
 ### Parser & Bridge
 
@@ -156,12 +156,12 @@ Which phases cover which requirements. Populated during roadmap creation.
 | DSL-08 | Phase 1 | Complete |
 | DSL-09 | Phase 1 | Pending |
 | DSL-10 | Phase 1 | Complete |
-| EXT-01 | Phase 1 | Pending |
-| EXT-02 | Phase 1 | Pending |
-| EXT-03 | Phase 1 | Pending |
-| EXT-04 | Phase 1 | Pending |
-| EXT-05 | Phase 1 | Pending |
-| EXT-06 | Phase 1 | Pending |
+| EXT-01 | Phase 1 | Complete |
+| EXT-02 | Phase 1 | Complete |
+| EXT-03 | Phase 1 | Complete |
+| EXT-04 | Phase 1 | Complete |
+| EXT-05 | Phase 1 | Complete |
+| EXT-06 | Phase 1 | Complete |
 | PARSE-01 | Phase 1 | Pending |
 | PARSE-02 | Phase 1 | Pending |
 | PARSE-03 | Phase 1 | Pending |

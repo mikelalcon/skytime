@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.39
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 01-02-PLAN.md (Wave 1: pkg/dag type spine)"
-last_updated: "2026-04-27T16:28:40.997Z"
+stopped_at: Completed 01-03-PLAN.md (Wave 1, parallel with 01-02)
+last_updated: "2026-04-27T16:31:25.977Z"
 last_activity: 2026-04-27
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 5
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 01 (type-spine-extension-contract-parser-bridge-foundations) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-04-27
 
@@ -54,6 +54,7 @@ Progress: [░░░░░░░░░░] 0%
 *Updated after each plan completion*
 | Phase 01 P01 | 5min | 2 tasks | 27 files |
 | Phase 01 P02 | 7min | 4 tasks | 18 files |
+| Phase 01 P03 | 10min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,9 @@ Recent decisions affecting current work:
 - [Phase 01]: Go toolchain auto-rewrote `go 1.25` directive to `go 1.25.0` (Go 1.21+ behavior); accepted since the 1.25 floor (not 1.26+) per D-05 is preserved
 - [Phase 01]: [Phase 01-02] Sealed Node interface with distinct types (not sum-type Kind field) — produces cleanest Phase 3 type switch and prevents malformed-node bugs at compile time
 - [Phase 01]: [Phase 01-02] Pos field deliberately excluded from JSON marshaling — syntax.Position.Filename is machine-absolute, breaks cross-machine golden stability
+- [Phase 01]: Plan 01-03: Idempotent declared as *bool struct field on OperationSpec (not method) — forces explicit Ptr(true)/Ptr(false) at registration site; nil = author forgot, registry rejects via errors.Is(err, ErrIdempotentRequired)
+- [Phase 01]: Plan 01-03: Sealed Credential interface via unexported isCredential() method; redaction format <credential:<kind>:<id>> tested against %v/%s/%q output for all 3 kinds (Bearer/Basic/APIKey)
+- [Phase 01]: Plan 01-03: TestNoTemporalImportsInExtensionPackage walks Go AST imports via go/parser stdlib — proves the firewall at test time, not just at code review
 
 ### Pending Todos
 
@@ -83,6 +87,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-27T16:28:40.994Z
-Stopped at: Completed 01-02-PLAN.md (Wave 1: pkg/dag type spine)
+Last session: 2026-04-27T16:31:25.974Z
+Stopped at: Completed 01-03-PLAN.md (Wave 1, parallel with 01-02)
 Resume file: None
