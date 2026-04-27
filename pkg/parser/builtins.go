@@ -1,56 +1,541 @@
 package parser
 
 import (
+	"fmt"
+
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
+
+	"github.com/mikelalcon/skytime/pkg/dag"
 )
 
-// builtinFlow / builtinStep / etc. are stubs in task 1 — task 2 wires the
-// six DSL primitives to construct *dag.* node values and populate the
-// parser session's flow/lambda maps.
+// nodeValue is a private wrapper that lets *dag.Node values flow through
+// the Starlark value system without making each dag type implement the
+// full starlark.Value contract.
 //
-// The stubs return starlark.None so the package compiles and task 1's
-// scaffolding tests (TestNewParser_*, TestResolveAllowLambdaIsSet,
-// TestParseTimeGlobals_NakedPrimitives, TestParseAndLambdaGlobalsAreDistinct,
-// etc.) can run without reaching real DSL behavior. Any .star fixture
-// referencing these stubs will not produce a usable Flow until task 2 lands.
-
-func (p *Parser) builtinFlow(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	return starlark.None, nil
-}
-
-func (p *Parser) builtinStep(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	return starlark.None, nil
-}
-
-func (p *Parser) builtinIfCond(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	return starlark.None, nil
-}
-
-func (p *Parser) builtinScript(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	return starlark.None, nil
-}
-
-func (p *Parser) builtinForEachParallel(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	return starlark.None, nil
-}
-
-func (p *Parser) builtinCallFlow(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	return starlark.None, nil
-}
-
-// callerPosition extracts the .star call-site position from the thread's
-// call stack. CRITICAL (Pitfall #3): use thread.CallFrame(1).Pos, NOT
-// fn.Position() — the latter is the def site of the builtin, which is
-// always the same for every call to step()/flow()/etc. We want the source
-// location where the consultant *invoked* the primitive.
+// Why this exists: builtinStep returns a value that ends up in flow()'s
+// `steps=` list (a *starlark.List). Starlark requires every list entry to
+// satisfy starlark.Value. We could (a) make every Node a starlark.Value, or
+// (b) wrap them in this thin shim. Option (b) keeps pkg/dag pure data and
+// confines Starlark coupling to pkg/parser, where it belongs.
 //
-// Returns the zero-value syntax.Position if the call stack is too shallow
-// (which should be impossible during normal parse). The zero position is
-// IsValid() == false so D-04 error formatting falls back to message-only.
+// Hash() returns an error — node values are not hashable (no canonical
+// equality across reparses). Freeze() is a no-op because dag types are
+// immutable once constructed (the parser builds them in one shot).
+type nodeValue struct {
+	Node dag.Node
+}
+
+var _ starlark.Value = (*nodeValue)(nil)
+
+// String returns "<Kind>(<position>)" for debug output.
+func (n *nodeValue) String() string {
+	return fmt.Sprintf("%s(%s)", n.Node.Kind(), n.Node.Position())
+}
+
+// Type returns Node.Kind() so Starlark callers see "Step", "IfCond", etc.
+func (n *nodeValue) Type() string { return n.Node.Kind() }
+
+// Truth marks every node value as truthy.
+func (n *nodeValue) Truth() starlark.Bool { return starlark.True }
+
+// Hash refuses hashability — nodes aren't keys.
+func (n *nodeValue) Hash() (uint32, error) {
+	return 0, fmt.Errorf("%s is not hashable", n.Node.Kind())
+}
+
+// Freeze is a no-op: dag types are constructed once and treated as immutable.
+func (n *nodeValue) Freeze() {}
+
+// wrapNode boxes a dag.Node into a starlark.Value for return from a builtin.
+func wrapNode(n dag.Node) starlark.Value { return &nodeValue{Node: n} }
+
+// unwrapNode unboxes a list entry back to a dag.Node, returning a *dag.ParseError
+// when the list contains non-node values (e.g. a stray ActionRef in `steps=`).
+func unwrapNode(v starlark.Value, callPos syntax.Position, listKwarg string) (dag.Node, error) {
+	nv, ok := v.(*nodeValue)
+	if !ok {
+		return nil, &dag.ParseError{
+			Pos: callPos,
+			Msg: fmt.Sprintf("%s: expected a flow node (step/if_cond/script/for_each_parallel/call_flow), got %s", listKwarg, v.Type()),
+		}
+	}
+	return nv.Node, nil
+}
+
+// callerPosition extracts the .star call-site position. Pitfall #3: use
+// thread.CallFrame(1).Pos, NOT fn.Position() — the latter is the def site
+// of the builtin, useless for D-04 attribution.
 func callerPosition(thread *starlark.Thread) syntax.Position {
 	if thread.CallStackDepth() < 2 {
 		return syntax.Position{}
 	}
 	return thread.CallFrame(1).Pos
+}
+
+// wrapBuiltinError tags an error with the call-site position. Used when
+// starlark.UnpackArgs or our own validation rejects a builtin's args.
+func (p *Parser) wrapBuiltinError(opName string, thread *starlark.Thread, err error) error {
+	// Already typed — don't double-wrap.
+	if _, ok := err.(*dag.ParseError); ok {
+		return err
+	}
+	if _, ok := err.(*dag.ValidationError); ok {
+		return err
+	}
+	return &dag.ParseError{
+		Pos:     callerPosition(thread),
+		Msg:     fmt.Sprintf("%s: %v", opName, err),
+		Wrapped: err,
+	}
+}
+
+// =============================================================================
+// builtinFlow — flow(name=..., inputs=..., steps=[...]) → *dag.Flow
+// =============================================================================
+
+// builtinFlow constructs a *dag.Flow from kwargs, registers it in the
+// parser session's flow map (D-15: error on duplicate names), and returns
+// starlark.None. The flow is captured by name as a side effect — the .star
+// author writes `flow(...)` as a top-level statement, not for its return
+// value.
+func (p *Parser) builtinFlow(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		name     string
+		inputs   *starlark.Dict
+		stepsLst *starlark.List
+	)
+	if err := starlark.UnpackArgs("flow", args, kwargs,
+		"name", &name,
+		"inputs?", &inputs,
+		"steps", &stepsLst,
+	); err != nil {
+		return nil, p.wrapBuiltinError("flow", thread, err)
+	}
+	pos := callerPosition(thread)
+
+	if existing, dup := p.flows[name]; dup {
+		return nil, &dag.ParseError{
+			Pos: pos,
+			Msg: fmt.Sprintf("duplicate flow name %q (also defined at %s)", name, existing.Pos),
+		}
+	}
+
+	inputsMap, err := convertInputsDict(inputs, pos)
+	if err != nil {
+		return nil, err
+	}
+	body, err := convertNodeList(stepsLst, pos, "flow.steps")
+	if err != nil {
+		return nil, err
+	}
+
+	f := &dag.Flow{
+		Pos:    pos,
+		Name:   name,
+		Inputs: inputsMap,
+		Body:   body,
+	}
+	p.flows[name] = f
+	return starlark.None, nil
+}
+
+// convertInputsDict turns the optional `inputs={"name": "type"}` kwarg into a
+// Go map. Phase 1 only stores type-hint strings (used by Phase 4's static
+// validator); the parser does not interpret them.
+func convertInputsDict(d *starlark.Dict, callPos syntax.Position) (map[string]string, error) {
+	if d == nil || d.Len() == 0 {
+		return nil, nil
+	}
+	out := make(map[string]string, d.Len())
+	for _, item := range d.Items() {
+		k, ok := item[0].(starlark.String)
+		if !ok {
+			return nil, &dag.ParseError{
+				Pos: callPos,
+				Msg: fmt.Sprintf("flow.inputs: keys must be string, got %s", item[0].Type()),
+			}
+		}
+		v, ok := item[1].(starlark.String)
+		if !ok {
+			return nil, &dag.ParseError{
+				Pos: callPos,
+				Msg: fmt.Sprintf("flow.inputs[%q]: value must be string type-hint, got %s", string(k), item[1].Type()),
+			}
+		}
+		out[string(k)] = string(v)
+	}
+	return out, nil
+}
+
+// convertNodeList unwraps every entry of a Starlark list back to dag.Node.
+// Used by flow.steps, if_cond.then/else_, for_each_parallel.steps.
+func convertNodeList(lst *starlark.List, callPos syntax.Position, kwargName string) ([]dag.Node, error) {
+	if lst == nil {
+		return nil, nil
+	}
+	out := make([]dag.Node, 0, lst.Len())
+	iter := lst.Iterate()
+	defer iter.Done()
+	var v starlark.Value
+	for iter.Next(&v) {
+		n, err := unwrapNode(v, callPos, kwargName)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
+// =============================================================================
+// builtinStep — step(action=..., block=[...], retry=..., timeout=...)
+// =============================================================================
+
+// builtinStep produces a *dag.Step. Exactly one of `action` and `block`
+// must be provided. `retry` and `timeout` are optional DSL-08 kwargs that
+// decode through their respective starlark.Unpacker implementations.
+func (p *Parser) builtinStep(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		action  starlark.Value
+		block   *starlark.List
+		retry   = &dag.RetryPolicy{}
+		timeout = &dag.Timeout{}
+	)
+	// `action` is intentionally accepted as a generic starlark.Value so we
+	// can return a clean error when consultants pass a non-ActionRef
+	// (e.g., a string). Same for block — UnpackArgs gets the list, we
+	// unwrap entries below.
+	hasRetry := false
+	hasTimeout := false
+	if err := starlark.UnpackArgs("step", args, kwargs,
+		"action?", &action,
+		"block?", &block,
+		"retry?", retry,
+		"timeout?", timeout,
+	); err != nil {
+		return nil, p.wrapBuiltinError("step", thread, err)
+	}
+	// UnpackArgs cannot tell us whether retry/timeout were provided vs.
+	// zero-valued. Walk kwargs once to detect presence.
+	for _, kv := range kwargs {
+		if k, ok := kv[0].(starlark.String); ok {
+			switch string(k) {
+			case "retry":
+				hasRetry = true
+			case "timeout":
+				hasTimeout = true
+			}
+		}
+	}
+
+	pos := callerPosition(thread)
+
+	hasAction := action != nil && action != starlark.None
+	hasBlock := block != nil && block.Len() > 0
+	switch {
+	case hasAction && hasBlock:
+		return nil, &dag.ParseError{
+			Pos: pos,
+			Msg: "step: must provide exactly one of action or block, got both",
+		}
+	case !hasAction && !hasBlock:
+		return nil, &dag.ParseError{
+			Pos: pos,
+			Msg: "step: must provide action or block",
+		}
+	}
+
+	var actions []*dag.ActionRef
+	if hasAction {
+		ar, ok := action.(*dag.ActionRef)
+		if !ok {
+			return nil, &dag.ParseError{
+				Pos: pos,
+				Msg: fmt.Sprintf("step.action: expected ActionRef from an extension factory, got %s", action.Type()),
+			}
+		}
+		actions = []*dag.ActionRef{ar}
+	} else {
+		actions = make([]*dag.ActionRef, 0, block.Len())
+		iter := block.Iterate()
+		defer iter.Done()
+		var v starlark.Value
+		for iter.Next(&v) {
+			ar, ok := v.(*dag.ActionRef)
+			if !ok {
+				return nil, &dag.ParseError{
+					Pos: pos,
+					Msg: fmt.Sprintf("step.block: every entry must be an ActionRef, got %s", v.Type()),
+				}
+			}
+			actions = append(actions, ar)
+		}
+	}
+
+	step := &dag.Step{Pos: pos, Actions: actions}
+	if hasRetry {
+		step.Retry = retry
+	}
+	if hasTimeout {
+		step.Timeout = timeout
+	}
+	return wrapNode(step), nil
+}
+
+// =============================================================================
+// builtinIfCond — if_cond(cond=lambda ctx: ..., then=[...], else_=[...])
+// =============================================================================
+
+func (p *Parser) builtinIfCond(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		cond     starlark.Value
+		thenLst  *starlark.List
+		elseLst  *starlark.List
+	)
+	if err := starlark.UnpackArgs("if_cond", args, kwargs,
+		"cond", &cond,
+		"then", &thenLst,
+		"else_?", &elseLst,
+	); err != nil {
+		return nil, p.wrapBuiltinError("if_cond", thread, err)
+	}
+	pos := callerPosition(thread)
+
+	captured, err := p.captureLambda(thread, "cond", cond)
+	if err != nil {
+		return nil, err
+	}
+	thenBody, err := convertNodeList(thenLst, pos, "if_cond.then")
+	if err != nil {
+		return nil, err
+	}
+	elseBody, err := convertNodeList(elseLst, pos, "if_cond.else_")
+	if err != nil {
+		return nil, err
+	}
+
+	return wrapNode(&dag.IfCond{
+		Pos:      pos,
+		LambdaID: captured.ID,
+		Then:     thenBody,
+		Else:     elseBody,
+	}), nil
+}
+
+// =============================================================================
+// builtinScript — script(id=..., fn=lambda ctx: ..., output_alias=...)
+// =============================================================================
+
+func (p *Parser) builtinScript(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		id     string
+		lamFn  starlark.Value
+		alias  string
+	)
+	if err := starlark.UnpackArgs("script", args, kwargs,
+		"id", &id,
+		"fn", &lamFn,
+		"output_alias", &alias,
+	); err != nil {
+		return nil, p.wrapBuiltinError("script", thread, err)
+	}
+	pos := callerPosition(thread)
+
+	captured, err := p.captureLambda(thread, "fn", lamFn)
+	if err != nil {
+		return nil, err
+	}
+
+	return wrapNode(&dag.Script{
+		Pos:         pos,
+		ID:          id,
+		LambdaID:    captured.ID,
+		OutputAlias: alias,
+	}), nil
+}
+
+// =============================================================================
+// builtinForEachParallel — for_each_parallel(items=..., item=..., steps=[...])
+// =============================================================================
+
+// builtinForEachParallel accepts items as either a static list literal OR a
+// lambda producer. Type switch determines which: *starlark.List → static
+// (ItemsLiteral), *starlark.Function → lambda (ItemsLambdaID). Anything
+// else is an error.
+func (p *Parser) builtinForEachParallel(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		items    starlark.Value
+		itemVar  string
+		stepsLst *starlark.List
+		retry    = &dag.RetryPolicy{}
+		timeout  = &dag.Timeout{}
+	)
+	if err := starlark.UnpackArgs("for_each_parallel", args, kwargs,
+		"items", &items,
+		"item", &itemVar,
+		"steps", &stepsLst,
+		"retry?", retry,
+		"timeout?", timeout,
+	); err != nil {
+		return nil, p.wrapBuiltinError("for_each_parallel", thread, err)
+	}
+	hasRetry := false
+	hasTimeout := false
+	for _, kv := range kwargs {
+		if k, ok := kv[0].(starlark.String); ok {
+			switch string(k) {
+			case "retry":
+				hasRetry = true
+			case "timeout":
+				hasTimeout = true
+			}
+		}
+	}
+
+	pos := callerPosition(thread)
+
+	body, err := convertNodeList(stepsLst, pos, "for_each_parallel.steps")
+	if err != nil {
+		return nil, err
+	}
+
+	node := &dag.ForEachParallel{
+		Pos:     pos,
+		ItemVar: itemVar,
+		Steps:   body,
+	}
+	if hasRetry {
+		node.Retry = retry
+	}
+	if hasTimeout {
+		node.Timeout = timeout
+	}
+
+	switch v := items.(type) {
+	case *starlark.List:
+		// Static literal — convert each entry to Go value.
+		literal := make([]any, 0, v.Len())
+		iter := v.Iterate()
+		defer iter.Done()
+		var elem starlark.Value
+		for iter.Next(&elem) {
+			gv, err := starlarkLiteralToGo(elem)
+			if err != nil {
+				return nil, &dag.ParseError{
+					Pos: pos,
+					Msg: fmt.Sprintf("for_each_parallel.items literal: %v", err),
+				}
+			}
+			literal = append(literal, gv)
+		}
+		node.ItemsLiteral = literal
+	case *starlark.Function:
+		captured, err := p.captureLambda(thread, "items", v)
+		if err != nil {
+			return nil, err
+		}
+		node.ItemsLambdaID = captured.ID
+	default:
+		return nil, &dag.ParseError{
+			Pos: pos,
+			Msg: fmt.Sprintf("for_each_parallel.items: expected list literal or lambda, got %s", items.Type()),
+		}
+	}
+
+	if err := node.Validate(); err != nil {
+		return nil, &dag.ParseError{Pos: pos, Msg: err.Error()}
+	}
+	return wrapNode(node), nil
+}
+
+// starlarkLiteralToGo converts a literal Starlark value (used in
+// for_each_parallel items literals) to a Go any. Phase 1 covers the
+// primitive types fixtures need; Phase 3 / Phase 6 will extend.
+func starlarkLiteralToGo(v starlark.Value) (any, error) {
+	switch x := v.(type) {
+	case starlark.String:
+		return string(x), nil
+	case starlark.Int:
+		i, ok := x.Int64()
+		if !ok {
+			return x.String(), nil // overflow — store as string
+		}
+		return i, nil
+	case starlark.Float:
+		return float64(x), nil
+	case starlark.Bool:
+		return bool(x), nil
+	case starlark.NoneType:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unsupported literal type %s", v.Type())
+	}
+}
+
+// =============================================================================
+// builtinCallFlow — call_flow(name=..., inputs=..., child_options=...)
+// =============================================================================
+
+// builtinCallFlow records a CallFlow node with Name set; cross-flow
+// resolution (matching Name against the parser session's flow map) happens
+// at finalize time per D-16. Returns *nodeValue so it can sit inside a
+// flow.steps list.
+func (p *Parser) builtinCallFlow(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		name      string
+		inputsD   *starlark.Dict
+		childOptD *starlark.Dict
+	)
+	if err := starlark.UnpackArgs("call_flow", args, kwargs,
+		"name", &name,
+		"inputs?", &inputsD,
+		"child_options?", &childOptD,
+	); err != nil {
+		return nil, p.wrapBuiltinError("call_flow", thread, err)
+	}
+	pos := callerPosition(thread)
+
+	inputs, err := convertAnyDict(inputsD, pos, "call_flow.inputs")
+	if err != nil {
+		return nil, err
+	}
+	childOptions, err := convertAnyDict(childOptD, pos, "call_flow.child_options")
+	if err != nil {
+		return nil, err
+	}
+
+	return wrapNode(&dag.CallFlow{
+		Pos:          pos,
+		Name:         name,
+		Inputs:       inputs,
+		ChildOptions: childOptions,
+	}), nil
+}
+
+// convertAnyDict turns a Starlark dict into map[string]any using the literal
+// converter. Used by call_flow.inputs and call_flow.child_options.
+func convertAnyDict(d *starlark.Dict, callPos syntax.Position, kwargName string) (map[string]any, error) {
+	if d == nil || d.Len() == 0 {
+		return nil, nil
+	}
+	out := make(map[string]any, d.Len())
+	for _, item := range d.Items() {
+		k, ok := item[0].(starlark.String)
+		if !ok {
+			return nil, &dag.ParseError{
+				Pos: callPos,
+				Msg: fmt.Sprintf("%s: keys must be string, got %s", kwargName, item[0].Type()),
+			}
+		}
+		gv, err := starlarkLiteralToGo(item[1])
+		if err != nil {
+			return nil, &dag.ParseError{
+				Pos: callPos,
+				Msg: fmt.Sprintf("%s[%q]: %v", kwargName, string(k), err),
+			}
+		}
+		out[string(k)] = gv
+	}
+	return out, nil
 }
