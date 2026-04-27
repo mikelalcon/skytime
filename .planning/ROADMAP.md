@@ -31,7 +31,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A malformed `.star` file (missing kwargs, unknown extension, broken `load()`) produces a position-aware error of the form `<file>:<line>:<col>: <message>` and never panics
   4. The bridge converts a nested Go state map to `*starlarkstruct.Struct` with deterministic key order, evaluates a captured lambda using `ctx.req.repo_name`-style dot access on a fresh `*starlark.Thread` per call (with `MaxExecutionSteps` set), and returns a frozen result — verified by an iteration-determinism unit test that converts the same map twice and asserts byte-equal Starlark dicts
   5. The parser uses two distinct predeclared environments — a richer parse-time environment (with `load`, registry lookups) and a strict lambda-time subset (no `time`, no `random`, no I/O) — and `resolve.AllowLambda = true` is set explicitly before any parse
-**Plans**: TBD
+**Plans**: 5 plans
+  - [ ] 01-01-PLAN.md — Wave 0: Toolchain + module skeleton + typed errors (`pkg/dag/errors.go`) + 16 .star fixtures + 2 golden JSON
+  - [ ] 01-02-PLAN.md — Wave 1: `pkg/dag` type spine — Node interface + 6 node types (Flow, Step, IfCond, Script, ForEachParallel, CallFlow) + ActionRef (starlark.Value with recursive Freeze) + CapturedLambda + RetryPolicy/Timeout (Unpacker)
+  - [ ] 01-03-PLAN.md — Wave 1: `pkg/extension` SDK contract — Extension interface + OperationSpec (Idempotent *bool) + sealed Credential interface (3 kinds, redacted String) + CredentialHandler + per-parser Registry + ~150 LOC reflection-based kwarg validator
+  - [ ] 01-04-PLAN.md — Wave 2: `pkg/bridge` — ToStarlarkStruct (deterministic key order) + lambdaTimeGlobals (D-20 locked subset, 20 keys) + CallLambda (fresh thread, MaxExecutionSteps, Print hook)
+  - [ ] 01-05-PLAN.md — Wave 3: `pkg/parser` — six DSL primitive builtins + load() with .git-ancestor root + traversal rejection + lambda capture (D-18 IDs) + free-var validation (D-19) + multi-flow + cross-flow resolution + fixture corpus tests (8 valid + 8 invalid)
 **UI hint**: no
 
 ### Phase 2: Generic Activity + Block-Batch Dispatch + Credentials
