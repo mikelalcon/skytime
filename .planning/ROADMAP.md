@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. The bridge converts a nested Go state map to `*starlarkstruct.Struct` with deterministic key order, evaluates a captured lambda using `ctx.req.repo_name`-style dot access on a fresh `*starlark.Thread` per call (with `MaxExecutionSteps` set), and returns a frozen result — verified by an iteration-determinism unit test that converts the same map twice and asserts byte-equal Starlark dicts
   5. The parser uses two distinct predeclared environments — a richer parse-time environment (with `load`, registry lookups) and a strict lambda-time subset (no `time`, no `random`, no I/O) — and `resolve.AllowLambda = true` is set explicitly before any parse
 **Plans**: 5 plans
-  - [ ] 01-01-PLAN.md — Wave 0: Toolchain + module skeleton + typed errors (`pkg/dag/errors.go`) + 16 .star fixtures + 2 golden JSON
+  - [x] 01-01-PLAN.md — Wave 0: Toolchain + module skeleton + typed errors (`pkg/dag/errors.go`) + 16 .star fixtures + 2 golden JSON
   - [ ] 01-02-PLAN.md — Wave 1: `pkg/dag` type spine — Node interface + 6 node types (Flow, Step, IfCond, Script, ForEachParallel, CallFlow) + ActionRef (starlark.Value with recursive Freeze) + CapturedLambda + RetryPolicy/Timeout (Unpacker)
   - [ ] 01-03-PLAN.md — Wave 1: `pkg/extension` SDK contract — Extension interface + OperationSpec (Idempotent *bool) + sealed Credential interface (3 kinds, redacted String) + CredentialHandler + per-parser Registry + ~150 LOC reflection-based kwarg validator
   - [ ] 01-04-PLAN.md — Wave 2: `pkg/bridge` — ToStarlarkStruct (deterministic key order) + lambdaTimeGlobals (D-20 locked subset, 20 keys) + CallLambda (fresh thread, MaxExecutionSteps, Print hook)

@@ -18,7 +18,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **DSL-07**: A flow can invoke a subflow with `call_flow(name=..., inputs=..., child_options=...)`, isolating its history as a Temporal child workflow
 - [ ] **DSL-08**: A step accepts Temporal `RetryPolicy` kwargs (initial interval, backoff, max attempts, non-retryable errors) and timeouts (start-to-close, schedule-to-start)
 - [ ] **DSL-09**: Lambdas access workflow state via dot-notation (`ctx.req.repo_name`) — the bridge recursively converts Go state maps into nested `*starlarkstruct.Struct` instances with deterministic key order
-- [ ] **DSL-10**: `resolve.AllowLambda = true` is set explicitly before any Starlark parse; `lambda` is the only legal expression-evaluation surface (no CEL, no string parsers)
+- [x] **DSL-10**: `resolve.AllowLambda = true` is set explicitly before any Starlark parse; `lambda` is the only legal expression-evaluation surface (no CEL, no string parsers)
 
 ### Extension SDK
 
@@ -35,7 +35,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **PARSE-02**: The parser supports `load()` for splitting flows across multiple `.star` files; load resolution is sandboxed to a configured root directory
 - [ ] **PARSE-03**: The parser separates *parse-time globals* (richer: registry lookups, load) from *lambda-time globals* (restricted: arithmetic, comparison, struct access, frozen-collection iteration only — no time, no random, no I/O)
 - [ ] **PARSE-04**: The parser captures `*starlark.Function` lambdas keyed by stable IDs and stores them on `dag` nodes with each node's `syntax.Position` for error attribution
-- [ ] **PARSE-05**: Parsing a `.star` file with no extensions registered or with malformed primitives produces a position-aware error (`<file>:<line>:<col>: <message>`) and never panics
+- [x] **PARSE-05**: Parsing a `.star` file with no extensions registered or with malformed primitives produces a position-aware error (`<file>:<line>:<col>: <message>`) and never panics
 - [ ] **PARSE-06**: The bridge's `CallLambda` always uses a fresh `*starlark.Thread` per invocation, sets `MaxExecutionSteps`, wires `thread.Cancel` to `workflow.Context.Done()`, and routes `Print` to the workflow logger
 
 ### Temporal Interpreter
@@ -155,7 +155,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | DSL-07 | Phase 1 | Pending |
 | DSL-08 | Phase 1 | Pending |
 | DSL-09 | Phase 1 | Pending |
-| DSL-10 | Phase 1 | Pending |
+| DSL-10 | Phase 1 | Complete |
 | EXT-01 | Phase 1 | Pending |
 | EXT-02 | Phase 1 | Pending |
 | EXT-03 | Phase 1 | Pending |
@@ -166,7 +166,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PARSE-02 | Phase 1 | Pending |
 | PARSE-03 | Phase 1 | Pending |
 | PARSE-04 | Phase 1 | Pending |
-| PARSE-05 | Phase 1 | Pending |
+| PARSE-05 | Phase 1 | Complete |
 | PARSE-06 | Phase 1 | Pending |
 | ACT-01 | Phase 2 | Pending |
 | ACT-02 | Phase 2 | Pending |
