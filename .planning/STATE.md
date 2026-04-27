@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.39
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-03-PLAN.md (Wave 1, parallel with 01-02)
-last_updated: "2026-04-27T16:31:25.977Z"
+stopped_at: Completed 01-04-PLAN.md (Wave 2, pkg/bridge state/lambda bridge)
+last_updated: "2026-04-27T16:45:18.767Z"
 last_activity: 2026-04-27
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 5
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 01 (type-spine-extension-contract-parser-bridge-foundations) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-04-27
 
@@ -55,6 +55,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P01 | 5min | 2 tasks | 27 files |
 | Phase 01 P02 | 7min | 4 tasks | 18 files |
 | Phase 01 P03 | 10min | 3 tasks | 12 files |
+| Phase 01 P04 | 9min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,10 @@ Recent decisions affecting current work:
 - [Phase 01]: Plan 01-03: Idempotent declared as *bool struct field on OperationSpec (not method) — forces explicit Ptr(true)/Ptr(false) at registration site; nil = author forgot, registry rejects via errors.Is(err, ErrIdempotentRequired)
 - [Phase 01]: Plan 01-03: Sealed Credential interface via unexported isCredential() method; redaction format <credential:<kind>:<id>> tested against %v/%s/%q output for all 3 kinds (Bearer/Basic/APIKey)
 - [Phase 01]: Plan 01-03: TestNoTemporalImportsInExtensionPackage walks Go AST imports via go/parser stdlib — proves the firewall at test time, not just at code review
+- [Phase 01]: Plan 01-04: sum implemented locally as *starlark.Builtin (sumBuiltin) — go.starlark.net Universe doesn't export sum despite D-20 listing it; preserves locked 20-key list verbatim
+- [Phase 01]: Plan 01-04: PrintSink default wraps Logger as InfoContext('starlark print', 'msg', payload, 'lambda_id', captured.ID) — Phase 3 swaps for workflow.GetLogger.Info; lambda_id makes log lines self-locating
+- [Phase 01]: Plan 01-04: Cancel watchdog uses native goroutine in Phase 1 — CallLambda runs inside the activity (not workflow goroutine), so native goroutines are safe; Phase 3 swaps to workflow.Go inside the workflow watchdog only
+- [Phase 01]: Plan 01-04: starlark.Int values compared via Int64() not testify deep-equal — starlark.Int's unexported impl pointer breaks struct equality even when integer values match
 
 ### Pending Todos
 
@@ -87,6 +92,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-27T16:31:25.974Z
-Stopped at: Completed 01-03-PLAN.md (Wave 1, parallel with 01-02)
+Last session: 2026-04-27T16:45:18.764Z
+Stopped at: Completed 01-04-PLAN.md (Wave 2, pkg/bridge state/lambda bridge)
 Resume file: None
