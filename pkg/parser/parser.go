@@ -1,0 +1,221 @@
+// Package parser implements Starlark→dag.Flow parsing with sandboxed
+// load(), lambda capture, and reflection-based kwarg validation.
+//
+// Architecture firewall: this package MUST NOT import any go.temporal.io/*
+// package. The firewall is enforced at test time by
+// TestNoTemporalImportsInParserPackage which walks every Go source file's
+// imports via go/parser. Crossing this firewall would re-introduce the
+// workflow.Context/activity coupling PROJECT.md "no context bleed" forbids.
+package parser
+
+import (
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+
+	"go.starlark.net/starlark"
+	"go.starlark.net/syntax"
+
+	"github.com/mikelalcon/skytime/pkg/bridge"
+	"github.com/mikelalcon/skytime/pkg/dag"
+	"github.com/mikelalcon/skytime/pkg/extension"
+)
+
+// Parser is the per-instance parsing surface (D-07: no global state). One
+// parser holds:
+//   - a sandbox root (load() resolution)
+//   - a per-parser extension registry
+//   - lazily-built parse-time globals (rebuild after Register())
+//   - a load cache (idempotent loads + cycle protection)
+//   - a fileBytes cache for D-18 lambda IDs (sha256(fileBytes)[:8]:line:col)
+//   - an in-progress flow map (multi-flow per file, D-15)
+//   - an in-progress lambda map keyed by stable ID (D-18)
+//
+// All non-public state is constructed by NewParser — callers do not need to
+// initialize maps themselves.
+type Parser struct {
+	root             string
+	registry         *extension.Registry
+	parseTimeGlobals starlark.StringDict
+	maxExecSteps     uint64
+
+	// loadCache holds the result of `load(...)` calls keyed by absolute file
+	// path. A second load of the same file returns the cached globals
+	// (idempotent loads). Cycles fall through naturally — once we've started
+	// loading a file we haven't yet cached, the second concurrent load
+	// returns whatever globals were committed at the cache-set point.
+	loadCache map[string]loadCacheEntry
+
+	// fileBytes caches the source bytes of every loaded .star file, keyed
+	// by absolute path. Lambda capture (lambda_capture.go) reads this to
+	// compute D-18 IDs.
+	fileBytes map[string][]byte
+
+	// flows is the parser-session multi-flow map (D-15). builtinFlow
+	// populates this and rejects duplicate names.
+	flows map[string]*dag.Flow
+
+	// lambdas indexes captured lambdas by their stable D-18 ID. Phase 3
+	// uses this map at workflow start to resolve LambdaIDs back to the
+	// *starlark.Function values.
+	lambdas map[string]*dag.CapturedLambda
+}
+
+// loadCacheEntry caches the globals resulting from a load() call. Errors are
+// also cached so a re-load of a broken module returns the same error rather
+// than re-reading the file.
+type loadCacheEntry struct {
+	globals starlark.StringDict
+	err     error
+}
+
+// NewParser constructs a Parser with the given options. Options run in
+// declaration order; the first error short-circuits and is returned with a
+// "parser option" prefix. Common errors:
+//   - extension registration with nil Idempotent → wraps
+//     extension.ErrIdempotentRequired (D-12).
+//   - extension name collision → "extension %q already registered".
+//
+// The parse-time globals dict is built lazily (on first ParseFile/ParseSource)
+// because Register() may be called after NewParser (EXT-06 dynamic
+// registration). Callers wanting to validate everything up-front should
+// either register all extensions via WithExtensions and call ParseSource on
+// an empty source, or rely on Register's own returned error.
+func NewParser(opts ...Option) (*Parser, error) {
+	p := &Parser{
+		registry:     extension.NewRegistry(),
+		maxExecSteps: bridge.DefaultMaxExecutionSteps,
+		loadCache:    make(map[string]loadCacheEntry),
+		fileBytes:    make(map[string][]byte),
+		flows:        make(map[string]*dag.Flow),
+		lambdas:      make(map[string]*dag.CapturedLambda),
+	}
+	for _, opt := range opts {
+		if err := opt(p); err != nil {
+			return nil, fmt.Errorf("parser option: %w", err)
+		}
+	}
+	return p, nil
+}
+
+// Register adds an extension to the parser's registry (EXT-06: dynamic
+// registration). Equivalent to passing WithExtensions(ext) to NewParser, but
+// callable after construction. Invalidates the cached parseTimeGlobals so
+// the next parse re-runs Initialize for the newly-registered extension.
+func (p *Parser) Register(ext extension.Extension) error {
+	if err := p.registry.Register(ext); err != nil {
+		return err
+	}
+	// Force rebuild on next parse so the new extension's Initialize fires
+	// and its name appears in the predeclared globals.
+	p.parseTimeGlobals = nil
+	return nil
+}
+
+// ParseFile reads a .star file from disk and parses it (and any files
+// reached via load()). Returns the parser session's flow map keyed by flow
+// name. Errors are *dag.ParseError or *dag.ValidationError.
+func (p *Parser) ParseFile(path string) (map[string]*dag.Flow, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, &dag.ParseError{Msg: fmt.Sprintf("resolve %q: %v", path, err)}
+	}
+	src, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, &dag.ParseError{Msg: fmt.Sprintf("read %q: %v", path, err)}
+	}
+	return p.parse(absPath, src)
+}
+
+// ParseSource parses an in-memory source. Filename is used for error
+// attribution and lambda IDs (D-18 keys off the filename via Position).
+// Convenience for tests; production code uses ParseFile.
+func (p *Parser) ParseSource(filename string, src []byte) (map[string]*dag.Flow, error) {
+	return p.parse(filename, src)
+}
+
+// parse is the shared engine for ParseFile / ParseSource.
+//
+// Pass sequence (resolved per RESEARCH.md Open Questions #3):
+//  1. Lazy-init parseTimeGlobals (run extension Initialize once if needed).
+//  2. Cache file bytes for D-18 lambda IDs.
+//  3. Allocate a FRESH *starlark.Thread (Pitfall #1).
+//  4. starlark.ExecFileOptions with explicit FileOptions (NOT deprecated
+//     ExecFile) — drives all transitive load() calls.
+//  5. finalize() — cross-flow resolution + lint passes (built in tasks 2-3).
+//
+// PARSE-05: a top-level recover() converts any panic in Starlark code or
+// our builtins into a *dag.ParseError so the caller never sees a runtime
+// crash on malformed input.
+func (p *Parser) parse(filename string, src []byte) (result map[string]*dag.Flow, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = &dag.ParseError{Msg: fmt.Sprintf("internal panic during parse of %s: %v", filename, r)}
+			result = nil
+		}
+	}()
+
+	if p.parseTimeGlobals == nil {
+		// D-08 lifecycle: Initialize each registered extension exactly once
+		// per parser. Use a transient thread for the Initialize calls — the
+		// actual parse uses its own thread below.
+		initThread := &starlark.Thread{Name: "init-extensions:" + filename}
+		gs, gerr := newParseTimeGlobals(p, initThread)
+		if gerr != nil {
+			return nil, gerr
+		}
+		p.parseTimeGlobals = gs
+	}
+
+	// Cache file bytes for D-18 lambda ID hashing.
+	p.fileBytes[filename] = src
+
+	// FRESH thread per parse (Pitfall #1).
+	thread := &starlark.Thread{
+		Name: "parse:" + filename,
+		Load: p.makeLoad(),
+		Print: func(_ *starlark.Thread, msg string) {
+			slog.Default().Info("starlark print at parse time", "file", filename, "msg", msg)
+		},
+	}
+	thread.SetMaxExecutionSteps(p.maxExecSteps)
+
+	opts := defaultFileOptions()
+	if _, execErr := starlark.ExecFileOptions(opts, thread, filename, src, p.parseTimeGlobals); execErr != nil {
+		return nil, wrapStarlarkError(execErr)
+	}
+
+	if ferr := p.finalize(); ferr != nil {
+		return nil, ferr
+	}
+	return p.flows, nil
+}
+
+// defaultFileOptions returns the *syntax.FileOptions Phase 1 uses for every
+// parse. Always pass an explicit FileOptions to ExecFileOptions — the
+// deprecated `starlark.ExecFile` would silently use legacy global resolve
+// flags (Pitfall #4).
+//
+// Choices:
+//   - Set:               false — Starlark's set() is off-by-default and
+//     stays off (D-20 spirit, applied at parse time too).
+//   - While:             false — forbid `while` at top level (forces
+//     non-determinism risk; consultants use lambdas + iteration helpers).
+//   - TopLevelControl:   true  — top-level if/for is allowed (a fixture may
+//     gate flow registration on a constant; harmless).
+//   - GlobalReassign:    false — top-level reassignment forbidden (D-20
+//     spirit).
+//   - LoadBindsGlobally: false — load bindings stay file-local.
+//   - Recursion:         false — bounded execution (forbid `def`s calling
+//     themselves transitively).
+func defaultFileOptions() *syntax.FileOptions {
+	return &syntax.FileOptions{
+		Set:               false,
+		While:             false,
+		TopLevelControl:   true,
+		GlobalReassign:    false,
+		LoadBindsGlobally: false,
+		Recursion:         false,
+	}
+}
