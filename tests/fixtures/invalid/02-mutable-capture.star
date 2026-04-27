@@ -1,4 +1,4 @@
-# expects: lambda captures mutable variable
+# expects: lambda captures non-module-level variable
 def make_lambda():
     counter = [0]
     return lambda ctx: counter.append(len(counter)) or counter[-1]

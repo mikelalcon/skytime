@@ -1,16 +1,20 @@
 {
   "flows": {
     "minimal": {
+      "kind": "Flow",
       "name": "minimal",
-      "inputs": {"name": "string"},
+      "inputs": {
+        "name": "string"
+      },
       "body": [
         {
           "kind": "Step",
           "actions": [
             {
               "kind": "fake_ext.echo",
-              "kwargs": {"msg": "hello"},
-              "credential_id": ""
+              "kwargs": {
+                "msg": "hello"
+              }
             }
           ]
         }

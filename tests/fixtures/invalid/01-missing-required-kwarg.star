@@ -1,4 +1,4 @@
-# expects: missing required
+# expects: missing argument for name
 flow(
     # missing 'name' kwarg
     inputs = {},

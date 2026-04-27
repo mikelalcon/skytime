@@ -239,15 +239,20 @@ func TestWrapStarlarkError_NilPassThrough(t *testing.T) {
 }
 
 func TestWrapStarlarkError_AlreadyParseError(t *testing.T) {
+	// Direct ParseError: surfaces as itself (errors.As finds and returns).
 	original := &dag.ParseError{Msg: "already wrapped"}
 	got := wrapStarlarkError(original)
-	assert.Same(t, original, got, "already-typed errors should pass through unchanged")
+	var pe *dag.ParseError
+	require.True(t, errors.As(got, &pe))
+	assert.Equal(t, "already wrapped", pe.Msg)
 }
 
 func TestWrapStarlarkError_AlreadyValidationError(t *testing.T) {
 	original := &dag.ValidationError{Msg: "already wrapped"}
 	got := wrapStarlarkError(original)
-	assert.Same(t, original, got)
+	var ve *dag.ValidationError
+	require.True(t, errors.As(got, &ve))
+	assert.Equal(t, "already wrapped", ve.Msg)
 }
 
 func TestWrapStarlarkError_SyntaxError(t *testing.T) {

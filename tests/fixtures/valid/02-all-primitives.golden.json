@@ -1,6 +1,128 @@
 {
   "flows": {
-    "all_primitives": {"_note": "shape finalized in plan 05; this is a placeholder"},
-    "minimal": {"_note": "shape finalized in plan 05; this is a placeholder"}
+    "all_primitives": {
+      "kind": "Flow",
+      "name": "all_primitives",
+      "inputs": {
+        "req": "dict"
+      },
+      "body": [
+        {
+          "kind": "Step",
+          "actions": [
+            {
+              "kind": "fake_ext.echo",
+              "kwargs": {
+                "msg": "start"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "Step",
+          "actions": [
+            {
+              "kind": "fake_ext.echo",
+              "kwargs": {
+                "msg": "a"
+              }
+            },
+            {
+              "kind": "fake_ext.echo",
+              "kwargs": {
+                "msg": "b"
+              }
+            },
+            {
+              "kind": "fake_ext.echo",
+              "kwargs": {
+                "msg": "c"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "IfCond",
+          "lambda_id": "3b92ab29:19:20",
+          "then": [
+            {
+              "kind": "Step",
+              "actions": [
+                {
+                  "kind": "fake_ext.echo",
+                  "kwargs": {
+                    "msg": "then"
+                  }
+                }
+              ]
+            }
+          ],
+          "else": [
+            {
+              "kind": "Step",
+              "actions": [
+                {
+                  "kind": "fake_ext.echo",
+                  "kwargs": {
+                    "msg": "else"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "Script",
+          "id": "compute",
+          "lambda_id": "3b92ab29:25:18",
+          "output_alias": "result"
+        },
+        {
+          "kind": "ForEachParallel",
+          "items_lambda_id": "3b92ab29:29:21",
+          "item_var": "it",
+          "steps": [
+            {
+              "kind": "Step",
+              "actions": [
+                {
+                  "kind": "fake_ext.echo",
+                  "kwargs": {
+                    "msg": "loop"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "CallFlow",
+          "name": "minimal",
+          "inputs": {
+            "name": "subflow"
+          }
+        }
+      ]
+    },
+    "minimal": {
+      "kind": "Flow",
+      "name": "minimal",
+      "inputs": {
+        "name": "string"
+      },
+      "body": [
+        {
+          "kind": "Step",
+          "actions": [
+            {
+              "kind": "fake_ext.echo",
+              "kwargs": {
+                "msg": "minimal"
+              }
+            }
+          ]
+        }
+      ]
+    }
   }
 }

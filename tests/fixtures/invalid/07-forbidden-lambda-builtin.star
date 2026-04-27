@@ -1,4 +1,4 @@
-# expects: not allowed in lambda
+# expects: undefined: time
 # `time` is not in the parse-time globals nor lambda-time globals (D-20).
 # Free-var lookup of `time` will fail at parse-time.
 flow(

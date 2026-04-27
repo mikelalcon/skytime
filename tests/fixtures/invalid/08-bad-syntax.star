@@ -1,4 +1,4 @@
-# expects: syntax error
+# expects: want primary expression
 flow(
     name = "bad",
     inputs = {,

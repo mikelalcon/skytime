@@ -1,4 +1,4 @@
-# expects: unknown identifier
+# expects: undefined: nonexistent_extension
 flow(
     name = "unknown_ext",
     inputs = {},
