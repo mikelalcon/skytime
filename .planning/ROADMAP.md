@@ -12,7 +12,7 @@ Skytime delivers a Go library that lets consultant teams declare durable Tempora
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Type Spine + Extension Contract + Parser/Bridge Foundations** - Pure data types, extension SDK, Starlark parser with all six primitives, and the state/lambda bridge — no Temporal yet
+- [x] **Phase 1: Type Spine + Extension Contract + Parser/Bridge Foundations** - Pure data types, extension SDK, Starlark parser with all six primitives, and the state/lambda bridge — no Temporal yet (completed 2026-04-27)
 - [ ] **Phase 2: Generic Activity + Block-Batch Dispatch + Credentials** - Single `ExecuteBatch` activity with per-action result list, JIT credential resolution, and error-scrubbing middleware
 - [ ] **Phase 3: Lambda-Serialization Decision + Interpreter + Worker** - Resolve how lambdas survive Temporal serialization, then build the generic interpreter workflow and the multi-cluster worker bootstrap
 - [ ] **Phase 4: Static Validation Tier + CLI Skeleton** - `skytime validate` / `run` / `dev-server`, sharing the parser with the runtime via differential corpus testing
@@ -36,7 +36,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   - [x] 01-02-PLAN.md — Wave 1: `pkg/dag` type spine — Node interface + 6 node types (Flow, Step, IfCond, Script, ForEachParallel, CallFlow) + ActionRef (starlark.Value with recursive Freeze) + CapturedLambda + RetryPolicy/Timeout (Unpacker)
   - [x] 01-03-PLAN.md — Wave 1: `pkg/extension` SDK contract — Extension interface + OperationSpec (Idempotent *bool) + sealed Credential interface (3 kinds, redacted String) + CredentialHandler + per-parser Registry + ~150 LOC reflection-based kwarg validator
   - [x] 01-04-PLAN.md — Wave 2: `pkg/bridge` — ToStarlarkStruct (deterministic key order) + lambdaTimeGlobals (D-20 locked subset, 20 keys) + CallLambda (fresh thread, MaxExecutionSteps, Print hook)
-  - [ ] 01-05-PLAN.md — Wave 3: `pkg/parser` — six DSL primitive builtins + load() with .git-ancestor root + traversal rejection + lambda capture (D-18 IDs) + free-var validation (D-19) + multi-flow + cross-flow resolution + fixture corpus tests (8 valid + 8 invalid)
+  - [x] 01-05-PLAN.md — Wave 3: `pkg/parser` — six DSL primitive builtins + load() with .git-ancestor root + traversal rejection + lambda capture (D-18 IDs) + free-var validation (D-19) + multi-flow + cross-flow resolution + fixture corpus tests (8 valid + 8 invalid)
 **UI hint**: no
 
 ### Phase 2: Generic Activity + Block-Batch Dispatch + Credentials
@@ -110,7 +110,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Type Spine + Extension Contract + Parser/Bridge Foundations | 0/TBD | Not started | - |
+| 1. Type Spine + Extension Contract + Parser/Bridge Foundations | 5/5 | Complete   | 2026-04-27 |
 | 2. Generic Activity + Block-Batch Dispatch + Credentials | 0/TBD | Not started | - |
 | 3. Lambda-Serialization Decision + Interpreter + Worker | 0/TBD | Not started | - |
 | 4. Static Validation Tier + CLI Skeleton | 0/TBD | Not started | - |

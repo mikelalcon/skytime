@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.39
 milestone_name: milestone
-status: executing
-stopped_at: Completed 01-04-PLAN.md (Wave 2, pkg/bridge state/lambda bridge)
-last_updated: "2026-04-27T16:45:18.767Z"
+status: verifying
+stopped_at: Completed 01-05-PLAN.md (Wave 3, pkg/parser integration — Phase 1 ready for verification)
+last_updated: "2026-04-27T17:13:49.786Z"
 last_activity: 2026-04-27
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 
 Phase: 01 (type-spine-extension-contract-parser-bridge-foundations) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-27
 
 Progress: [░░░░░░░░░░] 0%
@@ -56,6 +56,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P02 | 7min | 4 tasks | 18 files |
 | Phase 01 P03 | 10min | 3 tasks | 12 files |
 | Phase 01 P04 | 9min | 3 tasks | 10 files |
+| Phase 01 P05 | 19min | 4 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,10 @@ Recent decisions affecting current work:
 - [Phase 01]: Plan 01-04: PrintSink default wraps Logger as InfoContext('starlark print', 'msg', payload, 'lambda_id', captured.ID) — Phase 3 swaps for workflow.GetLogger.Info; lambda_id makes log lines self-locating
 - [Phase 01]: Plan 01-04: Cancel watchdog uses native goroutine in Phase 1 — CallLambda runs inside the activity (not workflow goroutine), so native goroutines are safe; Phase 3 swaps to workflow.Go inside the workflow watchdog only
 - [Phase 01]: Plan 01-04: starlark.Int values compared via Int64() not testify deep-equal — starlark.Int's unexported impl pointer breaks struct equality even when integer values match
+- [Phase 01]: Plan 01-05: NewParser returns (*Parser, error) — registration failures (D-12 ErrIdempotentRequired, name collisions) surface explicitly to caller; promotion from plan's bare *Parser sketch is a strict win
+- [Phase 01]: Plan 01-05: Private nodeValue wrapper in pkg/parser — keeps pkg/dag pure data; isolates Starlark coupling exactly where it belongs (parser); ~30 LOC of trivial 4-method shim
+- [Phase 01]: Plan 01-05: wrapStarlarkError unwrap-first — returns the typed *dag.ParseError directly when starlark wrapped it (avoids 'cannot load X: ...' wrappedError prefix obscuring the typed message)
+- [Phase 01]: Plan 01-05: callerPositionOrZero (depth-safe) for Thread.Load — Starlark's load callback runs with single-frame stack; thread.CallFrame(1) panics; fallback to filename parsing from thread.Name ('parse:<file>' / 'load:<file>' convention)
 
 ### Pending Todos
 
@@ -92,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-27T16:45:18.764Z
-Stopped at: Completed 01-04-PLAN.md (Wave 2, pkg/bridge state/lambda bridge)
+Last session: 2026-04-27T17:13:36.253Z
+Stopped at: Completed 01-05-PLAN.md (Wave 3, pkg/parser integration — Phase 1 ready for verification)
 Resume file: None
