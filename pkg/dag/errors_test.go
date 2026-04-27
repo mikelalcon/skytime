@@ -1,0 +1,109 @@
+package dag
+
+import (
+	"errors"
+	"regexp"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.starlark.net/syntax"
+)
+
+// Compile-time assertions: both error types implement error and the
+// Position-bearing interface. These would fail to compile if the surface
+// drifts; explicit so reviewers see the contract.
+var (
+	_ error                                   = (*ParseError)(nil)
+	_ error                                   = (*ValidationError)(nil)
+	_ interface{ Position() syntax.Position } = (*ParseError)(nil)
+	_ interface{ Position() syntax.Position } = (*ValidationError)(nil)
+)
+
+// validPos returns a syntax.Position that satisfies Position.IsValid().
+// IsValid requires a non-empty filename; line/col may be zero.
+func validPos(t *testing.T) syntax.Position {
+	t.Helper()
+	// MakePosition is the documented constructor.
+	pos := syntax.MakePosition(strPtr("flow.star"), 12, 7)
+	require.True(t, pos.IsValid(), "constructed position must be valid")
+	return pos
+}
+
+func strPtr(s string) *string { return &s }
+
+// --- ParseError --------------------------------------------------------------
+
+func TestParseError_ImplementsError(t *testing.T) {
+	var e error = &ParseError{Msg: "x"}
+	require.Error(t, e)
+}
+
+func TestParseError_ExposesPosition(t *testing.T) {
+	pos := validPos(t)
+	pe := &ParseError{Pos: pos, Msg: "boom"}
+	got := pe.Position()
+	assert.Equal(t, pos, got, "Position() returns the embedded position")
+}
+
+func TestParseError_ErrorWithValidPos(t *testing.T) {
+	pos := validPos(t)
+	pe := &ParseError{Pos: pos, Msg: "missing required 'name'"}
+	got := pe.Error()
+	re := regexp.MustCompile(`^[^:]+:\d+:\d+: missing required 'name'$`)
+	assert.Regexp(t, re, got, "Error() formats <file>:<line>:<col>: <msg> when Pos is valid")
+}
+
+func TestParseError_ErrorWithoutPos(t *testing.T) {
+	pe := &ParseError{Msg: "no position"}
+	assert.Equal(t, "no position", pe.Error(), "Error() returns just Msg when Pos is invalid (zero)")
+}
+
+func TestParseError_UnwrapWithErrorsAs(t *testing.T) {
+	innerType := &sentinelInner{label: "inner"}
+	pe := &ParseError{Msg: "outer", Wrapped: innerType}
+
+	var target *sentinelInner
+	require.True(t, errors.As(pe, &target), "errors.As must walk Unwrap to reach inner type")
+	assert.Equal(t, "inner", target.label)
+}
+
+// --- ValidationError ---------------------------------------------------------
+
+func TestValidationError_ImplementsError(t *testing.T) {
+	var e error = &ValidationError{Msg: "x"}
+	require.Error(t, e)
+}
+
+func TestValidationError_ExposesPosition(t *testing.T) {
+	pos := validPos(t)
+	ve := &ValidationError{Pos: pos, Flow: "f", Step: "s", Msg: "boom"}
+	assert.Equal(t, pos, ve.Position())
+}
+
+func TestValidationError_ErrorWithValidPos(t *testing.T) {
+	pos := validPos(t)
+	ve := &ValidationError{Pos: pos, Flow: "approve_pr", Step: "create_issue", Msg: "missing required 'title'"}
+	re := regexp.MustCompile(`^[^:]+:\d+:\d+: missing required 'title'$`)
+	assert.Regexp(t, re, ve.Error())
+}
+
+func TestValidationError_ErrorWithoutPos(t *testing.T) {
+	ve := &ValidationError{Msg: "no position"}
+	assert.Equal(t, "no position", ve.Error())
+}
+
+func TestValidationError_UnwrapWithErrorsAs(t *testing.T) {
+	inner := &sentinelInner{label: "inner-v"}
+	ve := &ValidationError{Msg: "outer", Wrapped: inner}
+
+	var target *sentinelInner
+	require.True(t, errors.As(ve, &target))
+	assert.Equal(t, "inner-v", target.label)
+}
+
+// --- helpers -----------------------------------------------------------------
+
+type sentinelInner struct{ label string }
+
+func (s *sentinelInner) Error() string { return "sentinel:" + s.label }
