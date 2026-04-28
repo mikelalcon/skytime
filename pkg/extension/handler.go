@@ -1,6 +1,22 @@
 package extension
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrUnknownCredential is the sentinel handlers wrap when a credential ID
+// doesn't exist in their backing store. The activity (Phase 2) classifies
+// errors satisfying errors.Is(err, ErrUnknownCredential) as NonRetryable
+// (configuration bug; retrying won't help) per D2-12. Other handler errors
+// are treated as transient and classified as Retryable.
+//
+// Convention for handler authors:
+//
+//	return nil, fmt.Errorf("%w: %s", extension.ErrUnknownCredential, id)
+//
+// Decision reference: D2-12 (locked).
+var ErrUnknownCredential = errors.New("unknown credential")
 
 // CredentialHandler is the contract Phase 3 wires when registering the worker.
 // Skytime's `worker.Run(client, flowDir, skytime.WithCredentialHandler(...))`
@@ -23,5 +39,8 @@ type CredentialHandler interface {
 	// The first parameter is context.Context (stdlib), NEVER
 	// workflow.Context — this method runs inside an activity, where
 	// activity.Context() satisfies context.Context.
+	//
+	// On unknown IDs, return an error wrapping ErrUnknownCredential so the
+	// activity classifies the failure as non-retryable (D2-12).
 	Resolve(ctx context.Context, id string) (Credential, error)
 }

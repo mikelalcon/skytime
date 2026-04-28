@@ -3,6 +3,7 @@ package extension
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -70,4 +71,32 @@ func TestCredentialHandler_ResolveTakesContext(t *testing.T) {
 	// CredentialHandler.Resolve required workflow.Context, this would
 	// fail to compile.
 	_, _ = h.Resolve(context.Background(), "x")
+}
+
+// TestErrUnknownCredential_IsErrorsIsCompatible verifies that handlers that
+// wrap ErrUnknownCredential via fmt.Errorf("%w: %s", ...) produce errors
+// that errors.Is can detect. This is the D2-12 retry-classification
+// contract: the activity (Phase 2) checks errors.Is(err, ErrUnknownCredential)
+// to decide between NonRetryable (unknown ID = configuration bug) and
+// Retryable (transient backend failure).
+func TestErrUnknownCredential_IsErrorsIsCompatible(t *testing.T) {
+	require.NotNil(t, ErrUnknownCredential, "sentinel must be initialized")
+	assert.Equal(t, "unknown credential", ErrUnknownCredential.Error())
+
+	// fmt.Errorf("%w: %s", ...) is the documented handler pattern.
+	wrapped := fmt.Errorf("%w: %s", ErrUnknownCredential, "missing-id")
+	require.Error(t, wrapped)
+	assert.True(t, errors.Is(wrapped, ErrUnknownCredential),
+		"errors.Is must walk %%w wrappers — D2-12 retry classification depends on this")
+
+	// Doubly wrapped (e.g., handler wraps for context, activity wraps for
+	// attribution): errors.Is still finds the sentinel.
+	doubleWrapped := fmt.Errorf("resolving credential: %w", wrapped)
+	assert.True(t, errors.Is(doubleWrapped, ErrUnknownCredential),
+		"errors.Is must walk multiple %%w layers")
+
+	// Negative: a plain string-equal error is NOT considered the sentinel.
+	plain := errors.New("unknown credential")
+	assert.False(t, errors.Is(plain, ErrUnknownCredential),
+		"errors.Is must compare identity, not message — only fmt.Errorf %%w wraps qualify")
 }
