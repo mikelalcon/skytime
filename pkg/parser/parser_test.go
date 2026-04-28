@@ -26,7 +26,7 @@ import (
 
 // noopOpFunc is an extension.OperationFunc that does nothing. Reused across
 // fake extensions in this package's tests.
-func noopOpFunc(ctx context.Context, args any, cred extension.Credential) (any, error) {
+func noopOpFunc(ctx context.Context, args any, cred extension.Credential) (dag.OperationOutput, error) {
 	return nil, nil
 }
 

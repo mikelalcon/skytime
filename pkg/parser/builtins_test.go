@@ -52,7 +52,7 @@ func (*fakeExtension) Operations() map[string]*extension.OperationSpec {
 		"echo": {
 			Name:       "echo",
 			Idempotent: extension.Ptr(true),
-			Func: func(ctx context.Context, args any, cred extension.Credential) (any, error) {
+			Func: func(ctx context.Context, args any, cred extension.Credential) (dag.OperationOutput, error) {
 				return nil, nil
 			},
 			KwargsType: reflect.TypeOf(struct {

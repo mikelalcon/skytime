@@ -35,7 +35,7 @@ type errCredentialNotFound struct{ id string }
 func (e errCredentialNotFound) Error() string { return "credential not found: " + e.id }
 
 func TestCredentialHandler_FakeReturnsKnownCredential(t *testing.T) {
-	bearer := &BearerCredential{ID_: "admin", Token: "secret-do-not-leak"}
+	bearer := &BearerCredential{ID_: "admin", Token: NewSecret("secret-do-not-leak")}
 	h := &fakeHandler{creds: map[string]Credential{"admin": bearer}}
 
 	got, err := h.Resolve(context.Background(), "admin")
@@ -43,10 +43,11 @@ func TestCredentialHandler_FakeReturnsKnownCredential(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, "admin", got.ID())
 	// Returned credential must round-trip back to the original concrete
-	// type (handler does not re-wrap).
+	// type (handler does not re-wrap). Token is now Secret-typed (D2-08);
+	// .Reveal() exposes the raw value at this audit boundary.
 	bearerOut, ok := got.(*BearerCredential)
 	require.True(t, ok, "expected *BearerCredential, got %T", got)
-	assert.Equal(t, "secret-do-not-leak", bearerOut.Token)
+	assert.Equal(t, "secret-do-not-leak", bearerOut.Token.Reveal())
 }
 
 func TestCredentialHandler_UnknownIDReturnsError(t *testing.T) {

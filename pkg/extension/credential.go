@@ -11,9 +11,11 @@ import "fmt"
 // is defended at the type level: %v, %s, %q formatting verbs all route
 // through String() when invoked on a *T receiver.
 //
-// Note: %+v formatting bypasses String() and shows struct fields verbatim —
-// callers MUST NOT log credentials with %+v. Phase 2's error scrubber
-// catches this if a caller misuses %+v in an error path.
+// Phase 2 (D2-08): the secret-bearing fields are typed `Secret` (NOT
+// `string`) so %+v / %#v / json / slog-text-handler formatting also
+// redact. The raw bytes leave Secret only via an explicit .Reveal() call,
+// which is greppable via `git grep '\.Reveal()'` for audit. This closes
+// the leak surface that the redacted String() alone left open.
 type Credential interface {
 	// ID returns the credential identifier (e.g. "admin"). Workflow state
 	// holds only this ID, never the resolved secret (PROJECT.md security
@@ -35,8 +37,10 @@ type BearerCredential struct {
 	// ID_ is the credential identifier as Starlark sees it (e.g. "admin").
 	// Suffixed with `_` to leave the more-natural ID() method name free.
 	ID_ string
-	// Token is the bearer secret. NEVER log this directly.
-	Token string
+	// Token is the bearer secret. Type Secret (D2-08) — the raw bytes
+	// surface only via Token.Reveal() at HTTP-call sites; every other
+	// fmt / json / slog path redacts.
+	Token Secret
 }
 
 // ID returns the credential identifier.
@@ -55,15 +59,21 @@ func (*BearerCredential) isCredential() {}
 // ----------------------------------------------------------------------------
 
 // BasicCredential carries a username + password pair (e.g. HTTP Basic auth).
-// The User and Password fields are both treated as secret; String() never
-// includes either.
+// Password is treated as a secret; User is documented config but redacted
+// from String() defense-in-depth.
 type BasicCredential struct {
 	// ID_ is the credential identifier as Starlark sees it.
 	ID_ string
-	// User is the basic-auth username. Treated as secret in redaction.
+	// User is the basic-auth username. Not strictly secret, but kept out
+	// of the redacted String() form so future readers don't infer "what's
+	// in String() is fine to log" from a partial redaction. Phase 2's
+	// research example also leaves User as a plain string per D2-08;
+	// callers concerned about username disclosure should wrap it in a
+	// Secret themselves.
 	User string
-	// Password is the basic-auth password. NEVER log this directly.
-	Password string
+	// Password is the basic-auth password. Type Secret (D2-08) — see
+	// BearerCredential.Token doc.
+	Password Secret
 }
 
 // ID returns the credential identifier.
@@ -83,14 +93,14 @@ func (*BasicCredential) isCredential() {}
 // ----------------------------------------------------------------------------
 
 // APIKeyCredential carries an API key + the header name it should be sent
-// under. Both Key and HeaderName are treated as redaction-eligible — defense
-// in depth; future readers should not infer "what's in String() is fine to
-// log" from a partial redaction.
+// under. Key is treated as a secret; HeaderName is config but redacted from
+// String() defense-in-depth.
 type APIKeyCredential struct {
 	// ID_ is the credential identifier as Starlark sees it.
 	ID_ string
-	// Key is the API key value. NEVER log this directly.
-	Key string
+	// Key is the API key value. Type Secret (D2-08) — see
+	// BearerCredential.Token doc.
+	Key Secret
 	// HeaderName is the HTTP header the key is sent under
 	// (e.g. "X-API-Key", "Authorization"). Not strictly secret but
 	// redacted from String() anyway.

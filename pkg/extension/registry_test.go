@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
+
+	"github.com/mikelalcon/skytime/pkg/dag"
 )
 
 // makeOpSpec builds an OperationSpec with the supplied Idempotent value
@@ -18,7 +20,7 @@ func makeOpSpec(name string, idempotent *bool) *OperationSpec {
 	return &OperationSpec{
 		Name:       name,
 		Idempotent: idempotent,
-		Func: func(ctx context.Context, args any, cred Credential) (any, error) {
+		Func: func(ctx context.Context, args any, cred Credential) (dag.OperationOutput, error) {
 			return nil, nil
 		},
 		KwargsType: reflect.TypeOf(struct{}{}),
@@ -133,7 +135,7 @@ func TestRegistry_RejectsNilKwargsType(t *testing.T) {
 	spec := &OperationSpec{
 		Name:       "x",
 		Idempotent: Ptr(true),
-		Func: func(ctx context.Context, args any, cred Credential) (any, error) {
+		Func: func(ctx context.Context, args any, cred Credential) (dag.OperationOutput, error) {
 			return nil, nil
 		},
 		// KwargsType intentionally nil

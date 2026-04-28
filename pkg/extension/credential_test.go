@@ -1,6 +1,7 @@
 package extension
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -24,64 +25,64 @@ var (
 // secret token. Pitfall #6 (credential leakage via logs/error messages) defense.
 func TestBearerCredential_RedactedString(t *testing.T) {
 	const secret = "ghp_super_secret_do_not_leak"
-	c := &BearerCredential{ID_: "admin", Token: secret}
+	c := &BearerCredential{ID_: "admin", Token: NewSecret(secret)}
 
 	assert.Equal(t, "<credential:bearer:admin>", c.String())
 	assert.Equal(t, "admin", c.ID())
 
-	// %v formatting routes through String() (pointer receiver):
-	assert.NotContains(t, fmt.Sprintf("%v", c), secret)
-	// %s formatting also routes through String():
-	assert.NotContains(t, fmt.Sprintf("%s", c), secret)
-	// Quoted formatting:
-	assert.NotContains(t, fmt.Sprintf("%q", c), secret)
-	// Note: %+v includes struct fields verbatim — that's the Go default and
-	// would expose the token. Phase 2's error scrubber catches this if a
-	// caller misuses %+v. We document the safe verbs (%s, %v, %q) here.
+	// Every fmt verb (including %+v / %#v which would bypass String() on
+	// the pointer-to-struct) must redact thanks to the Secret field type
+	// (D2-08 closes the gap that Phase 1's redacted String() alone left).
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q"} {
+		got := fmt.Sprintf(verb, c)
+		assert.NotContains(t, got, secret,
+			"verb %q LEAKED bearer token: %s", verb, got)
+	}
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q"} {
+		got := fmt.Sprintf(verb, *c) // value receiver — a common slog payload
+		assert.NotContains(t, got, secret,
+			"value-receiver verb %q LEAKED bearer token: %s", verb, got)
+	}
 }
 
-// TestBasicCredential_RedactedString — same redaction contract for User+Password.
+// TestBasicCredential_RedactedString — same redaction contract for Password.
 func TestBasicCredential_RedactedString(t *testing.T) {
 	const user = "service-account"
 	const pass = "p@ssw0rd-do-not-leak"
-	c := &BasicCredential{ID_: "github-oauth", User: user, Password: pass}
+	c := &BasicCredential{ID_: "github-oauth", User: user, Password: NewSecret(pass)}
 
 	assert.Equal(t, "<credential:basic:github-oauth>", c.String())
 	assert.Equal(t, "github-oauth", c.ID())
 
-	for _, v := range []string{
-		fmt.Sprintf("%v", c),
-		fmt.Sprintf("%s", c),
-		fmt.Sprintf("%q", c),
-	} {
-		assert.NotContains(t, v, user, "User leaked through %%v/%%s/%%q")
-		assert.NotContains(t, v, pass, "Password leaked through %%v/%%s/%%q")
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q"} {
+		got := fmt.Sprintf(verb, c)
+		assert.NotContains(t, got, pass,
+			"verb %q LEAKED password: %s", verb, got)
+	}
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q"} {
+		got := fmt.Sprintf(verb, *c)
+		assert.NotContains(t, got, pass,
+			"value-receiver verb %q LEAKED password: %s", verb, got)
 	}
 }
 
 // TestAPIKeyCredential_RedactedString — same redaction contract for the Key.
 func TestAPIKeyCredential_RedactedString(t *testing.T) {
 	const key = "sk_live_do_not_leak_xyz123"
-	c := &APIKeyCredential{ID_: "stripe", Key: key, HeaderName: "Authorization"}
+	c := &APIKeyCredential{ID_: "stripe", Key: NewSecret(key), HeaderName: "Authorization"}
 
 	assert.Equal(t, "<credential:apikey:stripe>", c.String())
 	assert.Equal(t, "stripe", c.ID())
 
-	for _, v := range []string{
-		fmt.Sprintf("%v", c),
-		fmt.Sprintf("%s", c),
-		fmt.Sprintf("%q", c),
-	} {
-		assert.NotContains(t, v, key, "Key leaked through %%v/%%s/%%q")
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q"} {
+		got := fmt.Sprintf(verb, c)
+		assert.NotContains(t, got, key,
+			"verb %q LEAKED API key: %s", verb, got)
 	}
-	// HeaderName is not secret — it's a config value — but it should still
-	// not appear in the redacted form (defense in depth: future readers
-	// should not infer "what's in String() is fine to log").
-	for _, v := range []string{
-		fmt.Sprintf("%v", c),
-		fmt.Sprintf("%s", c),
-	} {
-		assert.NotContains(t, v, "Authorization")
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q"} {
+		got := fmt.Sprintf(verb, *c)
+		assert.NotContains(t, got, key,
+			"value-receiver verb %q LEAKED API key: %s", verb, got)
 	}
 }
 
@@ -95,9 +96,9 @@ func TestCredential_AllKindsExposeID(t *testing.T) {
 		cred Credential
 		want string
 	}{
-		{"bearer", &BearerCredential{ID_: "b1", Token: "t"}, "b1"},
-		{"basic", &BasicCredential{ID_: "b2", User: "u", Password: "p"}, "b2"},
-		{"apikey", &APIKeyCredential{ID_: "a1", Key: "k", HeaderName: "X-Key"}, "a1"},
+		{"bearer", &BearerCredential{ID_: "b1", Token: NewSecret("t")}, "b1"},
+		{"basic", &BasicCredential{ID_: "b2", User: "u", Password: NewSecret("p")}, "b2"},
+		{"apikey", &APIKeyCredential{ID_: "a1", Key: NewSecret("k"), HeaderName: "X-Key"}, "a1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -118,4 +119,119 @@ func TestCredential_SealedViaIsCredential(t *testing.T) {
 		(&BasicCredential{}).isCredential()
 		(&APIKeyCredential{}).isCredential()
 	})
+}
+
+// ============================================================================
+// Phase 2 D2-08: Secret-typed fields verified end-to-end on each kind.
+// ============================================================================
+
+// TestBearerCredential_SecretField confirms Token is type Secret at compile
+// time AND that .Reveal() round-trips at runtime. The compile-time guarantee
+// comes from the constructor below — if Token were still string, the
+// assignment `Token: NewSecret(...)` would not compile.
+func TestBearerCredential_SecretField(t *testing.T) {
+	const secret = "ghp_distinct_xyz_for_test"
+	c := &BearerCredential{ID_: "admin", Token: NewSecret(secret)}
+
+	// Type-level check (compile time): the Token field IS a Secret —
+	// asserting via the .Reveal() method (only exists on Secret).
+	assert.Equal(t, secret, c.Token.Reveal())
+
+	// Format-level check: %+v on the pointer (and value) does NOT leak.
+	assert.NotContains(t, fmt.Sprintf("%+v", c), secret)
+	assert.NotContains(t, fmt.Sprintf("%+v", *c), secret)
+	assert.Contains(t, fmt.Sprintf("%+v", *c), redactedString)
+}
+
+// TestBasicCredential_SecretField — same shape for Password.
+func TestBasicCredential_SecretField(t *testing.T) {
+	const pass = "p@ssw0rd-distinct-for-test"
+	c := &BasicCredential{ID_: "svc", User: "alice", Password: NewSecret(pass)}
+
+	assert.Equal(t, pass, c.Password.Reveal())
+	assert.NotContains(t, fmt.Sprintf("%+v", c), pass)
+	assert.NotContains(t, fmt.Sprintf("%+v", *c), pass)
+	assert.Contains(t, fmt.Sprintf("%+v", *c), redactedString)
+}
+
+// TestAPIKeyCredential_SecretField — same shape for Key.
+func TestAPIKeyCredential_SecretField(t *testing.T) {
+	const key = "sk_distinct_xyz_for_test"
+	c := &APIKeyCredential{ID_: "stripe", Key: NewSecret(key), HeaderName: "Authorization"}
+
+	assert.Equal(t, key, c.Key.Reveal())
+	assert.NotContains(t, fmt.Sprintf("%+v", c), key)
+	assert.NotContains(t, fmt.Sprintf("%+v", *c), key)
+	assert.Contains(t, fmt.Sprintf("%+v", *c), redactedString)
+}
+
+// TestCredentials_RedactedInAllFormats walks each Credential kind and each
+// realistic formatting/serialization path that Phase 2 / Phase 3 might
+// exercise, asserting NO path reveals the underlying secret. This is the
+// integration-level equivalent of secret_test.go's TestSecret_FullRedactionMatrix
+// — proves the Secret wrapper protects the surrounding struct, not just
+// itself.
+//
+// Paths covered: %v, %+v, %#v, %s, %q on pointer + value receiver, plus
+// json.Marshal of the struct.
+func TestCredentials_RedactedInAllFormats(t *testing.T) {
+	const distinctive = "DISTINCTIVE_TOKEN_VALUE_ABC123"
+
+	cases := []struct {
+		name string
+		cred any
+	}{
+		{
+			"bearer",
+			&BearerCredential{ID_: "admin", Token: NewSecret(distinctive)},
+		},
+		{
+			"basic",
+			&BasicCredential{ID_: "svc", User: "u", Password: NewSecret(distinctive)},
+		},
+		{
+			"apikey",
+			&APIKeyCredential{ID_: "stripe", Key: NewSecret(distinctive), HeaderName: "X-K"},
+		},
+	}
+	verbs := []string{"%v", "%+v", "%#v", "%s", "%q"}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, verb := range verbs {
+				got := fmt.Sprintf(verb, tc.cred)
+				assert.NotContainsf(t, got, distinctive,
+					"%s pointer-receiver via %q LEAKED: %s", tc.name, verb, got)
+			}
+			// Also check value-receiver formats — slog and many error
+			// wrappers dereference automatically.
+			vr := dereferenceForFormat(tc.cred)
+			for _, verb := range verbs {
+				got := fmt.Sprintf(verb, vr)
+				assert.NotContainsf(t, got, distinctive,
+					"%s value-receiver via %q LEAKED: %s", tc.name, verb, got)
+			}
+
+			// JSON path — the Temporal default DataConverter.
+			b, err := json.Marshal(tc.cred)
+			require.NoError(t, err)
+			assert.NotContainsf(t, string(b), distinctive,
+				"%s json.Marshal LEAKED: %s", tc.name, string(b))
+		})
+	}
+}
+
+// dereferenceForFormat returns the value behind a *T pointer. Used so the
+// table test above can exercise value-receiver formatting verbs that
+// downstream callers (slog, errors) commonly trigger.
+func dereferenceForFormat(c any) any {
+	switch v := c.(type) {
+	case *BearerCredential:
+		return *v
+	case *BasicCredential:
+		return *v
+	case *APIKeyCredential:
+		return *v
+	}
+	return c
 }

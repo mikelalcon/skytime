@@ -1,12 +1,25 @@
 package extension
 
 import (
+	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mikelalcon/skytime/pkg/dag"
 )
+
+// opTestOutput is a test-local OperationOutput-implementing type used by
+// the OperationFunc signature tests below. The marker method
+// IsOperationOutput is exported (see pkg/dag/output.go SEAL PROPERTY) so
+// types in non-pkg/dag packages CAN satisfy the marker — this is precisely
+// what extension authors do in pkg/examples/* (Phase 6).
+type opTestOutput struct{}
+
+func (opTestOutput) IsOperationOutput() {}
 
 // TestOperationSpec_IdempotentIsPointerToBool verifies — via reflection — that
 // OperationSpec.Idempotent has Go type *bool. This is the D-12 enforcement
@@ -50,4 +63,80 @@ func TestPtr_GenericOverString(t *testing.T) {
 	s := Ptr[string]("hello")
 	require.NotNil(t, s)
 	assert.Equal(t, "hello", *s)
+}
+
+// TestOperationFunc_ReturnsOperationOutput verifies the D2-04 narrowing of
+// OperationFunc's return type from `any` to `dag.OperationOutput`. The
+// positive path is exercised by the assignment + invocation below: a
+// function returning a typed Output that implements isOperationOutput()
+// satisfies the OperationFunc type. The negative path (a function returning
+// `(map[string]int{}, nil)`) is documented as a compile-time check that
+// MUST NOT compile if the seal is intact:
+//
+//	// Intentionally won't compile if uncommented — proves the narrowing:
+//	//   var bad OperationFunc = func(ctx context.Context, args any, cred Credential) (any, error) {
+//	//       return map[string]int{}, nil
+//	//   }
+//
+// The compile failure surface is the type system; this test simply asserts
+// the positive path works at runtime.
+func TestOperationFunc_ReturnsOperationOutput(t *testing.T) {
+	var fn OperationFunc = func(ctx context.Context, args any, cred Credential) (dag.OperationOutput, error) {
+		return opTestOutput{}, nil
+	}
+	require.NotNil(t, fn)
+
+	out, err := fn(context.Background(), nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, out)
+	_, ok := out.(opTestOutput)
+	assert.True(t, ok, "OperationFunc must return a dag.OperationOutput-implementing type")
+
+	// Returning nil output is also legal — the nil interface value
+	// satisfies any interface.
+	var nilFn OperationFunc = func(ctx context.Context, args any, cred Credential) (dag.OperationOutput, error) {
+		return nil, nil
+	}
+	out, err = nilFn(context.Background(), nil, nil)
+	require.NoError(t, err)
+	assert.Nil(t, out, "OperationFunc may return nil output for void operations")
+}
+
+// TestOperationSpec_DefaultTimeoutZeroIsNoTimeout verifies the D2-15
+// DefaultTimeout field's zero-value semantics: 0 means "no per-action
+// timeout enforced." The field type is time.Duration; an unset zero value
+// composes cleanly into a default-constructed OperationSpec.
+func TestOperationSpec_DefaultTimeoutZeroIsNoTimeout(t *testing.T) {
+	tp := reflect.TypeOf(OperationSpec{})
+	field, ok := tp.FieldByName("DefaultTimeout")
+	require.True(t, ok, "OperationSpec must have a DefaultTimeout field")
+	assert.Equal(t, reflect.TypeOf(time.Duration(0)), field.Type,
+		"DefaultTimeout must be time.Duration")
+
+	// Construction with explicit and zero timeout values both succeed.
+	spec := OperationSpec{
+		Name:           "x",
+		Idempotent:     Ptr(true),
+		Func:           func(ctx context.Context, args any, cred Credential) (dag.OperationOutput, error) { return nil, nil },
+		KwargsType:     reflect.TypeOf(struct{}{}),
+		DefaultTimeout: 30 * time.Second,
+	}
+	assert.Equal(t, 30*time.Second, spec.DefaultTimeout)
+
+	zeroSpec := OperationSpec{
+		Name:       "z",
+		Idempotent: Ptr(false),
+		Func:       func(ctx context.Context, args any, cred Credential) (dag.OperationOutput, error) { return nil, nil },
+		KwargsType: reflect.TypeOf(struct{}{}),
+		// DefaultTimeout intentionally omitted — zero value documented
+		// to mean "no per-action timeout enforced" (D2-15).
+	}
+	assert.Equal(t, time.Duration(0), zeroSpec.DefaultTimeout,
+		"zero DefaultTimeout means no per-action enforcement (D2-15)")
+
+	// Both specs must register cleanly through the existing Registry.Register
+	// path so the new field doesn't break Phase 1's registration tests.
+	r := NewRegistry()
+	require.NoError(t, r.Register(makeFakeExt("e1", map[string]*OperationSpec{"x": &spec})))
+	require.NoError(t, r.Register(makeFakeExt("e2", map[string]*OperationSpec{"z": &zeroSpec})))
 }

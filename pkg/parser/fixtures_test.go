@@ -79,7 +79,7 @@ func (*fakeGithubExtension) Operations() map[string]*extension.OperationSpec {
 		"create_issue": {
 			Name:       "create_issue",
 			Idempotent: extension.Ptr(false),
-			Func: func(ctx context.Context, args any, cred extension.Credential) (any, error) {
+			Func: func(ctx context.Context, args any, cred extension.Credential) (dag.OperationOutput, error) {
 				return nil, nil
 			},
 			KwargsType: reflect.TypeOf(struct {

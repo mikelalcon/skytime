@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
+
+	"github.com/mikelalcon/skytime/pkg/dag"
 )
 
 // ============================================================================
@@ -79,11 +81,15 @@ func TestNoTemporalImportsInExtensionPackage(t *testing.T) {
 
 // Compile-time test of OperationFunc's exact signature. If the assignment
 // below stops compiling, the OperationFunc type drifted away from the
-// (context.Context, args any, cred Credential) → (any, error) contract.
+// (context.Context, args any, cred Credential) → (dag.OperationOutput, error)
+// contract.
 //
 // EXT-03: OperationFunc takes context.Context (stdlib), NEVER workflow.Context.
+//
+// D2-04: Phase 2 narrowed the return type from `any` to `dag.OperationOutput`
+// — extension authors must declare a typed Output struct.
 func TestOperationFunc_SignatureCompiles(t *testing.T) {
-	var fn OperationFunc = func(ctx context.Context, args any, cred Credential) (any, error) {
+	var fn OperationFunc = func(ctx context.Context, args any, cred Credential) (dag.OperationOutput, error) {
 		_ = ctx
 		_ = args
 		_ = cred

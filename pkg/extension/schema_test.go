@@ -422,7 +422,7 @@ func (e *fakeFactoryExtension) Operations() map[string]*OperationSpec {
 		"create_issue": {
 			Name:       "create_issue",
 			Idempotent: Ptr(false),
-			Func: func(ctx context.Context, args any, cred Credential) (any, error) {
+			Func: func(ctx context.Context, args any, cred Credential) (dag.OperationOutput, error) {
 				return nil, nil
 			},
 			KwargsType: reflect.TypeOf(struct{}{}),
