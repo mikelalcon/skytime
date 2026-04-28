@@ -482,3 +482,147 @@ func makeCredentialModule(credID string) *starlarkstruct.Module {
 		},
 	}
 }
+
+// ----------------------------------------------------------------------------
+// DecodeKwargsFromDict tests (Plan 02-01 Task 4 — runtime-path companion to
+// UnpackOperationKwargs)
+// ----------------------------------------------------------------------------
+
+// decodeArgs is the parameter struct exercised by DecodeKwargsFromDict
+// tests. Mirrors the shape ActionRef.Kwargs would carry for a typical
+// extension op (one required string + optional int + optional list).
+type decodeArgs struct {
+	Repo     string   `star:"repo,required"`
+	IssueNum int      `star:"issue_num"`
+	Labels   []string `star:"labels"`
+}
+
+// TestDecodeKwargsFromDict_RoundTrip — happy path: build a *starlark.Dict
+// matching the schema, freeze it (mirroring parse-time freeze on
+// ActionRef.Kwargs), decode into the target, assert each field populated.
+func TestDecodeKwargsFromDict_RoundTrip(t *testing.T) {
+	dict := starlark.NewDict(3)
+	require.NoError(t, dict.SetKey(starlark.String("repo"), starlark.String("octocat/hello")))
+	require.NoError(t, dict.SetKey(starlark.String("issue_num"), starlark.MakeInt(42)))
+	labels := starlark.NewList([]starlark.Value{starlark.String("bug"), starlark.String("p1")})
+	require.NoError(t, dict.SetKey(starlark.String("labels"), labels))
+	dict.Freeze() // mirror parse-time freeze on ActionRef.Kwargs
+
+	var got decodeArgs
+	err := DecodeKwargsFromDict("github.create_comment", dict, &got)
+	require.NoError(t, err)
+	assert.Equal(t, "octocat/hello", got.Repo)
+	assert.Equal(t, 42, got.IssueNum)
+	assert.Equal(t, []string{"bug", "p1"}, got.Labels)
+}
+
+// TestDecodeKwargsFromDict_MissingRequired verifies a Dict missing the
+// `repo,required` field surfaces a *dag.ValidationError matching the
+// exact "missing required kwarg" wording UnpackOperationKwargs emits.
+func TestDecodeKwargsFromDict_MissingRequired(t *testing.T) {
+	dict := starlark.NewDict(0) // missing required "repo"
+	dict.Freeze()
+	var got decodeArgs
+	err := DecodeKwargsFromDict("github.create_comment", dict, &got)
+	require.Error(t, err)
+
+	var vErr *dag.ValidationError
+	require.True(t, errors.As(err, &vErr), "expected *dag.ValidationError, got %T", err)
+	assert.Contains(t, vErr.Msg, `missing required kwarg "repo"`)
+}
+
+// TestDecodeKwargsFromDict_UnknownKwarg verifies an extra kwarg not declared
+// on the struct surfaces the canonical "unknown kwarg" wording.
+func TestDecodeKwargsFromDict_UnknownKwarg(t *testing.T) {
+	dict := starlark.NewDict(2)
+	require.NoError(t, dict.SetKey(starlark.String("repo"), starlark.String("x/y")))
+	require.NoError(t, dict.SetKey(starlark.String("extra_arg"), starlark.String("oops")))
+	dict.Freeze()
+
+	var got decodeArgs
+	err := DecodeKwargsFromDict("github.create_comment", dict, &got)
+	require.Error(t, err)
+
+	var vErr *dag.ValidationError
+	require.True(t, errors.As(err, &vErr))
+	assert.Contains(t, vErr.Msg, `unknown kwarg "extra_arg"`)
+}
+
+// TestDecodeKwargsFromDict_TypeMismatch verifies a type-mismatched value
+// (string for int) produces a *dag.ValidationError naming the offending
+// kwarg.
+func TestDecodeKwargsFromDict_TypeMismatch(t *testing.T) {
+	dict := starlark.NewDict(2)
+	require.NoError(t, dict.SetKey(starlark.String("repo"), starlark.String("x/y")))
+	require.NoError(t, dict.SetKey(starlark.String("issue_num"), starlark.String("not a number")))
+	dict.Freeze()
+
+	var got decodeArgs
+	err := DecodeKwargsFromDict("github.create_comment", dict, &got)
+	require.Error(t, err)
+
+	var vErr *dag.ValidationError
+	require.True(t, errors.As(err, &vErr))
+	assert.Contains(t, vErr.Msg, `issue_num`)
+}
+
+// TestDecodeKwargsFromDict_NilTarget verifies a nil target returns a
+// non-panicking error mentioning the op name.
+func TestDecodeKwargsFromDict_NilTarget(t *testing.T) {
+	dict := starlark.NewDict(0)
+	err := DecodeKwargsFromDict("op", dict, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "op")
+	assert.Contains(t, err.Error(), "target is nil")
+}
+
+// TestDecodeKwargsFromDict_NonStructTarget verifies a target that is a
+// pointer to a non-struct (e.g., *int) is rejected gracefully via
+// ParseSchema's existing not-a-struct error path.
+func TestDecodeKwargsFromDict_NonStructTarget(t *testing.T) {
+	dict := starlark.NewDict(0)
+	var x int
+	err := DecodeKwargsFromDict("op", dict, &x)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a struct")
+}
+
+// TestDecodeKwargsFromDict_NonPointerTarget verifies a non-pointer target
+// is rejected with a useful error (NOT a panic via reflect.Value.Elem on
+// a non-pointer).
+func TestDecodeKwargsFromDict_NonPointerTarget(t *testing.T) {
+	dict := starlark.NewDict(0)
+	var s decodeArgs
+	err := DecodeKwargsFromDict("op", dict, s) // pass by value, not by pointer
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "non-nil pointer to struct")
+}
+
+// TestDecodeKwargsFromDict_FrozenDict_AllowedToIterate is the regression
+// test for the parse-time freeze constraint: ActionRef.Kwargs is frozen
+// before the activity runs, and DecodeKwargsFromDict must work against
+// frozen dicts (i.e., it must not attempt to mutate the dict during
+// iteration). This is true today via Items() returning a snapshot slice;
+// the test pins the contract so a future refactor can't regress it.
+func TestDecodeKwargsFromDict_FrozenDict_AllowedToIterate(t *testing.T) {
+	dict := starlark.NewDict(1)
+	require.NoError(t, dict.SetKey(starlark.String("repo"), starlark.String("a/b")))
+	dict.Freeze() // critical: ActionRef.Kwargs is frozen at parse time
+
+	var got decodeArgs
+	err := DecodeKwargsFromDict("op", dict, &got)
+	require.NoError(t, err)
+	assert.Equal(t, "a/b", got.Repo)
+}
+
+// TestDecodeKwargsFromDict_NilDict — a nil *starlark.Dict (e.g., if Phase 2
+// somehow constructs an ActionRef with no kwargs) must not panic and must
+// surface as a missing-required error for required fields.
+func TestDecodeKwargsFromDict_NilDict(t *testing.T) {
+	var got decodeArgs
+	err := DecodeKwargsFromDict("op", nil, &got)
+	require.Error(t, err, "nil Dict + required field must produce a clean error, not a panic")
+	var vErr *dag.ValidationError
+	require.True(t, errors.As(err, &vErr))
+	assert.Contains(t, vErr.Msg, `missing required kwarg "repo"`)
+}

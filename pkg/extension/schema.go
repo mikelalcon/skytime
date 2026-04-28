@@ -253,3 +253,66 @@ func assignStarlarkToGo(dst reflect.Value, src starlark.Value) error {
 	}
 	return nil
 }
+
+// DecodeKwargsFromDict decodes a frozen Starlark *Dict (typically
+// ActionRef.Kwargs, frozen at parse time) into the target struct using
+// the same `star:"name,required"` reflection that UnpackOperationKwargs
+// uses for parse-time []starlark.Tuple.
+//
+// RUNTIME-PATH COMPANION: UnpackOperationKwargs is the parse-time entry
+// point used by pkg/parser to validate kwargs as the .star file is
+// loaded — it gets raw []starlark.Tuple from Starlark's call protocol
+// and accurate syntax.Position for error attribution. DecodeKwargsFromDict
+// is the runtime-path companion: by the time the Phase 2 activity runs,
+// the original kwargs have been frozen into a *starlark.Dict on the
+// ActionRef, and the activity-side error attribution is the action index
+// (wrapped by the activity layer) — not a syntax position.
+//
+// Errors are *dag.ValidationError with Pos = syntax.Position{} (zero —
+// runtime path; the activity layer wraps with action-index attribution
+// in its own error message).
+//
+// Decision reference: the Phase 2 activity uses this; UnpackOperationKwargs
+// remains the parser's entry point. Both share the FieldSpec reflection
+// logic via ParseSchema, so adding new supported field types only requires
+// editing assignStarlarkToGo once.
+//
+// PERFORMANCE: ActionRef.Kwargs sizes are ≤ a few dozen entries in
+// practice; the Items() allocation here is bounded and only paid once per
+// action invocation. Frozen-dict iteration is read-only and safe.
+func DecodeKwargsFromDict(opName string, kwargs *starlark.Dict, target any) error {
+	if target == nil {
+		return &dag.ValidationError{
+			Msg: fmt.Sprintf("%s: DecodeKwargsFromDict: target is nil", opName),
+		}
+	}
+
+	tv := reflect.ValueOf(target)
+	if tv.Kind() != reflect.Ptr || tv.IsNil() {
+		return &dag.ValidationError{
+			Msg: fmt.Sprintf("%s: DecodeKwargsFromDict: target must be a non-nil pointer to struct", opName),
+		}
+	}
+
+	specs, err := ParseSchema(tv.Elem().Type())
+	if err != nil {
+		return &dag.ValidationError{
+			Msg: fmt.Sprintf("%s: DecodeKwargsFromDict: %v", opName, err),
+		}
+	}
+
+	// Convert the *starlark.Dict to []starlark.Tuple so we can delegate
+	// to UnpackOperationKwargs's logic. Dict.Items() returns []Tuple
+	// directly (each tuple is [key, value]) — the same shape the parser
+	// uses. Iteration is read-only and works on frozen Dicts.
+	var tuples []starlark.Tuple
+	if kwargs != nil {
+		tuples = kwargs.Items()
+	}
+
+	// Delegate: zero syntax.Position is acceptable on the runtime path —
+	// the activity layer wraps with action-index attribution. Parse-time
+	// errors with positions still flow through UnpackOperationKwargs
+	// unchanged.
+	return UnpackOperationKwargs(opName, syntax.Position{}, specs, tuples, target)
+}
