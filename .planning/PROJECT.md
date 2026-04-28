@@ -20,12 +20,17 @@ A consultant team can take an extension catalog and a customer brief, write a `.
 - ✓ Sealed `Credential` interface with `BearerCredential`, `BasicCredential`, `APIKeyCredential` kinds and redacted `String()`; pluggable `CredentialHandler` contract laid (worker wiring deferred to Phase 3) — Phase 1
 - ✓ Position-aware error spine (`ParseError`, `ValidationError`) formatted `<file>:<line>:<col>: <msg>`; parser never panics on malformed input — Phase 1
 - ✓ `load()` resolution with relative + absolute paths, `.git`-ancestor root walk, traversal rejection — Phase 1
+- ✓ Generic Temporal activity (`ExecuteBatch`) dispatches all extension I/O — Phase 2
+- ✓ Block-batched I/O: idempotent batches share one activity invocation; mixed batches rejected at parse time (Policy D) — Phase 2
+- ✓ Just-in-time credential resolution inside the activity with per-worker TTL cache + retry-aware bypass — Phase 2
+- ✓ Type-level secret protection via `Secret` wrapper (`String`/`GoString`/`MarshalJSON`/`MarshalText`/`Format` redact; explicit `.Reveal()` for unwrap) — Phase 2 (replaced original regex-scrubber design)
+- ✓ Architectural firewall: only `pkg/activity` may import `go.temporal.io/sdk/...`; enforced by AST-walking firewall test + inversion-bug meta-test — Phase 2
 
 ### Active
 
-- [ ] Generic Temporal interpreter that walks the DAG, executes lambdas natively, and dispatches I/O via a single generic activity
-- [ ] Block-batched I/O: multiple `ActionRef`s in one step execute sequentially in one activity invocation to avoid Temporal history bloat
-- [ ] Just-in-time credential resolver wired into the activity — workflow state holds only string IDs, never secrets
+- [ ] Generic Temporal interpreter (`SkytimeWorkflow`) that walks the DAG, evaluates lambdas natively, and dispatches via the Phase 2 activity
+- [ ] Lambda serialization mechanism (custom `DataConverter` vs. re-parse-on-start) — phase-blocking decision in Phase 3
+- [ ] Worker bootstrap supporting Temporal Cloud / self-hosted-mTLS / dev-server connection variants
 - [ ] Static validation tier — `skytime validate` shares the parser with the runtime via differential corpus testing
 - [ ] Starlark E2E testing tier — `temporal_test` builtin that bridges Temporal `testsuite` mocks back to Starlark lambdas, with `attempt` count for retry simulation
 - [ ] CLI for triggering and inspecting flows during development
@@ -77,6 +82,9 @@ A consultant team can take an extension catalog and a customer brief, write a `.
 | `Extension.Initialize` returns a `*starlarkstruct.Module` once per parser at Register time | The user authoring example `gh = github.endpoint("admin")` requires `github` to be a namespace with attributes, not a callable. Resolved via the module-attribute pattern | ✓ Good — verified end-to-end in Phase 1 (Plan 01-05 fixture 07) |
 | Lambda IDs use `sha256(fileBytes)` prefix, not canonicalized AST | Cosmetic edits (whitespace, comments) intentionally invalidate IDs; simpler than canonicalization and acceptable for the v1 use case | — Pending — Phase 3 must work with this ID format when picking a serialization strategy |
 | Idempotent declaration is a `*bool` field with nil-check at registration (D-12) | Forces extension authors to make a conscious choice; nil = registration error | ✓ Good — verified by `errors.Is(err, ErrIdempotentRequired)` test in Phase 1 |
+| Mixed-idempotency blocks rejected at parse time (Policy D, Phase 2) | "Make wrong things impossible" — keeps activity dumb and homogeneous; consultant gets a friendly fix-suggestion error at parse time instead of a runtime surprise | ✓ Good — verified by `TestLinter_MixedIdempotency_*` and defensive activity-side test |
+| Type-level secret protection via `Secret` wrapper (no regex scrubber, ACT-05 amended) | Java-style `toString` redaction via Go `Stringer` + Format/MarshalJSON; `.Reveal()` is greppable for audit. Regex deferred — additive in v1.x if a customer incident proves it needed | — Pending — first real customer with a leaky third-party SDK will tell us if regex is needed |
+| Per-worker credential cache with retry-aware bypass | 5-min TTL for happy path; `activity.GetInfo(ctx).Attempt > 1` invalidates batch's IDs to handle token rotation cleanly | ✓ Good — `TestExecuteBatch_RetryAttempt_BypassesCache` verifies |
 
 ## Evolution
 
@@ -96,4 +104,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-27 after Phase 1 completion*
+*Last updated: 2026-04-28 after Phase 2 completion*
