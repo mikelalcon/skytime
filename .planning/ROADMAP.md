@@ -51,8 +51,8 @@ Decimal phases appear between their surrounding integers in numeric order.
   5. Workflow state passed into the activity contains only credential string IDs; the resolver is invoked inside the activity and the resolved `Credential` value never escapes the activity's stack frame
 **Plans**: 3 plans
   - [x] 02-01-PLAN.md — Wave 0: Type spine (`pkg/dag/result.go` ActionResult sealed sum + `pkg/dag/output.go` OperationOutput marker) + `pkg/extension/secret.go` Secret wrapper (full format coverage incl. `Format` for %+v) + Credential field type narrowing + OperationFunc return type narrow + OperationSpec.DefaultTimeout + ErrUnknownCredential sentinel + `pkg/extension/testing` sub-package (FakeCredentialHandler) + parser linter passes (mixed-idempotency reject D2-05 + block-size cap D2-07) + WithMaxBlockSize option + go.temporal.io/sdk@v1.42.0 dep + 2 invalid fixtures
-  - [ ] 02-02-PLAN.md — Wave 1: `pkg/activity` foundations — package skeleton + OperationDispatch type alias + per-worker credential cache (sync.RWMutex + lazy TTL + race-clean) + retry-aware bypass seam + heartbeat emitter (BatchProgress JSON) + attemptFunc injection seam + classifyResolveError (D2-12) + Activity struct + functional options + firewall test (only pkg/activity may import go.temporal.io/sdk/*)
-  - [ ] 02-03-PLAN.md — Wave 2: `ExecuteBatch` integration — `validate_batch.go` (defense in depth) + `action_executor.go` (per-action timeout + cred resolve + classify) + `execute_batch.go` (D2-13 retryable short-circuit + D2-14 full-list non-retryable + D2-16 heartbeat + cancellation cooperation) + 12 integration tests via testsuite.TestActivityEnvironment incl. ACT-05 secret-leak test (3 leak channels)
+  - [x] 02-02-PLAN.md — Wave 1: `pkg/activity` foundations — package skeleton + OperationDispatch type alias + per-worker credential cache (sync.RWMutex + lazy TTL + race-clean) + retry-aware bypass seam + heartbeat emitter (BatchProgress JSON) + attemptFunc injection seam + classifyResolveError (D2-12) + Activity struct + functional options + firewall test (only pkg/activity may import go.temporal.io/sdk/*)
+  - [x] 02-03-PLAN.md — Wave 2: `ExecuteBatch` integration — `validate_batch.go` (defense in depth) + `action_executor.go` (per-action timeout + cred resolve + classify) + `execute_batch.go` (D2-13 retryable short-circuit + D2-14 full-list non-retryable + D2-16 heartbeat + cancellation cooperation) + 12 integration tests via testsuite.TestActivityEnvironment incl. ACT-05 secret-leak test (3 leak channels)
 **UI hint**: no
 
 ### Phase 3: Lambda-Serialization Decision + Interpreter + Worker
@@ -114,7 +114,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Type Spine + Extension Contract + Parser/Bridge Foundations | 5/5 | Complete   | 2026-04-27 |
-| 2. Generic Activity + Block-Batch Dispatch + Credentials | 0/3 | Not started | - |
+| 2. Generic Activity + Block-Batch Dispatch + Credentials | 2/3 | In Progress|  |
 | 3. Lambda-Serialization Decision + Interpreter + Worker | 0/TBD | Not started | - |
 | 4. Static Validation Tier + CLI Skeleton | 0/TBD | Not started | - |
 | 5. Tier-3 E2E Test Harness (`temporal_test`) | 0/TBD | Not started | - |

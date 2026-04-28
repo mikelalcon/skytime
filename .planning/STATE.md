@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-01-PLAN.md (Wave 0 type spine)
-last_updated: "2026-04-28T02:20:10.998Z"
+stopped_at: Completed 02-03-PLAN.md (Phase 2 done — ExecuteBatch + integration tests + ACT-01..06 satisfied)
+last_updated: "2026-04-28T03:01:52.613Z"
 last_activity: 2026-04-28
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 8
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 02 (generic-activity-block-batch-dispatch-credentials) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-04-28
 
@@ -58,6 +58,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P04 | 9min | 3 tasks | 10 files |
 | Phase 01 P05 | 19min | 4 tasks | 16 files |
 | Phase 02 P01 | 30min | 4 tasks | 33 files |
+| Phase 02 P03 | 50min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,10 @@ Recent decisions affecting current work:
 - [Phase 02]: ActionResult keeps unexported isActionResult() seal; pkg/dag is sole producer
 - [Phase 02]: fakeExtension extended with non-idempotent post() op for D2-05 fixtures (instead of registering second fake)
 - [Phase 02]: WithMaxBlockSize(n) rejects n<1 at construction; fast-fail over silent permissive default
+- [Phase 02]: Plan 02-03: JSON wire format added for dag.ActionResult sealed sum (Rule 2 deviation) — Temporal default DataConverter is encoding/json; without MarshalJSON+UnmarshalJSON, []ActionResult cannot round-trip through the activity contract
+- [Phase 02]: Plan 02-03: ActionRef gets UnmarshalJSON + goValueToStarlark (Rule 2 deviation) — testsuite encodes activity input []*ActionRef and decodes on activity side; without UnmarshalJSON, JSON keys (kind/kwargs/credential_id) don't match Go fields (Kind_/Kwargs/CredentialID), all fields zero-valued
+- [Phase 02]: Plan 02-03: TestExecuteBatch_HappyPath_Heartbeats uses unexported withHeartbeatEmitter seam (deviation from RESEARCH §Example 2) — Temporal SDK v1.42.0 documents SetOnActivityHeartbeatListener is throttled; the fake emitter (built in 02-02 for exactly this purpose) deterministically captures every emit() call
+- [Phase 02]: Plan 02-03: ExecuteBatch returns (results, nil) on cancellation, NOT (results, ctx.Err()) — locked test design wins over plan example pseudocode (cancellation is graceful, SkippedResult placeholders are the signal)
 
 ### Pending Todos
 
@@ -103,6 +108,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-28T02:20:01.141Z
-Stopped at: Completed 02-01-PLAN.md (Wave 0 type spine)
+Last session: 2026-04-28T03:01:52.609Z
+Stopped at: Completed 02-03-PLAN.md (Phase 2 done — ExecuteBatch + integration tests + ACT-01..06 satisfied)
 Resume file: None
