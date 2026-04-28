@@ -12,16 +12,29 @@ import (
 //  1. resolveCallFlows (D-16): walk every Flow.Body recursively for
 //     *dag.CallFlow nodes; look up CallFlow.Name in p.flows; set Resolved
 //     or return *dag.ParseError "call_flow target not found".
-//  2. validateActionRefKwargs (D-11 defense in depth): a no-op in Phase 1
+//  2. lintMixedIdempotency (D2-05): each step(block=[...]) must be
+//     homogeneous — either all idempotent OR a single non-idempotent
+//     action. Mixed batches surface as *dag.ValidationError at parse time.
+//  3. lintBlockSize (D2-07): step(block=[...]) cannot exceed the parser's
+//     maxBlockSize cap (default 50; configurable via WithMaxBlockSize).
+//  4. validateActionRefKwargs (D-11 defense in depth): a no-op in Phase 1
 //     because real extension factories validate kwargs at construction
 //     time inside their *starlark.Builtin via UnpackOperationKwargs. The
 //     finalize pass is the seat for Phase 4's static validator to plug
 //     into without restructuring the parser.
 //
 // finalize returns the FIRST error and stops; tests expect at-most-one
-// surfaced error per parse.
+// surfaced error per parse. Phase-2 lints run AFTER call_flow resolution
+// so a missing call_flow target surfaces with the more useful "target not
+// found" error (rather than getting masked by a downstream lint).
 func (p *Parser) finalize() error {
 	if err := p.resolveCallFlows(); err != nil {
+		return err
+	}
+	if err := p.lintMixedIdempotency(); err != nil {
+		return err
+	}
+	if err := p.lintBlockSize(); err != nil {
 		return err
 	}
 	return p.validateActionRefKwargs()

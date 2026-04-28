@@ -1,6 +1,10 @@
 package parser
 
-import "github.com/mikelalcon/skytime/pkg/extension"
+import (
+	"fmt"
+
+	"github.com/mikelalcon/skytime/pkg/extension"
+)
 
 // Option mutates a Parser at construction time. Returning an error lets
 // option application fail fast on bad input (e.g. registering an extension
@@ -42,6 +46,28 @@ func WithExtensions(exts ...extension.Extension) Option {
 func WithMaxExecutionSteps(n uint64) Option {
 	return func(p *Parser) error {
 		p.maxExecSteps = n
+		return nil
+	}
+}
+
+// WithMaxBlockSize overrides the default block-size cap (50) for
+// step(block=[...]) per D2-07. Values < 1 return an error at parser
+// construction time; the cap is enforced by the lintBlockSize pass at
+// parse-finalize time.
+//
+// The activity (pkg/activity, Phase 2) defensively re-enforces this at
+// runtime — the parser cap exists primarily for fast-fail UX, not safety;
+// the activity is the safety boundary. Tightening the cap only restricts
+// what consultant `.star` files can declare; loosening it past the
+// activity's defensive limit (also 50 by default) would let parse-time
+// blocks pass through, hit the activity limit, and fail at execute time.
+// Coordinate any change with the activity-side cap.
+func WithMaxBlockSize(n int) Option {
+	return func(p *Parser) error {
+		if n < 1 {
+			return fmt.Errorf("WithMaxBlockSize: invalid max block size %d: must be >= 1", n)
+		}
+		p.maxBlockSize = n
 		return nil
 	}
 }

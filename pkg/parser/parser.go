@@ -40,6 +40,13 @@ type Parser struct {
 	parseTimeGlobals starlark.StringDict
 	maxExecSteps     uint64
 
+	// maxBlockSize is the per-step block-cap for step(block=[...]) actions
+	// (D2-07). Default 50; configurable via WithMaxBlockSize. The
+	// lintBlockSize finalize-pass enforces it. The activity layer (Phase 2)
+	// defensively re-enforces — the parser cap is for fast-fail UX, the
+	// activity is the safety boundary.
+	maxBlockSize int
+
 	// loadCache holds the result of `load(...)` calls keyed by absolute file
 	// path. A second load of the same file returns the cached globals
 	// (idempotent loads). Cycles fall through naturally — once we've started
@@ -61,6 +68,11 @@ type Parser struct {
 	// *starlark.Function values.
 	lambdas map[string]*dag.CapturedLambda
 }
+
+// defaultMaxBlockSize is the D2-07 default cap for step(block=[...]) action
+// counts. Balanced against Temporal's ~4MB activity input limit per project
+// research; configurable via WithMaxBlockSize.
+const defaultMaxBlockSize = 50
 
 // loadCacheEntry caches the globals resulting from a load() call. Errors are
 // also cached so a re-load of a broken module returns the same error rather
@@ -86,6 +98,7 @@ func NewParser(opts ...Option) (*Parser, error) {
 	p := &Parser{
 		registry:     extension.NewRegistry(),
 		maxExecSteps: bridge.DefaultMaxExecutionSteps,
+		maxBlockSize: defaultMaxBlockSize, // D2-07
 		loadCache:    make(map[string]loadCacheEntry),
 		fileBytes:    make(map[string][]byte),
 		flows:        make(map[string]*dag.Flow),

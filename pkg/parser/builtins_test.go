@@ -18,9 +18,15 @@ import (
 )
 
 // =============================================================================
-// fakeExtension — task-2 test helper. Exposes one operation `echo(msg=...)`
-// returning a *dag.ActionRef carrying the operation kwargs. Initialize
-// returns a *starlarkstruct.Module with `echo` as an attribute (D-08).
+// fakeExtension — task-2 test helper. Exposes two operations:
+//
+//   - echo(msg=...)  — idempotent, used by Phase 1 fixtures
+//   - post(payload=...) — NOT idempotent, added in Plan 02-01 Task 3 to
+//     exercise the lintMixedIdempotency pass (D2-05) without needing a
+//     second extension type
+//
+// Both return a *dag.ActionRef carrying the operation kwargs. Initialize
+// returns a *starlarkstruct.Module with both as attributes (D-08).
 // =============================================================================
 
 type fakeExtension struct{}
@@ -41,9 +47,25 @@ func (*fakeExtension) Initialize(thread *starlark.Thread, kwargs []starlark.Tupl
 			Kwargs: kwDict,
 		}, nil
 	})
+	postFn := starlark.NewBuiltin("post", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kw []starlark.Tuple) (starlark.Value, error) {
+		var payload string
+		if err := starlark.UnpackArgs("post", args, kw, "payload", &payload); err != nil {
+			return nil, err
+		}
+		kwDict := starlark.NewDict(1)
+		_ = kwDict.SetKey(starlark.String("payload"), starlark.String(payload))
+		return &dag.ActionRef{
+			Pos:    callerPosition(thread),
+			Kind_:  "fake_ext.post",
+			Kwargs: kwDict,
+		}, nil
+	})
 	return &starlarkstruct.Module{
-		Name:    "fake_ext",
-		Members: starlark.StringDict{"echo": echoFn},
+		Name: "fake_ext",
+		Members: starlark.StringDict{
+			"echo": echoFn,
+			"post": postFn,
+		},
 	}, nil
 }
 
@@ -57,6 +79,16 @@ func (*fakeExtension) Operations() map[string]*extension.OperationSpec {
 			},
 			KwargsType: reflect.TypeOf(struct {
 				Msg string `star:"msg,required"`
+			}{}),
+		},
+		"post": {
+			Name:       "post",
+			Idempotent: extension.Ptr(false), // D2-05 fixture pair: NOT idempotent
+			Func: func(ctx context.Context, args any, cred extension.Credential) (dag.OperationOutput, error) {
+				return nil, nil
+			},
+			KwargsType: reflect.TypeOf(struct {
+				Payload string `star:"payload,required"`
 			}{}),
 		},
 	}

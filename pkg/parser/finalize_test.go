@@ -59,3 +59,31 @@ flow(name="parent", inputs={}, steps=[
 	require.NotNil(t, cf.Resolved)
 	assert.Equal(t, flows["leaf"], cf.Resolved)
 }
+
+// TestFinalize_LintOrder_CallFlowResolutionShortCircuits verifies the
+// finalize() ordering: resolveCallFlows runs BEFORE the new Phase-2 lints,
+// so a flow that has both an unresolved call_flow AND a mixed-idempotency
+// block surfaces the call_flow error first (more useful to the consultant
+// than a downstream lint they cannot fix until the call_flow target is
+// added).
+func TestFinalize_LintOrder_CallFlowResolutionShortCircuits(t *testing.T) {
+	p := newTestParser(t)
+	// "missing_target" doesn't exist; the same flow ALSO contains a
+	// mixed-idempotency block. resolveCallFlows must report the
+	// missing target first.
+	src := []byte(`flow(name="bad", inputs={}, steps=[
+    call_flow(name="missing_target", inputs={}),
+    step(block=[
+        fake_ext.echo(msg="ok"),
+        fake_ext.post(payload="x"),
+    ]),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	// The ParseError from resolveCallFlows wins; it does NOT carry the
+	// mixed-idempotency phrase.
+	assert.Contains(t, err.Error(), "call_flow target not found")
+	assert.Contains(t, err.Error(), "missing_target")
+	assert.NotContains(t, err.Error(), "cannot mix idempotent",
+		"resolveCallFlows must short-circuit ahead of lintMixedIdempotency")
+}

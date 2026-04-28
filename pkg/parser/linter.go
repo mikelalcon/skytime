@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 
 	"go.starlark.net/starlark"
 
@@ -51,4 +52,139 @@ func (p *Parser) validateFreeVars(fn *starlark.Function, ownerFile string) (star
 // `shared_step()`) rather than capturing it inside a lambda.
 func isModuleLevelBinding(filename string, binding starlark.Binding) bool {
 	return binding.Pos.Filename() == filename && binding.Pos.Col == 1
+}
+
+// =============================================================================
+// Phase 2 lint passes (D2-05 mixed idempotency + D2-07 block size cap)
+// =============================================================================
+
+// lintMixedIdempotency walks every flow's body and asserts that each Step's
+// Actions slice is homogeneous — either all idempotent OR exactly one
+// non-idempotent action (D2-05 / D2-06).
+//
+// The activity (Phase 2 pkg/activity) defensively re-validates, but
+// rejecting at parse time gives the consultant a clean position-aware error
+// before any workflow runs. D2-06 keeps splitting in the Phase 3 interpreter,
+// not the activity layer; this lint is the consultant-facing safety net.
+//
+// Recursion mirrors finalize.go's walkResolveCallFlows shape — same idiom
+// so future readers see one walk pattern.
+func (p *Parser) lintMixedIdempotency() error {
+	for _, flow := range p.flows {
+		if err := p.walkLintMixedIdempotency(flow.Name, flow.Body); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// walkLintMixedIdempotency is the recursive helper for lintMixedIdempotency.
+// Descends into IfCond.Then/Else and ForEachParallel.Steps so a mixed block
+// nested inside a conditional or loop body is also rejected.
+func (p *Parser) walkLintMixedIdempotency(flowName string, body []dag.Node) error {
+	for _, node := range body {
+		switch n := node.(type) {
+		case *dag.Step:
+			if len(n.Actions) <= 1 {
+				continue // single-action steps are trivially homogeneous
+			}
+			var idem, nonIdem []string
+			for _, ref := range n.Actions {
+				extName, opName, ok := splitKind(ref.Kind_)
+				if !ok {
+					continue
+				}
+				ext, ok := p.registry.Get(extName)
+				if !ok {
+					continue
+				}
+				spec, ok := ext.Operations()[opName]
+				if !ok || spec == nil || spec.Idempotent == nil {
+					continue
+				}
+				if *spec.Idempotent {
+					idem = append(idem, ref.Kind_)
+				} else {
+					nonIdem = append(nonIdem, ref.Kind_)
+				}
+			}
+			if len(idem) > 0 && len(nonIdem) > 0 {
+				return &dag.ValidationError{
+					Pos:  n.Pos,
+					Flow: flowName,
+					Msg: fmt.Sprintf(
+						"cannot mix idempotent and non-idempotent operations in a block.\n  - %s (idempotent)\n  - %s (NOT idempotent)\nSuggestion: split into separate steps.",
+						idem[0], nonIdem[0]),
+				}
+			}
+		case *dag.IfCond:
+			if err := p.walkLintMixedIdempotency(flowName, n.Then); err != nil {
+				return err
+			}
+			if err := p.walkLintMixedIdempotency(flowName, n.Else); err != nil {
+				return err
+			}
+		case *dag.ForEachParallel:
+			if err := p.walkLintMixedIdempotency(flowName, n.Steps); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// lintBlockSize rejects step(block=[...]) with > p.maxBlockSize entries
+// (D2-07). The activity (Phase 2) defensively re-enforces a runtime cap;
+// this parse-time pass is the fast-fail UX surface.
+func (p *Parser) lintBlockSize() error {
+	for _, flow := range p.flows {
+		if err := p.walkLintBlockSize(flow.Name, flow.Body); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// walkLintBlockSize is the recursive helper for lintBlockSize. Mirrors
+// walkLintMixedIdempotency's recursion shape.
+func (p *Parser) walkLintBlockSize(flowName string, body []dag.Node) error {
+	for _, node := range body {
+		switch n := node.(type) {
+		case *dag.Step:
+			if len(n.Actions) > p.maxBlockSize {
+				return &dag.ValidationError{
+					Pos:  n.Pos,
+					Flow: flowName,
+					Msg: fmt.Sprintf(
+						"block has %d actions; maximum is %d. Split into multiple steps.",
+						len(n.Actions), p.maxBlockSize),
+				}
+			}
+		case *dag.IfCond:
+			if err := p.walkLintBlockSize(flowName, n.Then); err != nil {
+				return err
+			}
+			if err := p.walkLintBlockSize(flowName, n.Else); err != nil {
+				return err
+			}
+		case *dag.ForEachParallel:
+			if err := p.walkLintBlockSize(flowName, n.Steps); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// splitKind splits "github.create_issue" into ("github", "create_issue", true).
+// Returns ok=false if the kind doesn't have exactly one dot or has empty
+// parts on either side. The kind format is set by extension factories
+// (typically `<extName>.<opName>`) — splitKind is the inverse used by lint
+// passes that need to look up the OperationSpec via the registry.
+func splitKind(kind string) (string, string, bool) {
+	i := strings.IndexByte(kind, '.')
+	if i < 0 || i == 0 || i == len(kind)-1 {
+		return "", "", false
+	}
+	return kind[:i], kind[i+1:], true
 }

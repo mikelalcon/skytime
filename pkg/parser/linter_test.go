@@ -2,6 +2,7 @@ package parser
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -91,4 +92,169 @@ flow(name="x", inputs={}, steps=[script(id="s", fn=f(), output_alias="r")])`)
 	// at the binding line, not the lambda line (line 3).
 	assert.Equal(t, int32(2), pe.Pos.Line,
 		"D-19 error must point at the binding site, not the lambda site")
+}
+
+// =============================================================================
+// D2-05 (mixed-idempotency reject) — Plan 02-01 Task 3 lintMixedIdempotency
+// =============================================================================
+
+// TestLinter_MixedIdempotency_Rejects builds a step(block=[idem, nonidem])
+// from the fakeExtension's two ops and asserts the parser rejects it with
+// a *dag.ValidationError whose Msg starts with the canonical D2-05 wording
+// AND whose Pos.Line matches the step()'s line.
+func TestLinter_MixedIdempotency_Rejects(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="mixed", inputs={}, steps=[
+    step(block=[
+        fake_ext.echo(msg="ok"),
+        fake_ext.post(payload="x"),
+    ]),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+
+	var ve *dag.ValidationError
+	require.True(t, errors.As(err, &ve), "expected *dag.ValidationError, got %T: %v", err, err)
+	assert.True(t, strings.HasPrefix(ve.Msg, "cannot mix idempotent and non-idempotent operations in a block"),
+		"Msg must START with the canonical D2-05 phrase, got: %s", ve.Msg)
+	assert.Contains(t, ve.Msg, "fake_ext.echo")
+	assert.Contains(t, ve.Msg, "fake_ext.post")
+	require.True(t, ve.Pos.IsValid(), "error position must be valid")
+	assert.Equal(t, int32(2), ve.Pos.Line, "error must point at the step() line")
+	assert.Equal(t, "mixed", ve.Flow, "Flow attribution must match")
+}
+
+// TestLinter_AllIdempotentBlock_Accepts confirms a homogeneous all-idempotent
+// block parses cleanly — the lint must not flag every block, only mixed ones.
+func TestLinter_AllIdempotentBlock_Accepts(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="all-idem", inputs={}, steps=[
+    step(block=[
+        fake_ext.echo(msg="a"),
+        fake_ext.echo(msg="b"),
+        fake_ext.echo(msg="c"),
+    ]),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.NoError(t, err, "homogeneous idempotent blocks must parse cleanly")
+}
+
+// TestLinter_SingleNonIdempotentBlock_Accepts confirms a 1-action block
+// containing only a non-idempotent op is allowed (D2-06: splitting is the
+// interpreter's job; a 1-action block is trivially homogeneous).
+func TestLinter_SingleNonIdempotentBlock_Accepts(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="single-nonidem", inputs={}, steps=[
+    step(block=[
+        fake_ext.post(payload="only-one"),
+    ]),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.NoError(t, err, "single-non-idempotent blocks are homogeneous and must pass")
+}
+
+// TestLinter_MixedIdempotency_NestedInIfCond verifies the lint walks
+// recursively into IfCond.Then/Else and ForEachParallel.Steps. A mixed
+// block deep inside a conditional is also rejected.
+func TestLinter_MixedIdempotency_NestedInIfCond(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="nested", inputs={}, steps=[
+    if_cond(
+        cond = lambda ctx: True,
+        then = [
+            step(block=[
+                fake_ext.echo(msg="ok"),
+                fake_ext.post(payload="x"),
+            ]),
+        ],
+    ),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	var ve *dag.ValidationError
+	require.True(t, errors.As(err, &ve), "expected *dag.ValidationError, got %T", err)
+	assert.True(t, strings.HasPrefix(ve.Msg, "cannot mix idempotent and non-idempotent operations in a block"),
+		"nested mixed block must surface the same canonical error")
+}
+
+// TestLinter_MixedIdempotency_NestedInForEachParallel — same recursion
+// check for ForEachParallel.Steps.
+func TestLinter_MixedIdempotency_NestedInForEachParallel(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="nested-loop", inputs={}, steps=[
+    for_each_parallel(
+        items = [1, 2, 3],
+        item = "x",
+        steps = [
+            step(block=[
+                fake_ext.echo(msg="ok"),
+                fake_ext.post(payload="x"),
+            ]),
+        ],
+    ),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	var ve *dag.ValidationError
+	require.True(t, errors.As(err, &ve))
+	assert.True(t, strings.HasPrefix(ve.Msg, "cannot mix idempotent and non-idempotent operations in a block"))
+}
+
+// =============================================================================
+// D2-07 (block-size cap) — Plan 02-01 Task 3 lintBlockSize
+// =============================================================================
+
+// TestLinter_BlockSizeCap_DefaultRejects51 builds a step(block=[51 idempotent
+// echoes]) and asserts the default cap (50) rejects with the canonical
+// D2-07 message. All 51 are idempotent so lintMixedIdempotency does not fire
+// first (lintBlockSize runs after — order in finalize.go is: resolveCallFlows
+// → lintMixedIdempotency → lintBlockSize → validateActionRefKwargs).
+func TestLinter_BlockSizeCap_DefaultRejects51(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(buildBlockSrc(51))
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	var ve *dag.ValidationError
+	require.True(t, errors.As(err, &ve), "expected *dag.ValidationError, got %T: %v", err, err)
+	assert.Contains(t, ve.Msg, "block has 51 actions; maximum is 50")
+}
+
+// TestLinter_BlockSizeCap_CustomCap verifies WithMaxBlockSize(N) overrides
+// the default; a 3-action block with cap=2 must fail with the cap reflected
+// in the error message.
+func TestLinter_BlockSizeCap_CustomCap(t *testing.T) {
+	p, err := NewParser(WithExtensions(&fakeExtension{}), WithMaxBlockSize(2))
+	require.NoError(t, err)
+	src := []byte(buildBlockSrc(3))
+	_, err = p.ParseSource("test.star", src)
+	require.Error(t, err)
+	var ve *dag.ValidationError
+	require.True(t, errors.As(err, &ve))
+	assert.Contains(t, ve.Msg, "block has 3 actions; maximum is 2")
+}
+
+// TestLinter_BlockSizeCap_AtLimit verifies the boundary: a block with exactly
+// p.maxBlockSize actions (default 50) parses cleanly. The cap is a >, not a >=.
+func TestLinter_BlockSizeCap_AtLimit(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(buildBlockSrc(50))
+	_, err := p.ParseSource("test.star", src)
+	require.NoError(t, err, "block of size = cap must pass")
+}
+
+// buildBlockSrc constructs a flow with one step containing n idempotent
+// echoes. Used by the block-size cap tests; written as concatenated strings
+// rather than a loop with template indirection so the resulting .star is
+// trivial to read in test failures.
+func buildBlockSrc(n int) string {
+	var sb strings.Builder
+	sb.WriteString(`flow(name="x", inputs={}, steps=[step(block=[`)
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(`fake_ext.echo(msg="m")`)
+	}
+	sb.WriteString(`])])`)
+	return sb.String()
 }
