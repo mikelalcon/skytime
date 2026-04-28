@@ -175,15 +175,17 @@ func TestNew_OptionsAppliedInOrder(t *testing.T) {
 	require.Equal(t, 20, a.maxBlockSize)
 }
 
-// TestNew_NoExecuteBatchYet: the plan explicitly defers ExecuteBatch to
-// 02-03. Use reflection to assert *Activity has no ExecuteBatch method
-// yet (catches accidental scope creep).
-func TestNew_NoExecuteBatchYet(t *testing.T) {
+// TestNew_HasExecuteBatch: 02-03 lands ExecuteBatch — catches an accidental
+// removal of the activity entry point. (Earlier 02-02 versions of this test
+// asserted the OPPOSITE — that ExecuteBatch was NOT yet present — as a
+// scope-creep guard for Wave 1; the inverse assertion now pins the
+// post-Wave-2 state.)
+func TestNew_HasExecuteBatch(t *testing.T) {
 	a, err := New(minimalDispatch(), minimalHandler())
 	require.NoError(t, err)
 	ty := reflect.TypeOf(a)
 	_, has := ty.MethodByName("ExecuteBatch")
-	require.False(t, has, "ExecuteBatch lands in 02-03; this plan stops at the building blocks")
+	require.True(t, has, "ExecuteBatch is the registered Temporal activity entry point; must be a method on *Activity")
 }
 
 // Compile-time sanity: error sentinel symbols present in the package.

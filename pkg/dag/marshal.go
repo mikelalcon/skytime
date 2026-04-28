@@ -2,6 +2,7 @@ package dag
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"go.starlark.net/starlark"
 )
@@ -197,6 +198,72 @@ func (a *ActionRef) MarshalJSON() ([]byte, error) {
 		Kwargs:       kw,
 		CredentialID: a.CredentialID,
 	})
+}
+
+// UnmarshalJSON is the inverse of ActionRef.MarshalJSON: it reads the
+// {kind, kwargs, credential_id} envelope produced by Marshal and reconstructs
+// an ActionRef. The Kwargs map is converted back to a *starlark.Dict so the
+// resulting ActionRef satisfies the Phase 2 activity contract
+// (ExecuteBatch reads ref.Kwargs as a *starlark.Dict).
+//
+// Pos is NOT recovered (it was never serialized — see the file header comment
+// on Pos exclusion); the resulting ActionRef has a zero syntax.Position. This
+// is acceptable for the runtime path: position attribution happens at parse
+// time, and the activity layer attributes errors by action index, not source
+// position.
+//
+// Limitations: kwarg values must be JSON primitives (string, bool, number)
+// because that is what MarshalJSON's starlarkValueToGo emits. Nested objects /
+// arrays will deserialize to map/slice and goValueToStarlark falls through
+// to a String coercion — adequate for Phase 2 tests which use empty or
+// primitive-keyed kwargs; Phase 3 may extend goValueToStarlark to handle
+// richer types as the corpus grows.
+func (a *ActionRef) UnmarshalJSON(data []byte) error {
+	var raw actionRefJSON
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	a.Kind_ = raw.Kind
+	a.CredentialID = raw.CredentialID
+	a.Kwargs = starlark.NewDict(len(raw.Kwargs))
+	for k, v := range raw.Kwargs {
+		sv := goValueToStarlark(v)
+		if err := a.Kwargs.SetKey(starlark.String(k), sv); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// goValueToStarlark is the inverse of starlarkValueToGo for the primitive
+// types JSON unmarshal produces. encoding/json decodes numbers as float64 by
+// default; we coerce integer-valued floats to starlark.Int for fidelity with
+// the parse-time shape (parser keyword args produce starlark.Int for integer
+// literals).
+//
+// Unknown / nested types fall through to a starlark.String coercion of the
+// fmt-printed form — best-effort for Phase 2; Phase 3 extends.
+func goValueToStarlark(v any) starlark.Value {
+	switch x := v.(type) {
+	case nil:
+		return starlark.None
+	case string:
+		return starlark.String(x)
+	case bool:
+		return starlark.Bool(x)
+	case float64:
+		// JSON numbers come in as float64; preserve integer-shaped values.
+		if x == float64(int64(x)) {
+			return starlark.MakeInt64(int64(x))
+		}
+		return starlark.Float(x)
+	case int:
+		return starlark.MakeInt(x)
+	case int64:
+		return starlark.MakeInt64(x)
+	default:
+		return starlark.String(fmt.Sprintf("%v", v))
+	}
 }
 
 // starlarkValueToGo converts a Starlark value to its Go equivalent for JSON
