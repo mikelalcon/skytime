@@ -51,10 +51,10 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Generic Activity & Credentials
 
 - [ ] **ACT-01**: A single Temporal activity `ExecuteBatch(ctx, []ActionRef) ([]ActionResult, error)` dispatches all extension I/O — extensions never register their own activities
-- [ ] **ACT-02**: The activity returns a structured per-action result list (`ok-with-output | retryable_err | non_retryable_err | skipped`); the interpreter consumes per-action results, not a single batch outcome
-- [ ] **ACT-03**: Non-idempotent operations are never batched — they execute as one action per activity invocation, even when the user wrote them in a `block`
+- [x] **ACT-02**: The activity returns a structured per-action result list (`ok-with-output | retryable_err | non_retryable_err | skipped`); the interpreter consumes per-action results, not a single batch outcome
+- [x] **ACT-03**: Non-idempotent operations are never batched — they execute as one action per activity invocation, even when the user wrote them in a `block`
 - [ ] **ACT-04**: A `CredentialResolver` interface is injected into the activity environment; secrets are resolved just-in-time inside the activity, never stored in workflow state
-- [ ] **ACT-05**: Credentials use a `Secret` wrapper type whose `String()`, `GoString()`, and `MarshalJSON()` always return `"<redacted>"`. Operations extract the raw value via an explicit `.Reveal()` call. An integration test injects a known fake-secret as a `Secret`, fails an op mid-batch, and asserts the secret string never appears in any returned `ActionResult`, error wrapper, or activity heartbeat payload — relying entirely on type-level protection (no regex scrubber in v1; deferred). Op authors are responsible for wrapping or filing bugs against third-party libraries that leak revealed secrets into their error paths. *(Amended 2026-04-27 per Phase 2 discussion — original required regex scrubber; replaced with type-level protection.)*
+- [x] **ACT-05**: Credentials use a `Secret` wrapper type whose `String()`, `GoString()`, and `MarshalJSON()` always return `"<redacted>"`. Operations extract the raw value via an explicit `.Reveal()` call. An integration test injects a known fake-secret as a `Secret`, fails an op mid-batch, and asserts the secret string never appears in any returned `ActionResult`, error wrapper, or activity heartbeat payload — relying entirely on type-level protection (no regex scrubber in v1; deferred). Op authors are responsible for wrapping or filing bugs against third-party libraries that leak revealed secrets into their error paths. *(Amended 2026-04-27 per Phase 2 discussion — original required regex scrubber; replaced with type-level protection.)*
 - [ ] **ACT-06**: The activity heartbeats between actions and uses a per-batch `StartToCloseTimeout` equal to the sum of per-action timeouts plus headroom
 
 ### Worker & Temporal Compatibility
@@ -169,10 +169,10 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PARSE-05 | Phase 1 | Complete |
 | PARSE-06 | Phase 1 | Complete |
 | ACT-01 | Phase 2 | Pending |
-| ACT-02 | Phase 2 | Pending |
-| ACT-03 | Phase 2 | Pending |
+| ACT-02 | Phase 2 | Complete |
+| ACT-03 | Phase 2 | Complete |
 | ACT-04 | Phase 2 | Pending |
-| ACT-05 | Phase 2 | Pending |
+| ACT-05 | Phase 2 | Complete |
 | ACT-06 | Phase 2 | Pending |
 | INTRP-01 | Phase 3 | Pending |
 | INTRP-02 | Phase 3 | Pending |

@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.39
+milestone: v1.42.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 2 context gathered
-last_updated: "2026-04-28T00:53:50.956Z"
-last_activity: 2026-04-27
+status: executing
+stopped_at: Completed 02-01-PLAN.md (Wave 0 type spine)
+last_updated: "2026-04-28T02:20:10.998Z"
+last_activity: 2026-04-28
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 8
+  completed_plans: 6
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-26)
 
 **Core value:** A consultant team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
-**Current focus:** Phase 01 — type-spine-extension-contract-parser-bridge-foundations
+**Current focus:** Phase 02 — generic-activity-block-batch-dispatch-credentials
 
 ## Current Position
 
-Phase: 2
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-04-27
+Phase: 02 (generic-activity-block-batch-dispatch-credentials) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-04-28
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -57,6 +57,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P03 | 10min | 3 tasks | 12 files |
 | Phase 01 P04 | 9min | 3 tasks | 10 files |
 | Phase 01 P05 | 19min | 4 tasks | 16 files |
+| Phase 02 P01 | 30min | 4 tasks | 33 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,11 @@ Recent decisions affecting current work:
 - [Phase 01]: Plan 01-05: Private nodeValue wrapper in pkg/parser — keeps pkg/dag pure data; isolates Starlark coupling exactly where it belongs (parser); ~30 LOC of trivial 4-method shim
 - [Phase 01]: Plan 01-05: wrapStarlarkError unwrap-first — returns the typed *dag.ParseError directly when starlark wrapped it (avoids 'cannot load X: ...' wrappedError prefix obscuring the typed message)
 - [Phase 01]: Plan 01-05: callerPositionOrZero (depth-safe) for Thread.Load — Starlark's load callback runs with single-frame stack; thread.CallFrame(1) panics; fallback to filename parsing from thread.Name ('parse:<file>' / 'load:<file>' convention)
+- [Phase 02]: OperationOutput marker uses EXPORTED IsOperationOutput method (deviation from D2-03 sketch); cross-package marker idiom
+- [Phase 02]: Temporal SDK pinned via tools.go build-tag anchor; standard Go-tooling idiom
+- [Phase 02]: ActionResult keeps unexported isActionResult() seal; pkg/dag is sole producer
+- [Phase 02]: fakeExtension extended with non-idempotent post() op for D2-05 fixtures (instead of registering second fake)
+- [Phase 02]: WithMaxBlockSize(n) rejects n<1 at construction; fast-fail over silent permissive default
 
 ### Pending Todos
 
@@ -97,6 +103,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-28T00:53:50.947Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-generic-activity-block-batch-dispatch-credentials/02-CONTEXT.md
+Last session: 2026-04-28T02:20:01.141Z
+Stopped at: Completed 02-01-PLAN.md (Wave 0 type spine)
+Resume file: None
