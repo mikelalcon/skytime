@@ -26,6 +26,11 @@ type Step struct {
 	// Timeout is the optional StartToClose / ScheduleToStart timeout pair
 	// from DSL-08. nil when not specified.
 	Timeout *Timeout
+
+	// TaskQueue is the optional per-step Temporal task queue override per D3-19.
+	// Hierarchy: step.TaskQueue > flow.TaskQueue > worker default.
+	// Set via the parser's `step(..., task_queue="...")` kwarg.
+	TaskQueue string `json:"task_queue,omitempty"`
 }
 
 // Compile-time guarantee: *Step satisfies the sealed Node interface.

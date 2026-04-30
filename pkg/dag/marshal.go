@@ -28,10 +28,11 @@ import (
 // the alias path (Body needs separate handling because []Node serializes
 // each element through its own MarshalJSON).
 type flowJSON struct {
-	Kind   string            `json:"kind"`
-	Name   string            `json:"name"`
-	Inputs map[string]string `json:"inputs,omitempty"`
-	Body   []Node            `json:"body"`
+	Kind      string            `json:"kind"`
+	Name      string            `json:"name"`
+	Inputs    map[string]string `json:"inputs,omitempty"`
+	Body      []Node            `json:"body"`
+	TaskQueue string            `json:"task_queue,omitempty"` // D3-19 (Phase 3)
 }
 
 // MarshalJSON emits a Flow with a "kind":"Flow" discriminator and a body
@@ -42,18 +43,20 @@ func (f *Flow) MarshalJSON() ([]byte, error) {
 		body = []Node{}
 	}
 	return json.Marshal(flowJSON{
-		Kind:   f.Kind(),
-		Name:   f.Name,
-		Inputs: f.Inputs,
-		Body:   body,
+		Kind:      f.Kind(),
+		Name:      f.Name,
+		Inputs:    f.Inputs,
+		Body:      body,
+		TaskQueue: f.TaskQueue,
 	})
 }
 
 type stepJSON struct {
-	Kind    string       `json:"kind"`
-	Actions []*ActionRef `json:"actions"`
-	Retry   *RetryPolicy `json:"retry,omitempty"`
-	Timeout *Timeout     `json:"timeout,omitempty"`
+	Kind      string       `json:"kind"`
+	Actions   []*ActionRef `json:"actions"`
+	Retry     *RetryPolicy `json:"retry,omitempty"`
+	Timeout   *Timeout     `json:"timeout,omitempty"`
+	TaskQueue string       `json:"task_queue,omitempty"` // D3-19 (Phase 3)
 }
 
 // MarshalJSON emits a Step with a "kind":"Step" discriminator. Actions
@@ -65,10 +68,11 @@ func (s *Step) MarshalJSON() ([]byte, error) {
 		actions = []*ActionRef{}
 	}
 	return json.Marshal(stepJSON{
-		Kind:    s.Kind(),
-		Actions: actions,
-		Retry:   s.Retry,
-		Timeout: s.Timeout,
+		Kind:      s.Kind(),
+		Actions:   actions,
+		Retry:     s.Retry,
+		Timeout:   s.Timeout,
+		TaskQueue: s.TaskQueue,
 	})
 }
 

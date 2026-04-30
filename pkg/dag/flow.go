@@ -23,6 +23,11 @@ type Flow struct {
 	// ForEachParallel / CallFlow. Heterogeneous by design: a flow's body is
 	// a list, not a typed slice.
 	Body []Node
+
+	// TaskQueue is the optional Temporal task queue override per D3-19.
+	// Empty string means "inherit from worker default" (typically "skytime").
+	// Set via the parser's `flow(..., task_queue="...")` kwarg.
+	TaskQueue string `json:"task_queue,omitempty"`
 }
 
 // Compile-time guarantee: *Flow satisfies the sealed Node interface.
