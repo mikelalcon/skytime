@@ -65,7 +65,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The interpreter passes `go.temporal.io/sdk/contrib/tools/workflowcheck` analysis with no findings — no native `go`, no `time.*` or `rand.*`, no map iteration without sort
   4. Cancelling the workflow mid-lambda terminates the lambda within a bounded time: a watchdog wires `workflow.Context.Done()` to `thread.Cancel`, and `MaxExecutionSteps` is set on every interpreter-side `starlark.Call` — verified by a cancellation test that completes within N seconds
   5. A consumer Go service can `import` Skytime, register one extension, and call `worker.Run(client, flowDir)` with a single client factory choosing among Temporal Cloud (API key + TLS), self-hosted mTLS, or local dev-server (TLS off) — surfacing the v1.39 TLS-with-API-key default change in exactly one place
-**Plans**: TBD
+**Plans**: 4 plans
+  - [ ] 03-01-PLAN.md — Wave 0: DSL retrofit (task_queue kwarg) + WorkflowInput rewrite (D3-04) + Phase 2 firewall expansion to allowlist pkg/interpreter + pkg/worker
+  - [ ] 03-02-PLAN.md — Wave 1: pkg/interpreter foundations — package skeleton + FlowRegistry + cancellation watchdog (D3-21) + SkytimeWorkflow skeleton with walker stubs
+  - [ ] 03-03-PLAN.md — Wave 2: All five node walkers (Step / IfCond / Script / ForEachParallel / CallFlow) + lambda eval helper + replay-twice integration test (kitchen sink)
+  - [ ] 03-04-PLAN.md — Wave 3: pkg/worker bootstrap + three named client constructors (D3-17) + Build ID (D3-20) + library-embed integration test (WORK-03)
 **UI hint**: no
 
 ### Phase 4: Static Validation Tier + CLI Skeleton
@@ -115,7 +119,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Type Spine + Extension Contract + Parser/Bridge Foundations | 5/5 | Complete   | 2026-04-27 |
 | 2. Generic Activity + Block-Batch Dispatch + Credentials | 2/3 | In Progress|  |
-| 3. Lambda-Serialization Decision + Interpreter + Worker | 0/TBD | Not started | - |
+| 3. Lambda-Serialization Decision + Interpreter + Worker | 0/4 | Not started | - |
 | 4. Static Validation Tier + CLI Skeleton | 0/TBD | Not started | - |
 | 5. Tier-3 E2E Test Harness (`temporal_test`) | 0/TBD | Not started | - |
 | 6. Example Project (HTTP + GitHub + Slack) | 0/TBD | Not started | - |
