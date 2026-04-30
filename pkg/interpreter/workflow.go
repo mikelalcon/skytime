@@ -124,40 +124,44 @@ func (i *interpreter) walkNode(ctx workflow.Context, node dag.Node) error {
 	}
 }
 
-// Plan 03-02 stubs — plan 03-03 replaces each function BODY (signatures
-// stay identical). Each stub returns a non-retryable
+// Plan 03-03: walker bodies live in their own walk_*.go files. The
+// dispatcher above type-switches over dag.Node and routes to:
+//   - walkStep      → walk_step.go      (Task 1)
+//   - walkIfCond    → walk_ifcond.go    (Task 2)
+//   - walkScript    → walk_script.go    (Task 2)
+//   - walkCallFlow  → walk_callflow.go  (Task 2)
+//   - walkForEach   → walk_foreach.go   (Task 3)
+//
+// Lambda evaluation (used by walkIfCond, walkScript, walkForEach) is
+// centralized in lambda_eval.go via (i *interpreter).evalLambda — wires
+// the cancellation watchdog (D3-21) and the print-to-workflow-logger
+// hook (D3-22) per call.
+//
+// Stubs for unimplemented walkers below — replaced as Tasks 2 and 3 land
+// their walk_*.go files. Each stub returns a non-retryable
 // "WalkerNotImplemented" application error tagged with the node's
-// position so plan 03-03 has clear "fill me in" markers and any
-// accidental early consumer (e.g., a smoke test that builds a non-empty
-// Body before plan 03-03 lands) sees a precise error instead of a silent
-// no-op.
-
-func (i *interpreter) walkStep(_ workflow.Context, n *dag.Step) error {
-	return temporal.NewNonRetryableApplicationError(
-		fmt.Sprintf("walkStep not implemented (plan 03-03): step at %s", n.Pos),
-		"WalkerNotImplemented", nil)
-}
+// position so any accidental early consumer sees a precise error.
 
 func (i *interpreter) walkIfCond(_ workflow.Context, n *dag.IfCond) error {
 	return temporal.NewNonRetryableApplicationError(
-		fmt.Sprintf("walkIfCond not implemented (plan 03-03): if_cond at %s", n.Pos),
+		fmt.Sprintf("walkIfCond not implemented (Task 2): if_cond at %s", n.Pos),
 		"WalkerNotImplemented", nil)
 }
 
 func (i *interpreter) walkScript(_ workflow.Context, n *dag.Script) error {
 	return temporal.NewNonRetryableApplicationError(
-		fmt.Sprintf("walkScript not implemented (plan 03-03): script at %s", n.Pos),
+		fmt.Sprintf("walkScript not implemented (Task 2): script at %s", n.Pos),
 		"WalkerNotImplemented", nil)
 }
 
 func (i *interpreter) walkForEach(_ workflow.Context, n *dag.ForEachParallel) error {
 	return temporal.NewNonRetryableApplicationError(
-		fmt.Sprintf("walkForEach not implemented (plan 03-03): for_each_parallel at %s", n.Pos),
+		fmt.Sprintf("walkForEach not implemented (Task 3): for_each_parallel at %s", n.Pos),
 		"WalkerNotImplemented", nil)
 }
 
 func (i *interpreter) walkCallFlow(_ workflow.Context, n *dag.CallFlow) error {
 	return temporal.NewNonRetryableApplicationError(
-		fmt.Sprintf("walkCallFlow not implemented (plan 03-03): call_flow at %s", n.Pos),
+		fmt.Sprintf("walkCallFlow not implemented (Task 2): call_flow at %s", n.Pos),
 		"WalkerNotImplemented", nil)
 }
