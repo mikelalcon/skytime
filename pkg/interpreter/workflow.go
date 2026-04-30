@@ -137,31 +137,13 @@ func (i *interpreter) walkNode(ctx workflow.Context, node dag.Node) error {
 // the cancellation watchdog (D3-21) and the print-to-workflow-logger
 // hook (D3-22) per call.
 //
-// Stubs for unimplemented walkers below — replaced as Tasks 2 and 3 land
-// their walk_*.go files. Each stub returns a non-retryable
-// "WalkerNotImplemented" application error tagged with the node's
-// position so any accidental early consumer sees a precise error.
-
-func (i *interpreter) walkIfCond(_ workflow.Context, n *dag.IfCond) error {
-	return temporal.NewNonRetryableApplicationError(
-		fmt.Sprintf("walkIfCond not implemented (Task 2): if_cond at %s", n.Pos),
-		"WalkerNotImplemented", nil)
-}
-
-func (i *interpreter) walkScript(_ workflow.Context, n *dag.Script) error {
-	return temporal.NewNonRetryableApplicationError(
-		fmt.Sprintf("walkScript not implemented (Task 2): script at %s", n.Pos),
-		"WalkerNotImplemented", nil)
-}
+// Stub for the remaining unimplemented walker (Task 3). Replaced when
+// walk_foreach.go lands. Returns a non-retryable WalkerNotImplemented
+// error tagged with the node's position so any accidental early consumer
+// sees a precise message.
 
 func (i *interpreter) walkForEach(_ workflow.Context, n *dag.ForEachParallel) error {
 	return temporal.NewNonRetryableApplicationError(
 		fmt.Sprintf("walkForEach not implemented (Task 3): for_each_parallel at %s", n.Pos),
-		"WalkerNotImplemented", nil)
-}
-
-func (i *interpreter) walkCallFlow(_ workflow.Context, n *dag.CallFlow) error {
-	return temporal.NewNonRetryableApplicationError(
-		fmt.Sprintf("walkCallFlow not implemented (Task 2): call_flow at %s", n.Pos),
 		"WalkerNotImplemented", nil)
 }
