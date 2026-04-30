@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-04-30T01:11:36.707Z"
-last_activity: 2026-04-28
+stopped_at: "Completed 03-01-PLAN.md (Wave 1: DSL retrofits + WorkflowInput rewrite + firewall expansion)"
+last_updated: "2026-04-30T02:50:11.612Z"
+last_activity: 2026-04-30
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 12
+  completed_plans: 9
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-26)
 
 **Core value:** A consultant team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
-**Current focus:** Phase 02 — generic-activity-block-batch-dispatch-credentials
+**Current focus:** Phase 03 — lambda-serialization-decision-interpreter-worker
 
 ## Current Position
 
-Phase: 3
-Plan: Not started
+Phase: 03 (lambda-serialization-decision-interpreter-worker) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-04-28
+Last activity: 2026-04-30
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -59,6 +59,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P05 | 19min | 4 tasks | 16 files |
 | Phase 02 P01 | 30min | 4 tasks | 33 files |
 | Phase 02 P03 | 50min | 3 tasks | 10 files |
+| Phase 03 P01 | 8min | 4 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -96,6 +97,10 @@ Recent decisions affecting current work:
 - [Phase 02]: Plan 02-03: ActionRef gets UnmarshalJSON + goValueToStarlark (Rule 2 deviation) — testsuite encodes activity input []*ActionRef and decodes on activity side; without UnmarshalJSON, JSON keys (kind/kwargs/credential_id) don't match Go fields (Kind_/Kwargs/CredentialID), all fields zero-valued
 - [Phase 02]: Plan 02-03: TestExecuteBatch_HappyPath_Heartbeats uses unexported withHeartbeatEmitter seam (deviation from RESEARCH §Example 2) — Temporal SDK v1.42.0 documents SetOnActivityHeartbeatListener is throttled; the fake emitter (built in 02-02 for exactly this purpose) deterministically captures every emit() call
 - [Phase 02]: Plan 02-03: ExecuteBatch returns (results, nil) on cancellation, NOT (results, ctx.Err()) — locked test design wins over plan example pseudocode (cancellation is graceful, SkippedResult placeholders are the signal)
+- [Phase 03]: Plan 03-01: empty-string task_queue rejected at the BUILTIN (not the linter); kwarg-presence detection (hasKwarg) distinguishes 'omitted' from 'supplied empty'. Linter pass kept as documented stub for D2-05/D2-07 symmetry.
+- [Phase 03]: Plan 03-01: WorkflowInput's custom MarshalJSON deleted; the Phase 3 three-field shape {FlowName, ContentHash, InitState} is JSON-natural — Phase 1's reason for the custom marshaler (omit *starlark.Function values) no longer applies.
+- [Phase 03]: Plan 03-01: Custom MarshalJSON shapes (flowJSON / stepJSON / forEachParallelJSON) require manual mirroring of new omitempty fields — golden output is driven by the shape struct, not the dag struct. Documented as a recurring retrofit pattern.
+- [Phase 03]: Plan 03-01: Firewall allowlist driven by slice literal {activity, interpreter, worker} so plans 03-02 / 03-04 ship SDK imports without touching the firewall test. Until those packages exist, the latter two entries are no-op skips.
 
 ### Pending Todos
 
@@ -108,6 +113,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-30T01:11:36.703Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-lambda-serialization-decision-interpreter-worker/03-CONTEXT.md
+Last session: 2026-04-30T02:50:11.609Z
+Stopped at: Completed 03-01-PLAN.md (Wave 1: DSL retrofits + WorkflowInput rewrite + firewall expansion)
+Resume file: None

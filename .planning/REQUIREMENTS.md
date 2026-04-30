@@ -40,7 +40,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Temporal Interpreter
 
-- [ ] **INTRP-01**: A single generic Temporal workflow (`SkytimeWorkflow(ctx, WorkflowInput)`) walks any parsed `dag.Flow` and produces final state
+- [x] **INTRP-01**: A single generic Temporal workflow (`SkytimeWorkflow(ctx, WorkflowInput)`) walks any parsed `dag.Flow` and produces final state
 - [ ] **INTRP-02**: A documented decision (custom `DataConverter` vs. re-parse-on-start with `LambdaID` keys) governs how lambdas survive Temporal serialization; the chosen mechanism passes a replay-twice equality test
 - [ ] **INTRP-03**: `if_cond` and `script` evaluate lambdas inline and produce zero Temporal history events
 - [ ] **INTRP-04**: `for_each_parallel` spawns concurrent branches via `workflow.Go` + `workflow.Selector` with a configurable bounded fan-out (default documented), and uses `workflow.Await` to barrier on completion
@@ -59,7 +59,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Worker & Temporal Compatibility
 
-- [ ] **WORK-01**: A worker bootstrap function registers `SkytimeWorkflow` and `ExecuteBatch` with one Temporal worker
+- [x] **WORK-01**: A worker bootstrap function registers `SkytimeWorkflow` and `ExecuteBatch` with one Temporal worker
 - [ ] **WORK-02**: One client factory handles three Temporal connection variants — Temporal Cloud (API key + TLS), self-hosted with mTLS, and local dev-server (TLS off) — surfacing the v1.39 TLS-with-API-key default change in exactly one place
 - [ ] **WORK-03**: A consumer Go service can embed Skytime as a library: `import` packages, register extensions, call `worker.Run(client, flowDir)` — no service binary or framework required
 
@@ -174,14 +174,14 @@ Which phases cover which requirements. Populated during roadmap creation.
 | ACT-04 | Phase 2 | Complete |
 | ACT-05 | Phase 2 | Complete |
 | ACT-06 | Phase 2 | Complete |
-| INTRP-01 | Phase 3 | Pending |
+| INTRP-01 | Phase 3 | Complete |
 | INTRP-02 | Phase 3 | Pending |
 | INTRP-03 | Phase 3 | Pending |
 | INTRP-04 | Phase 3 | Pending |
 | INTRP-05 | Phase 3 | Pending |
 | INTRP-06 | Phase 3 | Pending |
 | INTRP-07 | Phase 3 | Pending |
-| WORK-01 | Phase 3 | Pending |
+| WORK-01 | Phase 3 | Complete |
 | WORK-02 | Phase 3 | Pending |
 | WORK-03 | Phase 3 | Pending |
 | VAL-01 | Phase 4 | Pending |
