@@ -11,18 +11,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestNoTemporalImportsOutsidePkgActivity walks every Go file under the
-// module's pkg/ tree EXCEPT pkg/activity and asserts none imports any
-// go.temporal.io/sdk/* path. This enforces PROJECT.md's "no context bleed" —
-// only pkg/activity is allowed to bridge to Temporal.
+// TestNoTemporalImportsOutsideAllowList walks every Go file under the
+// module's pkg/ tree EXCEPT pkg/activity, pkg/interpreter, and pkg/worker
+// and asserts none imports any go.temporal.io/sdk/* path. This enforces
+// PROJECT.md's "no context bleed" — only those three packages are allowed
+// to bridge to Temporal.
+//
+// Phase history:
+//   - Phase 2: pkg/activity introduced; firewall covered pkg/activity only.
+//   - Phase 3: pkg/interpreter + pkg/worker added; firewall expanded to
+//     allowlist all three. Until plans 03-02 / 03-04 land, the latter two
+//     packages don't yet exist in the tree, so the "skip" is a no-op for
+//     them — but the test is forward-compatible so SDK imports landing
+//     in those packages don't break the firewall.
 //
 // Mirrors the per-package firewall tests in pkg/parser, pkg/extension (Phase 1)
 // but inverts the check — those tests verify their OWN package is clean; this
-// test verifies every OTHER pkg/* directory is clean while pkg/activity is
-// allowed to import the SDK.
-func TestNoTemporalImportsOutsidePkgActivity(t *testing.T) {
+// test verifies every OTHER pkg/* directory is clean while the allowlisted
+// trio is permitted to import the SDK.
+func TestNoTemporalImportsOutsideAllowList(t *testing.T) {
 	moduleRoot := findModuleRoot(t)
 	pkgRoot := filepath.Join(moduleRoot, "pkg")
+
+	// Allowlist of pkg/* subdirectories permitted to import go.temporal.io/sdk/*.
+	// Order is irrelevant; kept in phase-introduction order for readability.
+	allowedPkgs := []string{"activity", "interpreter", "worker"}
+	sep := string(filepath.Separator)
 
 	fset := token.NewFileSet()
 	checked := 0
@@ -36,14 +50,17 @@ func TestNoTemporalImportsOutsidePkgActivity(t *testing.T) {
 		if !strings.HasSuffix(path, ".go") {
 			return nil
 		}
-		// Skip pkg/activity — the firewall ALLOWS it to import temporal.
+		// Skip the allowlisted pkg/* directories — the firewall ALLOWS
+		// them to import temporal.
 		rel, relErr := filepath.Rel(pkgRoot, path)
 		if relErr != nil {
 			return relErr
 		}
 		// rel looks like "activity/foo.go" or "extension/handler.go".
-		if rel == "activity" || strings.HasPrefix(rel, "activity"+string(filepath.Separator)) {
-			return nil
+		for _, pkg := range allowedPkgs {
+			if rel == pkg || strings.HasPrefix(rel, pkg+sep) {
+				return nil
+			}
 		}
 
 		f, parseErr := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
@@ -53,14 +70,14 @@ func TestNoTemporalImportsOutsidePkgActivity(t *testing.T) {
 		for _, imp := range f.Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
 			if strings.HasPrefix(importPath, "go.temporal.io/sdk") {
-				t.Errorf("FIREWALL VIOLATION: %s imports %q — only pkg/activity may import go.temporal.io/sdk/*", path, importPath)
+				t.Errorf("FIREWALL VIOLATION: %s imports %q — only pkg/{activity,interpreter,worker} may import go.temporal.io/sdk/*", path, importPath)
 			}
 			checked++
 		}
 		return nil
 	})
 	require.NoError(t, walkErr)
-	t.Logf("checked %d import paths across pkg/ (excluding pkg/activity); none imported go.temporal.io/sdk/*", checked)
+	t.Logf("checked %d import paths across pkg/ (excluding allowlist %v); none imported go.temporal.io/sdk/*", checked, allowedPkgs)
 }
 
 // TestPkgActivity_AllowedToImportTemporal is a meta-test that catches an
