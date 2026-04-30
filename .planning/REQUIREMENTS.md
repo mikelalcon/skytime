@@ -41,12 +41,12 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Temporal Interpreter
 
 - [x] **INTRP-01**: A single generic Temporal workflow (`SkytimeWorkflow(ctx, WorkflowInput)`) walks any parsed `dag.Flow` and produces final state
-- [ ] **INTRP-02**: A documented decision (custom `DataConverter` vs. re-parse-on-start with `LambdaID` keys) governs how lambdas survive Temporal serialization; the chosen mechanism passes a replay-twice equality test
+- [x] **INTRP-02**: A documented decision (custom `DataConverter` vs. re-parse-on-start with `LambdaID` keys) governs how lambdas survive Temporal serialization; the chosen mechanism passes a replay-twice equality test
 - [ ] **INTRP-03**: `if_cond` and `script` evaluate lambdas inline and produce zero Temporal history events
 - [ ] **INTRP-04**: `for_each_parallel` spawns concurrent branches via `workflow.Go` + `workflow.Selector` with a configurable bounded fan-out (default documented), and uses `workflow.Await` to barrier on completion
 - [ ] **INTRP-05**: `call_flow` invokes the same generic workflow as a `workflow.ExecuteChildWorkflow`, isolating sub-flow history
-- [ ] **INTRP-06**: Map iteration in the interpreter (and in the bridge's struct conversion) sorts keys before reading — verified by a CI replay test that runs every E2E test twice and asserts byte-equal command histories
-- [ ] **INTRP-07**: The interpreter passes `workflowcheck` analysis (no native `go`, no time/random calls, no map iteration without sort)
+- [x] **INTRP-06**: Map iteration in the interpreter (and in the bridge's struct conversion) sorts keys before reading — verified by a CI replay test that runs every E2E test twice and asserts byte-equal command histories
+- [x] **INTRP-07**: The interpreter passes `workflowcheck` analysis (no native `go`, no time/random calls, no map iteration without sort)
 
 ### Generic Activity & Credentials
 
@@ -175,12 +175,12 @@ Which phases cover which requirements. Populated during roadmap creation.
 | ACT-05 | Phase 2 | Complete |
 | ACT-06 | Phase 2 | Complete |
 | INTRP-01 | Phase 3 | Complete |
-| INTRP-02 | Phase 3 | Pending |
+| INTRP-02 | Phase 3 | Complete |
 | INTRP-03 | Phase 3 | Pending |
 | INTRP-04 | Phase 3 | Pending |
 | INTRP-05 | Phase 3 | Pending |
-| INTRP-06 | Phase 3 | Pending |
-| INTRP-07 | Phase 3 | Pending |
+| INTRP-06 | Phase 3 | Complete |
+| INTRP-07 | Phase 3 | Complete |
 | WORK-01 | Phase 3 | Complete |
 | WORK-02 | Phase 3 | Pending |
 | WORK-03 | Phase 3 | Pending |

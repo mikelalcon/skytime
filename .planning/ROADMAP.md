@@ -67,7 +67,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   5. A consumer Go service can `import` Skytime, register one extension, and call `worker.Run(client, flowDir)` with a single client factory choosing among Temporal Cloud (API key + TLS), self-hosted mTLS, or local dev-server (TLS off) — surfacing the v1.39 TLS-with-API-key default change in exactly one place
 **Plans**: 4 plans
   - [x] 03-01-PLAN.md — Wave 0: DSL retrofit (task_queue kwarg) + WorkflowInput rewrite (D3-04) + Phase 2 firewall expansion to allowlist pkg/interpreter + pkg/worker
-  - [ ] 03-02-PLAN.md — Wave 1: pkg/interpreter foundations — package skeleton + FlowRegistry + cancellation watchdog (D3-21) + SkytimeWorkflow skeleton with walker stubs
+  - [x] 03-02-PLAN.md — Wave 1: pkg/interpreter foundations — package skeleton + FlowRegistry + cancellation watchdog (D3-21) + SkytimeWorkflow skeleton with walker stubs
   - [ ] 03-03-PLAN.md — Wave 2: All five node walkers (Step / IfCond / Script / ForEachParallel / CallFlow) + lambda eval helper + replay-twice integration test (kitchen sink)
   - [ ] 03-04-PLAN.md — Wave 3: pkg/worker bootstrap + three named client constructors (D3-17) + Build ID (D3-20) + library-embed integration test (WORK-03)
 **UI hint**: no

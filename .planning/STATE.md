@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 03-01-PLAN.md (Wave 1: DSL retrofits + WorkflowInput rewrite + firewall expansion)"
-last_updated: "2026-04-30T02:50:11.612Z"
+stopped_at: "Completed 03-02-PLAN.md (Wave 1: pkg/interpreter foundations — registry + cancel watchdog + SkytimeWorkflow skeleton)"
+last_updated: "2026-04-30T03:06:39.988Z"
 last_activity: 2026-04-30
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 03 (lambda-serialization-decision-interpreter-worker) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-04-30
 
@@ -60,6 +60,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02 P01 | 30min | 4 tasks | 33 files |
 | Phase 02 P03 | 50min | 3 tasks | 10 files |
 | Phase 03 P01 | 8min | 4 tasks | 16 files |
+| Phase 03 P02 | 10min | 4 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,11 @@ Recent decisions affecting current work:
 - [Phase 03]: Plan 03-01: WorkflowInput's custom MarshalJSON deleted; the Phase 3 three-field shape {FlowName, ContentHash, InitState} is JSON-natural — Phase 1's reason for the custom marshaler (omit *starlark.Function values) no longer applies.
 - [Phase 03]: Plan 03-01: Custom MarshalJSON shapes (flowJSON / stepJSON / forEachParallelJSON) require manual mirroring of new omitempty fields — golden output is driven by the shape struct, not the dag struct. Documented as a recurring retrofit pattern.
 - [Phase 03]: Plan 03-01: Firewall allowlist driven by slice literal {activity, interpreter, worker} so plans 03-02 / 03-04 ship SDK imports without touching the firewall test. Until those packages exist, the latter two entries are no-op skips.
+- [Phase 03]: Plan 03-02: White-box tests (package interpreter, not interpreter_test) used for unexported makeCancelChannel + newInterpreter — standard Go idiom, avoids leaking the bridge as public API
+- [Phase 03]: Plan 03-02: sync.Once around close(ch) in makeCancelChannel — belt-and-suspenders idempotency per blocker fix W9; defense against any future SDK behavior shift
+- [Phase 03]: Plan 03-02: Per-call workflow.Go reader lifecycle in makeCancelChannel — accepted for v1 (no unbounded lambda evals); fallback paragraph inlined for plan 03-03 to evaluate during integration testing
+- [Phase 03]: Plan 03-02: Multi-version FlowRegistry shape (map[string]map[string]*ParsedFlow) over single-version — costs nothing, supports test fixtures registering same flow with different bytes; ContentHashFor zero/many → ('', false) forces clean call_flow errors
+- [Phase 03]: Plan 03-02: FINAL signature lock for newInterpreter via TestNewInterpreter_FinalSignature compile-time gate — plan 03-03 fills walker bodies only, no signature retrofit
 
 ### Pending Todos
 
@@ -113,6 +119,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-30T02:50:11.609Z
-Stopped at: Completed 03-01-PLAN.md (Wave 1: DSL retrofits + WorkflowInput rewrite + firewall expansion)
+Last session: 2026-04-30T03:06:39.985Z
+Stopped at: Completed 03-02-PLAN.md (Wave 1: pkg/interpreter foundations — registry + cancel watchdog + SkytimeWorkflow skeleton)
 Resume file: None
