@@ -1,0 +1,37 @@
+{
+  "flows": {
+    "task_queue_overrides": {
+      "kind": "Flow",
+      "name": "task_queue_overrides",
+      "inputs": {
+        "req": "dict"
+      },
+      "body": [
+        {
+          "kind": "Step",
+          "actions": [
+            {
+              "kind": "fake_ext.echo",
+              "kwargs": {
+                "msg": "inherits-critical"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "Step",
+          "actions": [
+            {
+              "kind": "fake_ext.echo",
+              "kwargs": {
+                "msg": "routed-to-slow-io"
+              }
+            }
+          ],
+          "task_queue": "slow_io"
+        }
+      ],
+      "task_queue": "critical"
+    }
+  }
+}

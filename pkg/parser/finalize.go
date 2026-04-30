@@ -17,7 +17,10 @@ import (
 //     action. Mixed batches surface as *dag.ValidationError at parse time.
 //  3. lintBlockSize (D2-07): step(block=[...]) cannot exceed the parser's
 //     maxBlockSize cap (default 50; configurable via WithMaxBlockSize).
-//  4. validateActionRefKwargs (D-11 defense in depth): a no-op in Phase 1
+//  4. lintEmptyTaskQueue (D3-19, defense in depth): documented stub for
+//     direct dag.Flow / dag.Step construction outside the builtin path.
+//     The primary rejection lives in builtinFlow / builtinStep.
+//  5. validateActionRefKwargs (D-11 defense in depth): a no-op in Phase 1
 //     because real extension factories validate kwargs at construction
 //     time inside their *starlark.Builtin via UnpackOperationKwargs. The
 //     finalize pass is the seat for Phase 4's static validator to plug
@@ -35,6 +38,9 @@ func (p *Parser) finalize() error {
 		return err
 	}
 	if err := p.lintBlockSize(); err != nil {
+		return err
+	}
+	if err := p.lintEmptyTaskQueue(); err != nil {
 		return err
 	}
 	return p.validateActionRefKwargs()

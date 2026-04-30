@@ -405,6 +405,46 @@ func TestStep_ErrorPointsAtCallSite(t *testing.T) {
 }
 
 // =============================================================================
+// D3-19: task_queue kwarg on flow() and step()
+// =============================================================================
+
+// TestBuiltinFlow_TaskQueueKwarg_Valid asserts the parser threads
+// flow(..., task_queue="critical") through to dag.Flow.TaskQueue.
+func TestBuiltinFlow_TaskQueueKwarg_Valid(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", task_queue="critical", steps=[step(action=fake_ext.echo(msg="hi"))])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	require.Contains(t, flows, "f")
+	assert.Equal(t, "critical", flows["f"].TaskQueue,
+		"D3-19: flow(..., task_queue=...) must thread to Flow.TaskQueue")
+}
+
+// TestBuiltinFlow_TaskQueueKwarg_Default asserts that omitting task_queue
+// produces an empty-string default (interpreted as "inherit worker default").
+func TestBuiltinFlow_TaskQueueKwarg_Default(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", steps=[step(action=fake_ext.echo(msg="hi"))])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	assert.Empty(t, flows["f"].TaskQueue,
+		"D3-19: omitted task_queue must default to empty string")
+}
+
+// TestBuiltinStep_TaskQueueKwarg_Valid asserts the parser threads
+// step(..., task_queue="slow_io") through to dag.Step.TaskQueue.
+func TestBuiltinStep_TaskQueueKwarg_Valid(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", steps=[step(action=fake_ext.echo(msg="hi"), task_queue="slow_io")])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	step, ok := flows["f"].Body[0].(*dag.Step)
+	require.True(t, ok)
+	assert.Equal(t, "slow_io", step.TaskQueue,
+		"D3-19: step(..., task_queue=...) must thread to Step.TaskQueue")
+}
+
+// =============================================================================
 // finalize_test surface aliases (some via fixtures_test.go later)
 // =============================================================================
 

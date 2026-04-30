@@ -176,6 +176,67 @@ func (p *Parser) walkLintBlockSize(flowName string, body []dag.Node) error {
 	return nil
 }
 
+// =============================================================================
+// Phase 3 lint pass (D3-19 empty task_queue defense in depth)
+// =============================================================================
+
+// lintEmptyTaskQueue is a defense-in-depth pass for D3-19. The primary
+// rejection of `flow(task_queue="")` and `step(task_queue="")` happens
+// inside builtinFlow / builtinStep BEFORE the dag types are constructed —
+// at that point we can distinguish "kwarg supplied as empty" (rejected)
+// from "kwarg omitted" (default empty, allowed) via the kwargs presence
+// detection.
+//
+// Post-construction, dag.Flow.TaskQueue and dag.Step.TaskQueue carry no
+// presence flag — empty string is indistinguishable from "absent". This
+// pass walks any directly-constructed *dag.Flow / *dag.Step (e.g. test
+// harnesses) but is a NO-OP for the empty-string case: it would have to
+// reject every absence-of-override, which is the dominant valid case.
+//
+// The pass is kept as a stub for two reasons:
+//   1. Symmetry with lintMixedIdempotency / lintBlockSize — every Phase
+//      2/3 invariant has a matching lint pass that downstream readers can
+//      grep for.
+//   2. If a future change adds a presence flag (e.g. a TaskQueueSet bool
+//      or a *string pointer), this is the place to add the rejection
+//      logic without touching the builtin code path.
+//
+// The function returns nil unconditionally for now. Tests pin this
+// behavior so a future tightening (or loosening) is a deliberate decision.
+func (p *Parser) lintEmptyTaskQueue() error {
+	for _, flow := range p.flows {
+		if err := p.walkLintEmptyTaskQueue(flow.Name, flow.Body); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// walkLintEmptyTaskQueue is the recursive helper for lintEmptyTaskQueue.
+// Mirrors walkLintMixedIdempotency / walkLintBlockSize so the recursion
+// idiom is uniform across lint passes.
+func (p *Parser) walkLintEmptyTaskQueue(flowName string, body []dag.Node) error {
+	for _, node := range body {
+		switch n := node.(type) {
+		case *dag.Step:
+			// No-op: see lintEmptyTaskQueue comment for the design rationale.
+			_ = n
+		case *dag.IfCond:
+			if err := p.walkLintEmptyTaskQueue(flowName, n.Then); err != nil {
+				return err
+			}
+			if err := p.walkLintEmptyTaskQueue(flowName, n.Else); err != nil {
+				return err
+			}
+		case *dag.ForEachParallel:
+			if err := p.walkLintEmptyTaskQueue(flowName, n.Steps); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // splitKind splits "github.create_issue" into ("github", "create_issue", true).
 // Returns ok=false if the kind doesn't have exactly one dot or has empty
 // parts on either side. The kind format is set by extension factories

@@ -242,6 +242,61 @@ func TestLinter_BlockSizeCap_AtLimit(t *testing.T) {
 	require.NoError(t, err, "block of size = cap must pass")
 }
 
+// =============================================================================
+// D3-19 (empty-string task_queue rejected) — Plan 03-01 Task 2
+// =============================================================================
+
+// TestLintEmptyTaskQueue_Flow asserts the parser rejects flow(task_queue="")
+// with a position-aware ParseError. Empty-string is rejected at the BUILTIN
+// level (before constructing dag.Flow) — the kwarg-presence detection
+// distinguishes "kwarg supplied as empty" (rejected) from "kwarg omitted"
+// (default empty, allowed).
+func TestLintEmptyTaskQueue_Flow(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="bad", task_queue="", steps=[step(action=fake_ext.echo(msg="x"))])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	var pe *dag.ParseError
+	require.True(t, errors.As(err, &pe), "expected *dag.ParseError, got %T: %v", err, err)
+	assert.Contains(t, pe.Msg, "task_queue must be non-empty",
+		"D3-19: empty task_queue must surface a clear error")
+	require.True(t, pe.Pos.IsValid(), "error must carry a valid position")
+}
+
+// TestLintEmptyTaskQueue_Step asserts the same rejection on step(task_queue="").
+func TestLintEmptyTaskQueue_Step(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", steps=[step(action=fake_ext.echo(msg="x"), task_queue="")])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	var pe *dag.ParseError
+	require.True(t, errors.As(err, &pe), "expected *dag.ParseError, got %T: %v", err, err)
+	assert.Contains(t, pe.Msg, "task_queue must be non-empty",
+		"D3-19: empty step task_queue must surface a clear error")
+	require.True(t, pe.Pos.IsValid(), "error must carry a valid position")
+}
+
+// TestLintEmptyTaskQueue_LinterPass exercises the defense-in-depth lintEmptyTaskQueue
+// pass directly: a parser session whose flows map already contains a
+// directly-constructed *dag.Flow with TaskQueue=="" — i.e., bypassing the
+// builtin path. The pass cannot distinguish "absent" from "explicitly empty"
+// post-construction so it is documented as a stub; this test pins the
+// stub's no-op behavior so future changes (e.g., adding a presence flag)
+// surface as test breaks.
+func TestLintEmptyTaskQueue_LinterPass(t *testing.T) {
+	p := newTestParser(t)
+	// Direct construction — no builtin involved.
+	p.flows["direct"] = &dag.Flow{
+		Name:      "direct",
+		TaskQueue: "", // indistinguishable from "absent" post-construction
+		Body:      []dag.Node{},
+	}
+	// lintEmptyTaskQueue is a no-op stub by design; assert no error.
+	err := p.lintEmptyTaskQueue()
+	require.NoError(t, err,
+		"linter pass is a no-op stub for now (cannot distinguish absent vs explicitly empty post-construction)")
+}
+
 // buildBlockSrc constructs a flow with one step containing n idempotent
 // echoes. Used by the block-size cap tests; written as concatenated strings
 // rather than a loop with template indirection so the resulting .star is

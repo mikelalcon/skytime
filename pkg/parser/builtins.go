@@ -101,18 +101,29 @@ func (p *Parser) wrapBuiltinError(opName string, thread *starlark.Thread, err er
 // value.
 func (p *Parser) builtinFlow(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var (
-		name     string
-		inputs   *starlark.Dict
-		stepsLst *starlark.List
+		name      string
+		inputs    *starlark.Dict
+		stepsLst  *starlark.List
+		taskQueue string // D3-19 — empty string == "inherit worker default"
 	)
 	if err := starlark.UnpackArgs("flow", args, kwargs,
 		"name", &name,
 		"inputs?", &inputs,
 		"steps", &stepsLst,
+		"task_queue?", &taskQueue,
 	); err != nil {
 		return nil, p.wrapBuiltinError("flow", thread, err)
 	}
 	pos := callerPosition(thread)
+
+	// D3-19: distinguish "kwarg omitted" (allowed; defaults to "") from
+	// "kwarg supplied as empty string" (rejected). Walk kwargs to detect.
+	if hasKwarg(kwargs, "task_queue") && taskQueue == "" {
+		return nil, &dag.ParseError{
+			Pos: pos,
+			Msg: "flow: task_queue must be non-empty when provided",
+		}
+	}
 
 	if existing, dup := p.flows[name]; dup {
 		return nil, &dag.ParseError{
@@ -131,13 +142,27 @@ func (p *Parser) builtinFlow(thread *starlark.Thread, fn *starlark.Builtin, args
 	}
 
 	f := &dag.Flow{
-		Pos:    pos,
-		Name:   name,
-		Inputs: inputsMap,
-		Body:   body,
+		Pos:       pos,
+		Name:      name,
+		Inputs:    inputsMap,
+		Body:      body,
+		TaskQueue: taskQueue,
 	}
 	p.flows[name] = f
 	return starlark.None, nil
+}
+
+// hasKwarg returns true when the named kwarg appears in the kwargs slice.
+// Used to distinguish "absent" from "supplied as zero-value" — UnpackArgs
+// can't tell us which happened. Mirrors the inline retry/timeout presence
+// detection used in builtinStep / builtinForEachParallel.
+func hasKwarg(kwargs []starlark.Tuple, name string) bool {
+	for _, kv := range kwargs {
+		if k, ok := kv[0].(starlark.String); ok && string(k) == name {
+			return true
+		}
+	}
+	return false
 }
 
 // convertInputsDict turns the optional `inputs={"name": "type"}` kwarg into a
@@ -197,10 +222,11 @@ func convertNodeList(lst *starlark.List, callPos syntax.Position, kwargName stri
 // decode through their respective starlark.Unpacker implementations.
 func (p *Parser) builtinStep(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var (
-		action  starlark.Value
-		block   *starlark.List
-		retry   = &dag.RetryPolicy{}
-		timeout = &dag.Timeout{}
+		action    starlark.Value
+		block     *starlark.List
+		retry     = &dag.RetryPolicy{}
+		timeout   = &dag.Timeout{}
+		taskQueue string // D3-19 — empty string == "inherit flow's task queue"
 	)
 	// `action` is intentionally accepted as a generic starlark.Value so we
 	// can return a clean error when consultants pass a non-ActionRef
@@ -213,6 +239,7 @@ func (p *Parser) builtinStep(thread *starlark.Thread, fn *starlark.Builtin, args
 		"block?", &block,
 		"retry?", retry,
 		"timeout?", timeout,
+		"task_queue?", &taskQueue,
 	); err != nil {
 		return nil, p.wrapBuiltinError("step", thread, err)
 	}
@@ -230,6 +257,14 @@ func (p *Parser) builtinStep(thread *starlark.Thread, fn *starlark.Builtin, args
 	}
 
 	pos := callerPosition(thread)
+
+	// D3-19: reject step(task_queue="") — empty string supplied is invalid.
+	if hasKwarg(kwargs, "task_queue") && taskQueue == "" {
+		return nil, &dag.ParseError{
+			Pos: pos,
+			Msg: "step: task_queue must be non-empty when provided",
+		}
+	}
 
 	hasAction := action != nil && action != starlark.None
 	hasBlock := block != nil && block.Len() > 0
@@ -273,7 +308,7 @@ func (p *Parser) builtinStep(thread *starlark.Thread, fn *starlark.Builtin, args
 		}
 	}
 
-	step := &dag.Step{Pos: pos, Actions: actions}
+	step := &dag.Step{Pos: pos, Actions: actions, TaskQueue: taskQueue}
 	if hasRetry {
 		step.Retry = retry
 	}
