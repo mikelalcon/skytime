@@ -405,6 +405,7 @@ func (p *Parser) builtinForEachParallel(thread *starlark.Thread, fn *starlark.Bu
 		stepsLst *starlark.List
 		retry    = &dag.RetryPolicy{}
 		timeout  = &dag.Timeout{}
+		maxConc  int // D3-13 — 0 == "interpreter default (10)"; negative rejected below
 	)
 	if err := starlark.UnpackArgs("for_each_parallel", args, kwargs,
 		"items", &items,
@@ -412,6 +413,7 @@ func (p *Parser) builtinForEachParallel(thread *starlark.Thread, fn *starlark.Bu
 		"steps", &stepsLst,
 		"retry?", retry,
 		"timeout?", timeout,
+		"max_concurrency?", &maxConc,
 	); err != nil {
 		return nil, p.wrapBuiltinError("for_each_parallel", thread, err)
 	}
@@ -430,15 +432,25 @@ func (p *Parser) builtinForEachParallel(thread *starlark.Thread, fn *starlark.Bu
 
 	pos := callerPosition(thread)
 
+	// D3-13: reject negative max_concurrency at parse time. Zero is allowed
+	// (interpreter applies the documented default). Position-aware error.
+	if maxConc < 0 {
+		return nil, &dag.ParseError{
+			Pos: pos,
+			Msg: "for_each_parallel: max_concurrency must be >= 0",
+		}
+	}
+
 	body, err := convertNodeList(stepsLst, pos, "for_each_parallel.steps")
 	if err != nil {
 		return nil, err
 	}
 
 	node := &dag.ForEachParallel{
-		Pos:     pos,
-		ItemVar: itemVar,
-		Steps:   body,
+		Pos:            pos,
+		ItemVar:        itemVar,
+		Steps:          body,
+		MaxConcurrency: maxConc,
 	}
 	if hasRetry {
 		node.Retry = retry

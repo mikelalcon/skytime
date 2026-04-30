@@ -121,13 +121,14 @@ func (n *Script) MarshalJSON() ([]byte, error) {
 }
 
 type forEachParallelJSON struct {
-	Kind          string       `json:"kind"`
-	ItemsLambdaID string       `json:"items_lambda_id,omitempty"`
-	ItemsLiteral  []any        `json:"items_literal,omitempty"`
-	ItemVar       string       `json:"item_var"`
-	Steps         []Node       `json:"steps"`
-	Retry         *RetryPolicy `json:"retry,omitempty"`
-	Timeout       *Timeout     `json:"timeout,omitempty"`
+	Kind           string       `json:"kind"`
+	ItemsLambdaID  string       `json:"items_lambda_id,omitempty"`
+	ItemsLiteral   []any        `json:"items_literal,omitempty"`
+	ItemVar        string       `json:"item_var"`
+	Steps          []Node       `json:"steps"`
+	MaxConcurrency int          `json:"max_concurrency,omitempty"` // D3-13 (Phase 3)
+	Retry          *RetryPolicy `json:"retry,omitempty"`
+	Timeout        *Timeout     `json:"timeout,omitempty"`
 }
 
 // MarshalJSON emits a ForEachParallel with a "kind":"ForEachParallel"
@@ -139,13 +140,14 @@ func (n *ForEachParallel) MarshalJSON() ([]byte, error) {
 		steps = []Node{}
 	}
 	return json.Marshal(forEachParallelJSON{
-		Kind:          n.Kind(),
-		ItemsLambdaID: n.ItemsLambdaID,
-		ItemsLiteral:  n.ItemsLiteral,
-		ItemVar:       n.ItemVar,
-		Steps:         steps,
-		Retry:         n.Retry,
-		Timeout:       n.Timeout,
+		Kind:           n.Kind(),
+		ItemsLambdaID:  n.ItemsLambdaID,
+		ItemsLiteral:   n.ItemsLiteral,
+		ItemVar:        n.ItemVar,
+		Steps:          steps,
+		MaxConcurrency: n.MaxConcurrency,
+		Retry:          n.Retry,
+		Timeout:        n.Timeout,
 	})
 }
 

@@ -58,6 +58,47 @@ func TestForEachParallel_Validate_RejectsNeither(t *testing.T) {
 	assert.Contains(t, err.Error(), "got neither")
 }
 
+// TestForEachParallel_MaxConcurrencyRoundTrip — D3-13: ForEachParallel.
+// MaxConcurrency is the optional fan-out cap. Zero means "use interpreter
+// default (10)" per D3-13. The field is JSON-tagged with omitempty so the
+// default value is omitted from golden output.
+func TestForEachParallel_MaxConcurrencyRoundTrip(t *testing.T) {
+	n := &ForEachParallel{
+		ItemsLiteral:   []any{"a", "b"},
+		ItemVar:        "i",
+		Steps:          []Node{},
+		MaxConcurrency: 5,
+	}
+	assert.Equal(t, 5, n.MaxConcurrency)
+
+	b, err := json.Marshal(n)
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(b, &got))
+	// JSON numbers come back as float64.
+	assert.Equal(t, float64(5), got["max_concurrency"],
+		"max_concurrency must be present in marshaled ForEachParallel JSON")
+}
+
+// TestForEachParallel_MaxConcurrencyDefaultZero asserts the zero-value
+// MaxConcurrency is 0 (interpreted as "use interpreter default") and is
+// omitted from JSON output via the omitempty tag.
+func TestForEachParallel_MaxConcurrencyDefaultZero(t *testing.T) {
+	n := &ForEachParallel{
+		ItemsLiteral: []any{"a"},
+		ItemVar:      "i",
+		Steps:        []Node{},
+	}
+	assert.Equal(t, 0, n.MaxConcurrency, "zero-value MaxConcurrency means interpreter default")
+
+	b, err := json.Marshal(n)
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(b, &got))
+	_, hasMaxConc := got["max_concurrency"]
+	assert.False(t, hasMaxConc, "zero-value MaxConcurrency must be omitted via omitempty")
+}
+
 // --- CallFlow ----------------------------------------------------------------
 
 func TestCallFlow_ResolvedStartsNil(t *testing.T) {

@@ -445,6 +445,58 @@ func TestBuiltinStep_TaskQueueKwarg_Valid(t *testing.T) {
 }
 
 // =============================================================================
+// D3-13 (backport): max_concurrency kwarg on for_each_parallel()
+// =============================================================================
+
+// TestBuiltinForEachParallel_MaxConcurrencyKwarg_Valid asserts the parser
+// threads for_each_parallel(..., max_concurrency=4) through to
+// dag.ForEachParallel.MaxConcurrency.
+func TestBuiltinForEachParallel_MaxConcurrencyKwarg_Valid(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", steps=[
+    for_each_parallel(items=[1,2,3], item="row", steps=[step(action=fake_ext.echo(msg="hi"))], max_concurrency=4),
+])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	fep, ok := flows["x"].Body[0].(*dag.ForEachParallel)
+	require.True(t, ok)
+	assert.Equal(t, 4, fep.MaxConcurrency,
+		"D3-13: for_each_parallel(..., max_concurrency=N) must thread to ForEachParallel.MaxConcurrency")
+}
+
+// TestBuiltinForEachParallel_MaxConcurrencyKwarg_Default asserts the
+// kwarg-omitted default of 0 (interpreter default — D3-13 says "10").
+func TestBuiltinForEachParallel_MaxConcurrencyKwarg_Default(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", steps=[
+    for_each_parallel(items=[1,2,3], item="row", steps=[step(action=fake_ext.echo(msg="hi"))]),
+])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	fep, ok := flows["x"].Body[0].(*dag.ForEachParallel)
+	require.True(t, ok)
+	assert.Equal(t, 0, fep.MaxConcurrency,
+		"omitted max_concurrency must default to 0 (interpreter applies D3-13 default of 10)")
+}
+
+// TestBuiltinForEachParallel_MaxConcurrencyNegativeRejected asserts the
+// parser rejects max_concurrency=-1 with a position-aware ParseError.
+// Zero is allowed (interpreter default); negative is invalid.
+func TestBuiltinForEachParallel_MaxConcurrencyNegativeRejected(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", steps=[
+    for_each_parallel(items=[1,2,3], item="row", steps=[step(action=fake_ext.echo(msg="hi"))], max_concurrency=-1),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	var pe *dag.ParseError
+	require.True(t, errors.As(err, &pe), "expected *dag.ParseError, got %T: %v", err, err)
+	assert.Contains(t, pe.Msg, "max_concurrency must be >= 0",
+		"D3-13: negative max_concurrency must surface a clear error")
+	require.True(t, pe.Pos.IsValid(), "error must carry a valid position")
+}
+
+// =============================================================================
 // finalize_test surface aliases (some via fixtures_test.go later)
 // =============================================================================
 

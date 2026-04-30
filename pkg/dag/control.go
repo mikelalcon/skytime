@@ -67,6 +67,12 @@ type ForEachParallel struct {
 	// Steps is the body executed per item.
 	Steps []Node
 
+	// MaxConcurrency is the optional fan-out cap per D3-13. Zero or negative
+	// is reserved — the parser rejects negatives at parse time, and zero
+	// means "use interpreter default (10)". Set via the parser's
+	// `for_each_parallel(..., max_concurrency=N)` kwarg.
+	MaxConcurrency int `json:"max_concurrency,omitempty"`
+
 	// Retry / Timeout are DSL-08 kwargs forwarded from for_each_parallel(...).
 	Retry   *RetryPolicy
 	Timeout *Timeout
