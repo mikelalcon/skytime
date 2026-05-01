@@ -67,7 +67,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **VAL-01**: `skytime validate <file.star>` parses and checks every flow without executing — verifies kwargs match each extension's declared schema, every input maps to a registered schema, every lambda's free variables reference declared state, and the lambda predeclared-global subset is honored
 - [ ] **VAL-02**: Static validation and runtime parsing share the same parser code path — a CI corpus test runs every `.star` file in `examples/` through both static `validate` and a dry-run interpreter (all actions mocked) and asserts they agree on accept/reject
-- [ ] **VAL-03**: Validation errors are formatted `<file>:<line>:<col> [flow > step > action]: <message>` and exit non-zero; `--debug` reveals Go internals only
+- [x] **VAL-03**: Validation errors are formatted `<file>:<line>:<col> [flow > step > action]: <message>` and exit non-zero; `--debug` reveals Go internals only
 
 ### E2E Test Harness (Tier 3)
 
@@ -83,7 +83,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **CLI-02**: `skytime run <file.star> --flow=<name> --input=<json>` parses, validates, and triggers a workflow on a configured Temporal cluster, then streams progress
 - [ ] **CLI-03**: `skytime test <dir>` discovers `.star` test files, runs the Tier 3 harness, and reports pass/fail with Starlark callsite errors
 - [ ] **CLI-04**: `skytime dev-server` spawns a local Temporal dev server (Temporalite or `temporal server start-dev`) for local development of the example project
-- [ ] **CLI-05**: The CLI lives under `cmd/skytime/`; cobra and charmbracelet/log are CLI-only dependencies — they are not reachable from the library root
+- [x] **CLI-05**: The CLI lives under `cmd/skytime/`; cobra and charmbracelet/log are CLI-only dependencies — they are not reachable from the library root
 
 ### Example Project (Dogfood + Demo)
 
@@ -186,12 +186,12 @@ Which phases cover which requirements. Populated during roadmap creation.
 | WORK-03 | Phase 3 | Complete |
 | VAL-01 | Phase 4 | Pending |
 | VAL-02 | Phase 4 | Pending |
-| VAL-03 | Phase 4 | Pending |
+| VAL-03 | Phase 4 | Complete |
 | CLI-01 | Phase 4 | Pending |
 | CLI-02 | Phase 4 | Pending |
 | CLI-03 | Phase 5 | Pending |
 | CLI-04 | Phase 4 | Pending |
-| CLI-05 | Phase 4 | Pending |
+| CLI-05 | Phase 4 | Complete |
 | TEST-01 | Phase 5 | Pending |
 | TEST-02 | Phase 5 | Pending |
 | TEST-03 | Phase 5 | Pending |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 4 context gathered
-last_updated: "2026-05-01T18:02:17.143Z"
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-05-01T19:57:52.169Z"
 last_activity: 2026-05-01
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 19
+  completed_plans: 13
   percent: 0
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-26)
 
 **Core value:** A consultant team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
-**Current focus:** Phase 03 — lambda-serialization-decision-interpreter-worker
+**Current focus:** Phase 04 — static-validation-tier-cli-skeleton
 
 ## Current Position
 
-Phase: 4
-Plan: Not started
+Phase: 04 (static-validation-tier-cli-skeleton) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
 Last activity: 2026-05-01
 
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03 P01 | 8min | 4 tasks | 16 files |
 | Phase 03 P02 | 10min | 4 tasks | 10 files |
 | Phase 03-lambda-serialization-decision-interpreter-worker P04 | 18min | 3 tasks | 13 files |
+| Phase 04 P01 | 5min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,10 @@ Recent decisions affecting current work:
 - [Phase 03-lambda-serialization-decision-interpreter-worker]: Plan 03-04: clientDialFunc + sdkWorkerNew package-level seams for tests; embedded-interface fakes guarded by var _ Iface = (*fake)(nil) compile-time assertions catch SDK additions at build time
 - [Phase 03-lambda-serialization-decision-interpreter-worker]: Plan 03-04: Worker.Stop sync.Once-wrapped against SDK's documented panic-on-double-Stop; bootRegistry sorts .star paths via sort.Strings before hash+parse for cross-platform determinism
 - [Phase 03-lambda-serialization-decision-interpreter-worker]: Plan 03-04: Parser.Lambdas() + Parser.Flows() accessors added as Rule 2 minimal Phase 1 backport — bootRegistry needs to enumerate accumulated state across multiple ParseFile invocations; lambda IDs globally unique (D-18) so single shared map across all ParsedFlow entries is correct
+- [Phase 04]: Plan 04-01: charm-log module path corrected — used charm.land/log/v2 (upstream rename) instead of plan's github.com/charmbracelet/log/v2; same v2.0.0 source
+- [Phase 04]: Plan 04-01: tools.go anchor pattern extended to cobra/charm.land-log/v2/x-term — preserves W0 'deps in go.mod from day one' criterion across go mod tidy
+- [Phase 04]: Plan 04-01: D4-04 ValidationError.Action field + segment-slice bracket rendering — bracket appears only when at least one of Flow/Step/Action is non-empty, legacy callers (Pos+Msg) keep original format
+- [Phase 04]: Plan 04-01: posFormatRe regex broadened (vs. replaced) to accept optional [...] segment — preserves Phase 1 fixture-test intent under D4-04 format and is forward-compatible to future bracket additions
 
 ### Pending Todos
 
@@ -123,6 +128,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-01T18:02:17.134Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-static-validation-tier-cli-skeleton/04-CONTEXT.md
+Last session: 2026-05-01T19:57:52.166Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: None
