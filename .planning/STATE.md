@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 03-02-PLAN.md (Wave 1: pkg/interpreter foundations — registry + cancel watchdog + SkytimeWorkflow skeleton)"
-last_updated: "2026-04-30T03:06:39.988Z"
-last_activity: 2026-04-30
+stopped_at: "Completed 03-04-PLAN.md (Wave 4: pkg/worker bootstrap + library-embed integration test). Phase 3 FEATURE-COMPLETE: INTRP-01..07 + WORK-01..03 all green."
+last_updated: "2026-05-01T02:07:29.841Z"
+last_activity: 2026-05-01
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 12
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 03 (lambda-serialization-decision-interpreter-worker) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
-Last activity: 2026-04-30
+Last activity: 2026-05-01
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -61,6 +61,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02 P03 | 50min | 3 tasks | 10 files |
 | Phase 03 P01 | 8min | 4 tasks | 16 files |
 | Phase 03 P02 | 10min | 4 tasks | 10 files |
+| Phase 03-lambda-serialization-decision-interpreter-worker P04 | 18min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,9 @@ Recent decisions affecting current work:
 - [Phase 03]: Plan 03-02: Per-call workflow.Go reader lifecycle in makeCancelChannel — accepted for v1 (no unbounded lambda evals); fallback paragraph inlined for plan 03-03 to evaluate during integration testing
 - [Phase 03]: Plan 03-02: Multi-version FlowRegistry shape (map[string]map[string]*ParsedFlow) over single-version — costs nothing, supports test fixtures registering same flow with different bytes; ContentHashFor zero/many → ('', false) forces clean call_flow errors
 - [Phase 03]: Plan 03-02: FINAL signature lock for newInterpreter via TestNewInterpreter_FinalSignature compile-time gate — plan 03-03 fills walker bodies only, no signature retrofit
+- [Phase 03-lambda-serialization-decision-interpreter-worker]: Plan 03-04: clientDialFunc + sdkWorkerNew package-level seams for tests; embedded-interface fakes guarded by var _ Iface = (*fake)(nil) compile-time assertions catch SDK additions at build time
+- [Phase 03-lambda-serialization-decision-interpreter-worker]: Plan 03-04: Worker.Stop sync.Once-wrapped against SDK's documented panic-on-double-Stop; bootRegistry sorts .star paths via sort.Strings before hash+parse for cross-platform determinism
+- [Phase 03-lambda-serialization-decision-interpreter-worker]: Plan 03-04: Parser.Lambdas() + Parser.Flows() accessors added as Rule 2 minimal Phase 1 backport — bootRegistry needs to enumerate accumulated state across multiple ParseFile invocations; lambda IDs globally unique (D-18) so single shared map across all ParsedFlow entries is correct
 
 ### Pending Todos
 
@@ -119,6 +123,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-30T03:06:39.985Z
-Stopped at: Completed 03-02-PLAN.md (Wave 1: pkg/interpreter foundations — registry + cancel watchdog + SkytimeWorkflow skeleton)
+Last session: 2026-05-01T02:07:29.838Z
+Stopped at: Completed 03-04-PLAN.md (Wave 4: pkg/worker bootstrap + library-embed integration test). Phase 3 FEATURE-COMPLETE: INTRP-01..07 + WORK-01..03 all green.
 Resume file: None

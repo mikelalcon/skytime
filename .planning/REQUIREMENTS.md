@@ -60,8 +60,8 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Worker & Temporal Compatibility
 
 - [x] **WORK-01**: A worker bootstrap function registers `SkytimeWorkflow` and `ExecuteBatch` with one Temporal worker
-- [ ] **WORK-02**: One client factory handles three Temporal connection variants — Temporal Cloud (API key + TLS), self-hosted with mTLS, and local dev-server (TLS off) — surfacing the v1.39 TLS-with-API-key default change in exactly one place
-- [ ] **WORK-03**: A consumer Go service can embed Skytime as a library: `import` packages, register extensions, call `worker.Run(client, flowDir)` — no service binary or framework required
+- [x] **WORK-02**: One client factory handles three Temporal connection variants — Temporal Cloud (API key + TLS), self-hosted with mTLS, and local dev-server (TLS off) — surfacing the v1.39 TLS-with-API-key default change in exactly one place
+- [x] **WORK-03**: A consumer Go service can embed Skytime as a library: `import` packages, register extensions, call `worker.Run(client, flowDir)` — no service binary or framework required
 
 ### Static Validation (Tier 1)
 
@@ -182,8 +182,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | INTRP-06 | Phase 3 | Complete |
 | INTRP-07 | Phase 3 | Complete |
 | WORK-01 | Phase 3 | Complete |
-| WORK-02 | Phase 3 | Pending |
-| WORK-03 | Phase 3 | Pending |
+| WORK-02 | Phase 3 | Complete |
+| WORK-03 | Phase 3 | Complete |
 | VAL-01 | Phase 4 | Pending |
 | VAL-02 | Phase 4 | Pending |
 | VAL-03 | Phase 4 | Pending |

@@ -68,8 +68,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 4 plans
   - [x] 03-01-PLAN.md — Wave 0: DSL retrofit (task_queue kwarg) + WorkflowInput rewrite (D3-04) + Phase 2 firewall expansion to allowlist pkg/interpreter + pkg/worker
   - [x] 03-02-PLAN.md — Wave 1: pkg/interpreter foundations — package skeleton + FlowRegistry + cancellation watchdog (D3-21) + SkytimeWorkflow skeleton with walker stubs
-  - [ ] 03-03-PLAN.md — Wave 2: All five node walkers (Step / IfCond / Script / ForEachParallel / CallFlow) + lambda eval helper + replay-twice integration test (kitchen sink)
-  - [ ] 03-04-PLAN.md — Wave 3: pkg/worker bootstrap + three named client constructors (D3-17) + Build ID (D3-20) + library-embed integration test (WORK-03)
+  - [x] 03-03-PLAN.md — Wave 2: All five node walkers (Step / IfCond / Script / ForEachParallel / CallFlow) + lambda eval helper + replay-twice integration test (kitchen sink)
+  - [x] 03-04-PLAN.md — Wave 3: pkg/worker bootstrap + three named client constructors (D3-17) + Build ID (D3-20) + library-embed integration test (WORK-03)
 **UI hint**: no
 
 ### Phase 4: Static Validation Tier + CLI Skeleton
@@ -119,7 +119,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Type Spine + Extension Contract + Parser/Bridge Foundations | 5/5 | Complete   | 2026-04-27 |
 | 2. Generic Activity + Block-Batch Dispatch + Credentials | 2/3 | In Progress|  |
-| 3. Lambda-Serialization Decision + Interpreter + Worker | 0/4 | Not started | - |
+| 3. Lambda-Serialization Decision + Interpreter + Worker | 3/4 | In Progress|  |
 | 4. Static Validation Tier + CLI Skeleton | 0/TBD | Not started | - |
 | 5. Tier-3 E2E Test Harness (`temporal_test`) | 0/TBD | Not started | - |
 | 6. Example Project (HTTP + GitHub + Slack) | 0/TBD | Not started | - |
