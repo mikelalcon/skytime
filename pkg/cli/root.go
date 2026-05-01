@@ -10,10 +10,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewRootCommand constructs the skytime root command with the validate
-// and run subcommands wired (dev-server lands in W4 plan 04-06).
-// Options follow the per-instance pattern from D-07: no globals, no
-// init() side effects.
+// NewRootCommand constructs the skytime root command with the validate,
+// run, and dev-server subcommands wired. Options follow the
+// per-instance pattern from D-07: no globals, no init() side effects.
 //
 // Returns (*cobra.Command, error) so option failures (e.g., a
 // misconfigured handler) surface explicitly to the caller.
@@ -52,7 +51,7 @@ func NewRootCommand(opts ...Option) (*cobra.Command, error) {
 
 	root.AddCommand(newValidateCommand(cfg))
 	root.AddCommand(newRunCommand(cfg))
-	// dev-server lands in W4 plan 04-06.
+	root.AddCommand(newDevServerCommand(cfg))
 
 	return root, nil
 }

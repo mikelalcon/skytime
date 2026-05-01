@@ -80,7 +80,9 @@ func TestDevServerCmd_Spawn(t *testing.T) {
 // signal.Notify is called but the forwarding goroutine never runs.
 //
 // Strategy:
-//   1. Override lookPath to point at /bin/sleep.
+//   1. Override lookPath to a temp shell script that ignores its args
+//      and sleeps for 10s — keeps the subprocess alive long enough
+//      for the test to observe testRunningCmd.
 //   2. Kick off RunE in a goroutine.
 //   3. Wait for testRunningCmd to be set (W-8 seam in dev_server.go).
 //   4. Dispatch SIGINT directly at testRunningCmd.Process — NOT at
@@ -93,14 +95,22 @@ func TestDevServerCmd_SignalForward(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("os.Interrupt not deliverable to subprocesses on Windows per Go docs")
 	}
-	sleepBin, err := exec.LookPath("sleep")
-	if err != nil {
-		t.Skip("/bin/sleep not on PATH; cannot run signal-forward behavioral test")
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("/bin/sh not on PATH; cannot run signal-forward behavioral test")
 	}
+
+	// dev_server.go ALWAYS prepends "server start-dev" to args. We
+	// need a long-running fake binary that ignores all arguments —
+	// /bin/sleep would reject "server"/"start-dev" as non-numeric and
+	// exit immediately, racing the seam observation. A tiny wrapper
+	// script that ignores $@ and sleeps does the job.
+	dir := t.TempDir()
+	script := dir + "/fake_temporal.sh"
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nexec sleep 10\n"), 0o755))
 
 	original := lookPath
 	defer func() { lookPath = original }()
-	lookPath = func(_ string) (string, error) { return sleepBin, nil }
+	lookPath = func(_ string) (string, error) { return script, nil }
 
 	ctx := context.Background()
 	cfg := &config{}
@@ -110,19 +120,17 @@ func TestDevServerCmd_SignalForward(t *testing.T) {
 	cmd.SetErr(&stderr)
 	cmd.SetContext(ctx)
 
-	// Run dev-server with `10` as the only extra arg. The exec'd
-	// command line is `/bin/sleep server start-dev 10` — sleep
-	// typically rejects "server" as not a duration and exits
-	// immediately. That's fine: the test only needs testRunningCmd
-	// to be set BRIEFLY so we can grab a Process handle.
+	// Run dev-server with one extra arg (ignored by the wrapper).
 	done := make(chan error, 1)
 	go func() {
-		done <- cmd.RunE(cmd, []string{"10"})
+		done <- cmd.RunE(cmd, []string{"--ignored"})
 	}()
 
-	// Wait up to 500ms for testRunningCmd to be set, then dispatch
-	// SIGINT at the SUBPROCESS — not at the test process.
-	deadline := time.Now().Add(500 * time.Millisecond)
+	// Wait up to 1s for testRunningCmd to be set, then dispatch
+	// SIGINT at the SUBPROCESS — not at the test process. The
+	// wrapper is a shell that exec's sleep, so this signal lands
+	// in the long-running sleep child.
+	deadline := time.Now().Add(1 * time.Second)
 	var sub *exec.Cmd
 	for time.Now().Before(deadline) {
 		if testRunningCmd != nil {
@@ -133,16 +141,18 @@ func TestDevServerCmd_SignalForward(t *testing.T) {
 	}
 	require.NotNil(t, sub, "testRunningCmd never set — RunE did not reach the post-Start seam")
 	// Signal directly at the subprocess; ignore error (process may
-	// have already exited because of bad sleep args).
+	// have already exited).
 	_ = sub.Process.Signal(os.Interrupt)
 
-	// RunE must return within 1s.
+	// RunE must return within 2s.
 	select {
 	case <-done:
-		// Either the SIGINT-forwarded path or sleep's own exit ended
-		// RunE — both are acceptable proofs that the seam is wired.
-	case <-time.After(1 * time.Second):
-		t.Fatal("RunE did not return within 1s of SIGINT — forwarding likely broken")
+		// SIGINT propagated to the subprocess, sub.Wait returned,
+		// RunE unblocked. The seam is wired.
+	case <-time.After(2 * time.Second):
+		// Defensive cleanup so we don't leak the subprocess.
+		_ = sub.Process.Kill()
+		t.Fatal("RunE did not return within 2s of SIGINT — forwarding likely broken")
 	}
 }
 
