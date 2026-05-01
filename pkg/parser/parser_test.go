@@ -266,3 +266,28 @@ func TestWrapStarlarkError_SyntaxError(t *testing.T) {
 	require.True(t, errors.As(parseErr, &pe))
 	assert.True(t, pe.Pos.IsValid(), "syntax errors must preserve their position")
 }
+
+// ============================================================================
+// TestParser_FileBytes — Phase 4 D4-02 / RESEARCH §Pattern 3
+// ============================================================================
+
+// TestParser_FileBytes_PopulatedAfterParseSource asserts that the FileBytes()
+// accessor exposes the cached file bytes after ParseSource has run. The
+// accessor is load-bearing for plan 04-02's AST re-parse strategy:
+// *starlark.Function does NOT retain its AST after compilation, so the
+// validator must re-parse the cached source bytes via syntax.Parse to
+// recover *syntax.LambdaExpr / *syntax.DefStmt nodes for the ctx.<name>
+// attribute walk.
+func TestParser_FileBytes_PopulatedAfterParseSource(t *testing.T) {
+	p, err := NewParser()
+	require.NoError(t, err)
+	require.Empty(t, p.FileBytes(), "expected empty before parse")
+
+	src := []byte("# minimal source — no flow needed for FileBytes\n")
+	_, _ = p.ParseSource("test.star", src) // ignore parse error; we only assert caching
+
+	bytes := p.FileBytes()
+	require.NotEmpty(t, bytes, "expected fileBytes populated after ParseSource")
+	require.Contains(t, bytes, "test.star")
+	assert.Equal(t, src, bytes["test.star"])
+}
