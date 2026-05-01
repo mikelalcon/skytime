@@ -133,8 +133,8 @@ func TestDevServerCmd_SignalForward(t *testing.T) {
 	deadline := time.Now().Add(1 * time.Second)
 	var sub *exec.Cmd
 	for time.Now().Before(deadline) {
-		if testRunningCmd != nil {
-			sub = testRunningCmd
+		if cur := testRunningCmd.Load(); cur != nil {
+			sub = cur
 			break
 		}
 		time.Sleep(10 * time.Millisecond)

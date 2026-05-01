@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -20,8 +21,9 @@ var lookPath = exec.LookPath
 // inside RunE just after sub.Start() and clears it on RunE return via
 // defer. Tests (TestDevServerCmd_SignalForward) read this to dispatch
 // signals directly at the running subprocess. Nil when no subprocess
-// is live.
-var testRunningCmd *exec.Cmd
+// is live. Atomic so the test goroutine can poll without racing the
+// RunE goroutine that owns the write.
+var testRunningCmd atomic.Pointer[exec.Cmd]
 
 // newDevServerCommand returns the skytime dev-server subcommand.
 //
@@ -66,8 +68,8 @@ func newDevServerCommand(cfg *config) *cobra.Command {
 			// signal to the SUBPROCESS rather than to the test process.
 			// Production sets and reads through this seam too — there's
 			// no behavior difference, only test observability.
-			testRunningCmd = sub
-			defer func() { testRunningCmd = nil }()
+			testRunningCmd.Store(sub)
+			defer testRunningCmd.Store(nil)
 
 			// Signal forwarding goroutine. Stops when sub.Wait returns
 			// and we close the sigCh via signal.Stop + close.
