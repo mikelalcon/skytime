@@ -11,7 +11,7 @@ import (
 )
 
 // NewRootCommand constructs the skytime root command with the validate
-// subcommand wired (run + dev-server land in W4 — plans 04-05 / 04-06).
+// and run subcommands wired (dev-server lands in W4 plan 04-06).
 // Options follow the per-instance pattern from D-07: no globals, no
 // init() side effects.
 //
@@ -51,7 +51,8 @@ func NewRootCommand(opts ...Option) (*cobra.Command, error) {
 	}
 
 	root.AddCommand(newValidateCommand(cfg))
-	// run + dev-server land in W4 — root.AddCommand wired by 04-05 / 04-06.
+	root.AddCommand(newRunCommand(cfg))
+	// dev-server lands in W4 plan 04-06.
 
 	return root, nil
 }
