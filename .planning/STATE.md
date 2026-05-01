@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-05-01T20:20:09.056Z"
+stopped_at: Completed 04-04-PLAN.md
+last_updated: "2026-05-01T20:29:53.857Z"
 last_activity: 2026-05-01
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 19
-  completed_plans: 15
+  completed_plans: 16
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04 (static-validation-tier-cli-skeleton) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
 Last activity: 2026-05-01
 
@@ -65,6 +65,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04 P01 | 5min | 3 tasks | 10 files |
 | Phase 04 P02 | 6min | 3 tasks | 8 files |
 | Phase 04 P03 | 7min | 3 tasks | 8 files |
+| Phase 04 P04 | 5min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -126,6 +127,11 @@ Recent decisions affecting current work:
 - [Phase 04]: Plan 04-03: validator.Validate returns empty (non-nil) []error on success — empty slice signals 'no errors' unambiguously and lets future multi-error reporting append without forcing callers to switch from nil-check to make([]error, 0)
 - [Phase 04]: Plan 04-03: AlwaysOkDispatch shallow-copies OperationSpec and replaces ONLY Func — preserves Name/Idempotent/KwargsType/DefaultTimeout so the activity layer's DecodeKwargsFromDict path still fires on bad inputs. Phase 5's Starlark mock harness will reuse this dispatch-replacement seam shape.
 - [Phase 04]: Plan 04-03: TestDifferentialCorpus skip-on-empty is REQUIRED behavior — W2 differential infrastructure ships before W4 corpus by design. Test t.Skip()s when examples/skeleton/ doesn't exist OR has no .star files; activates automatically when W4 plan 04-07 lands fixtures.
+- [Phase 04]: Plan 04-04: Charm-log color-profile symbol corrected — charmlog.AsciiProfile does not exist; SetColorProfile takes a github.com/charmbracelet/colorprofile.Profile. Imported colorprofile and used colorprofile.ASCII (Rule 3 deviation). go mod tidy promoted charmbracelet/colorprofile from indirect to direct require.
+- [Phase 04]: Plan 04-04: Cobra SilenceErrors+SilenceUsage on root + errSilent sentinel in validate RunE — D4-18 split: renderer owns output (typed dag.{ParseError,ValidationError} via errors.As; --debug walks Unwrap chain), cobra owns exit status (returns errSilent → non-zero exit without re-print).
+- [Phase 04]: Plan 04-04: Table-driven envBinding (flag/envVar/target *string) over per-flag if-block ladder — six SKYTIME_TEMPORAL_* fallbacks share identical 'if !Lookup(flag).Changed && env != "" → cfg.target = env' rule; one row per future flag.
+- [Phase 04]: Plan 04-04: Stub-then-fill TDD across multi-task plans — Task 1 ships render/validate stubs so root.go compiles and TestPkgCli_ImportsCobra activates immediately; Task 2 fills renderer; Task 3 fills validate. Each TDD cycle (RED+GREEN) stays atomic across the plan.
+- [Phase 04]: Plan 04-04: D4-16 hint heuristic accepts both 'undefined:' (Starlark resolver wording, current surface) AND 'unknown extension' (forward-compatible for a future parser refactor) — either substring match in lowered ParseError.Msg → docs/cli-binary.md hint.
 
 ### Pending Todos
 
@@ -138,6 +144,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-01T20:20:09.052Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-05-01T20:29:53.854Z
+Stopped at: Completed 04-04-PLAN.md
 Resume file: None
