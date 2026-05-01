@@ -113,7 +113,25 @@ func TestNewWorker_PassesBuildIDToSDK(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "v42", capturedOpts.BuildID)
-	assert.True(t, capturedOpts.UseBuildIDForVersioning, "UseBuildIDForVersioning must be true when BuildID is set")
+	assert.False(t, capturedOpts.UseBuildIDForVersioning,
+		"UseBuildIDForVersioning is opt-in at the SDK boundary too — setting BuildID alone must NOT auto-enable versioning")
+}
+
+func TestNewWorker_OptInVersioningPropagatesToSDK(t *testing.T) {
+	_, capturedOpts, _, cleanup := withFakeSDKWorker(t)
+	defer cleanup()
+
+	dir := makeFlowsDir(t)
+	_, err := NewWorker(&fakeClient{}, WorkerOptions{
+		RootDir:              dir,
+		BuildID:              "v42",
+		UseBuildIDVersioning: true,
+		CredentialHandler:    noopHandler{},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "v42", capturedOpts.BuildID)
+	assert.True(t, capturedOpts.UseBuildIDForVersioning,
+		"explicit UseBuildIDVersioning=true must be propagated to sdkworker.Options.UseBuildIDForVersioning")
 }
 
 func TestNewWorker_PassesTaskQueueToSDK(t *testing.T) {

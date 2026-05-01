@@ -59,9 +59,20 @@ type WorkerOptions struct {
 	// TaskQueue is the worker's task queue name. Empty → "skytime".
 	TaskQueue string
 
-	// UseBuildIDVersioning toggles worker-level versioning. When true (and
-	// BuildID is set), Temporal pins workflows to compatible Build IDs.
-	// Default true when BuildID is non-empty.
+	// UseBuildIDVersioning toggles worker-level Build ID versioning.
+	//
+	// Opt-in. When true, Temporal pins workflows to compatible Build IDs
+	// — the caller must register a Build ID compatibility set on the
+	// task queue FIRST via `temporal task-queue
+	// update-worker-build-id-compatibility` (or the equivalent SDK
+	// call). A versioned worker against a task queue with no
+	// compatibility set registered will receive zero task dispatches and
+	// workflows will hang.
+	//
+	// Default false: dev workers and one-shot CLI runs (`skytime run`,
+	// `skytime dev-server`) work out of the box. Production long-running
+	// workers explicitly set this to true once Build ID sets are
+	// configured for the task queue.
 	UseBuildIDVersioning bool
 
 	// Extensions is the static extension list for parser registration at
@@ -92,10 +103,6 @@ func (o *WorkerOptions) applyDefaults() error {
 	}
 	if o.TaskQueue == "" {
 		o.TaskQueue = defaultTaskQueue
-	}
-	if o.BuildID != "" && !o.UseBuildIDVersioning {
-		// Auto-enable versioning when a BuildID is set (sensible default).
-		o.UseBuildIDVersioning = true
 	}
 	return nil
 }
