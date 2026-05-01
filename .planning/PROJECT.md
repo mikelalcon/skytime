@@ -24,18 +24,23 @@ A consultant team can take an extension catalog and a customer brief, write a `.
 - ✓ Block-batched I/O: idempotent batches share one activity invocation; mixed batches rejected at parse time (Policy D) — Phase 2
 - ✓ Just-in-time credential resolution inside the activity with per-worker TTL cache + retry-aware bypass — Phase 2
 - ✓ Type-level secret protection via `Secret` wrapper (`String`/`GoString`/`MarshalJSON`/`MarshalText`/`Format` redact; explicit `.Reveal()` for unwrap) — Phase 2 (replaced original regex-scrubber design)
-- ✓ Architectural firewall: only `pkg/activity` may import `go.temporal.io/sdk/...`; enforced by AST-walking firewall test + inversion-bug meta-test — Phase 2
+- ✓ Architectural firewall: only `pkg/activity` may import `go.temporal.io/sdk/...`; enforced by AST-walking firewall test + inversion-bug meta-test — Phase 2 (allow-list expanded to `[activity, interpreter, worker]` in Phase 3)
+- ✓ Generic Temporal interpreter (`SkytimeWorkflow`) that walks any `dag.Flow`; five node walkers (step / if_cond / script / for_each_parallel / call_flow); `if_cond` and `script` produce ZERO Temporal history events; `workflowcheck`-clean — Phase 3
+- ✓ Lambda serialization: Option B (re-parse on workflow start with content-hash-keyed registry); only `LambdaID` strings cross history; versioning handled operationally via Temporal Build IDs — Phase 3
+- ✓ Cancellation watchdog wires `workflow.Context.Done()` to `thread.Cancel` via native `chan struct{}` bridge with `sync.Once`-wrapped close; lambdas never see `workflow.Context` — Phase 3
+- ✓ `for_each_parallel` with bounded fan-out (default 10), errgroup-style cancel-siblings on non-retryable, stable index-order results — Phase 3
+- ✓ `call_flow` invokes Temporal child workflow; parent's RetryPolicy and `TypedSearchAttributes` propagate to children — Phase 3
+- ✓ Worker bootstrap with three named client constructors (`NewCloudClient` / `NewSelfHostedClient` / `NewDevClient`); filesystem registry boot from `--rootdir` with frozen-after-boot semantics; `Worker.Stop` `sync.Once`-wrapped against double-call panic — Phase 3
+- ✓ Build ID-based versioning with build-time-injected default (`-ldflags "-X .../defaultBuildID=$(git rev-parse HEAD)"`); WorkflowInput on the wire is `{FlowName, ContentHash, InitState}` — Phase 3
+- ✓ DSL retrofits for runtime: `task_queue` kwarg on `flow()` and `step()` (precedence step > flow > worker default); `max_concurrency` kwarg on `for_each_parallel()` — Phase 3
 
 ### Active
 
-- [ ] Generic Temporal interpreter (`SkytimeWorkflow`) that walks the DAG, evaluates lambdas natively, and dispatches via the Phase 2 activity
-- [ ] Lambda serialization mechanism (custom `DataConverter` vs. re-parse-on-start) — phase-blocking decision in Phase 3
-- [ ] Worker bootstrap supporting Temporal Cloud / self-hosted-mTLS / dev-server connection variants
 - [ ] Static validation tier — `skytime validate` shares the parser with the runtime via differential corpus testing
 - [ ] Starlark E2E testing tier — `temporal_test` builtin that bridges Temporal `testsuite` mocks back to Starlark lambdas, with `attempt` count for retry simulation
 - [ ] CLI for triggering and inspecting flows during development
 - [ ] Example project with HTTP + GitHub + Slack extensions exercising every primitive (retries, credentials, parallel for-each, child workflow)
-- [ ] Compatibility with Temporal Cloud and self-hosted Temporal clusters (BYO cluster, plus dev-server helper for examples)
+- [ ] Compatibility with Temporal Cloud and self-hosted Temporal clusters (BYO cluster, plus dev-server helper for examples) — verified by Phase 3's three named client constructors; example project (Phase 6) demonstrates end-to-end
 
 ### Out of Scope
 
@@ -80,7 +85,12 @@ A consultant team can take an extension catalog and a customer brief, write a `.
 | Static or dynamic-local Go extensions only in v1 | Plugins/gRPC add complexity that isn't justified before we have one real customer | — Pending |
 | Hot-reload deferred but not precluded | Useful eventually; designing the parser as a pure function of file contents leaves the door open | ✓ Good — `Parser.Parse` is a pure function of file contents (Phase 1) |
 | `Extension.Initialize` returns a `*starlarkstruct.Module` once per parser at Register time | The user authoring example `gh = github.endpoint("admin")` requires `github` to be a namespace with attributes, not a callable. Resolved via the module-attribute pattern | ✓ Good — verified end-to-end in Phase 1 (Plan 01-05 fixture 07) |
-| Lambda IDs use `sha256(fileBytes)` prefix, not canonicalized AST | Cosmetic edits (whitespace, comments) intentionally invalidate IDs; simpler than canonicalization and acceptable for the v1 use case | — Pending — Phase 3 must work with this ID format when picking a serialization strategy |
+| Lambda IDs use `sha256(fileBytes)` prefix, not canonicalized AST | Cosmetic edits (whitespace, comments) intentionally invalidate IDs; simpler than canonicalization and acceptable for the v1 use case | ✓ Good — Phase 3 picked Option B (re-parse on workflow start) which composes cleanly with content-hash IDs; Build IDs handle versioning operationally |
+| Lambda serialization via re-parse on workflow start (Option B) + Build IDs | No custom DataConverter needed; only LambdaID strings cross history; "fix a .star bug" handled by Temporal's Worker Versioning mechanism (drain old workers gradually) | ✓ Good — wired in Phase 3 with content-hash-keyed FlowRegistry frozen at boot; verified by replay-twice test |
+| Cancellation watchdog bridges `workflow.Channel` → native `chan struct{}` via `workflow.Go` reader with `sync.Once`-wrapped close | Trickiest piece in v1: lambdas eval synchronously on the main workflow goroutine and need an interrupt mechanism without seeing `workflow.Context` | ✓ Good — integration tests (Wave 3) showed no flakiness; documented fallback to "pre-eval `ctx.Err()` only" not needed |
+| Mixed-idempotency block rejection at parse time (Policy D) keeps interpreter dumb | Phase 3 interpreter never sees mixed batches; no splitting logic required | ✓ Good — composes with Phase 2's defensive activity-side rejection |
+| Three named client constructors over one ConnectionOptions struct | More discoverable in IDE autocomplete; v1.39 TLS-with-API-key change handled in `NewCloudClient` only | ✓ Good — verified by `TestClientConstructors` |
+| `Worker.Stop` `sync.Once`-wrapped against double-call panic | Pitfall #5: Temporal SDK's worker.Stop panics on second call; defensive wrap at the Skytime boundary | ✓ Good — `TestWorker_StopIsIdempotent` verifies |
 | Idempotent declaration is a `*bool` field with nil-check at registration (D-12) | Forces extension authors to make a conscious choice; nil = registration error | ✓ Good — verified by `errors.Is(err, ErrIdempotentRequired)` test in Phase 1 |
 | Mixed-idempotency blocks rejected at parse time (Policy D, Phase 2) | "Make wrong things impossible" — keeps activity dumb and homogeneous; consultant gets a friendly fix-suggestion error at parse time instead of a runtime surprise | ✓ Good — verified by `TestLinter_MixedIdempotency_*` and defensive activity-side test |
 | Type-level secret protection via `Secret` wrapper (no regex scrubber, ACT-05 amended) | Java-style `toString` redaction via Go `Stringer` + Format/MarshalJSON; `.Reveal()` is greppable for audit. Regex deferred — additive in v1.x if a customer incident proves it needed | — Pending — first real customer with a leaky third-party SDK will tell us if regex is needed |
@@ -104,4 +114,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-28 after Phase 2 completion*
+*Last updated: 2026-05-01 after Phase 3 completion*
