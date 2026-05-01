@@ -2,8 +2,12 @@ package parser
 
 import (
 	"fmt"
+	"reflect"
+
+	"go.starlark.net/syntax"
 
 	"github.com/mikelalcon/skytime/pkg/dag"
+	"github.com/mikelalcon/skytime/pkg/extension"
 )
 
 // finalize runs after starlark.ExecFileOptions returns. It executes the
@@ -102,9 +106,89 @@ func (p *Parser) walkResolveCallFlows(body []dag.Node) error {
 	return nil
 }
 
-// validateActionRefKwargs is a no-op in Phase 1. Documentation in
-// finalize() above explains why: extension factories validate at
-// construction time. Phase 4 will plug a static validator here.
+// validateActionRefKwargs is the D-11 cross-validate (defense in depth).
+// The per-call extension factory already runs UnpackOperationKwargs at
+// *starlark.Builtin invocation time; this finalize pass re-validates every
+// dag.ActionRef.Kwargs against its registered OperationSpec via
+// extension.DecodeKwargsFromDict — catching hand-built ActionRefs (test
+// fixtures, future programmatic callers) where the per-call factory was
+// bypassed.
+//
+// First error short-circuits per finalize-pass convention. Errors are
+// *dag.ValidationError with Flow + Action populated (Action = "ext.op"
+// per D4-04). Pos comes from the enclosing Step.Pos because ActionRef
+// itself doesn't carry a parse-time syntax.Position from this code path —
+// the extension factory's ActionRef.Pos is the closest analogue but isn't
+// always populated when callers hand-build, and the Step is the only
+// guaranteed-present syntax-tree node enclosing the ActionRef.
 func (p *Parser) validateActionRefKwargs() error {
+	for _, flow := range p.flows {
+		if err := p.walkValidateActionRefKwargs(flow.Name, flow.Body); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// walkValidateActionRefKwargs is the recursive helper for
+// validateActionRefKwargs. Mirrors walkLintMixedIdempotency /
+// walkLintBlockSize / walkBodyForCtxValidation for grep-friendly
+// recursion uniformity.
+func (p *Parser) walkValidateActionRefKwargs(flowName string, body []dag.Node) error {
+	for _, node := range body {
+		switch n := node.(type) {
+		case *dag.Step:
+			for _, ar := range n.Actions {
+				if err := p.crossValidateActionRef(flowName, n.Pos, ar); err != nil {
+					return err
+				}
+			}
+		case *dag.IfCond:
+			if err := p.walkValidateActionRefKwargs(flowName, n.Then); err != nil {
+				return err
+			}
+			if err := p.walkValidateActionRefKwargs(flowName, n.Else); err != nil {
+				return err
+			}
+		case *dag.ForEachParallel:
+			if err := p.walkValidateActionRefKwargs(flowName, n.Steps); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// crossValidateActionRef cross-validates a single ActionRef. Defensive
+// skips: unparseable Kind_, unknown extension, unknown operation, nil
+// KwargsType — all silently bypassed because earlier passes already
+// surface these conditions with better attribution. The point of this
+// pass is to catch SCHEMA mismatches that slipped through the per-call
+// factory.
+func (p *Parser) crossValidateActionRef(flowName string, stepPos syntax.Position, ar *dag.ActionRef) error {
+	extName, opName, ok := splitKind(ar.Kind_)
+	if !ok {
+		return nil
+	}
+	ext, ok := p.registry.Get(extName)
+	if !ok {
+		return nil
+	}
+	spec, ok := ext.Operations()[opName]
+	if !ok || spec == nil || spec.KwargsType == nil {
+		return nil
+	}
+	// reflect.New returns a *T pointing at a zero T; DecodeKwargsFromDict
+	// requires a non-nil pointer to struct.
+	target := reflect.New(spec.KwargsType).Interface()
+	if err := extension.DecodeKwargsFromDict(opName, ar.Kwargs, target); err != nil {
+		return &dag.ValidationError{
+			Pos:     stepPos,
+			Flow:    flowName,
+			Action:  ar.Kind_,
+			Msg:     fmt.Sprintf("kwarg cross-validate: %v", err),
+			Wrapped: err,
+		}
+	}
 	return nil
 }
