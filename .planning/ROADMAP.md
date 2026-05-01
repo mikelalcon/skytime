@@ -84,7 +84,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   5. The `--debug` flag is the only path that reveals Go internals in error output; default error rendering is Starlark-first
 **Plans**: 7 plans
   - [x] 04-01-PLAN.md — Wave 0: Add cobra/charmlog deps + AST firewall extension + ValidationError.Action field + Parser.FileBytes() accessor + empty pkg/cli + pkg/validator + pkg/extension/builtin/http skeletons
-  - [ ] 04-02-PLAN.md — Wave 1: D4-02 ctx.<name> AST visitor (re-parse via syntax.FileOptions.Parse) + state-schema accumulator + finalize wiring + D-11 kwarg cross-validate
+  - [x] 04-02-PLAN.md — Wave 1: D4-02 ctx.<name> AST visitor (re-parse via syntax.FileOptions.Parse) + state-schema accumulator + finalize wiring + D-11 kwarg cross-validate
   - [ ] 04-03-PLAN.md — Wave 2: pkg/validator thin facade + AlwaysOkDispatch (pkg/validator/internal/dryrun) + TestDifferentialCorpus (skip-on-empty until W4 lands corpus)
   - [ ] 04-04-PLAN.md — Wave 3: pkg/cli root command + persistent flags + env-var binding + Starlark-first renderer + charm-log slog handler + skytime validate subcommand
   - [ ] 04-05-PLAN.md — Wave 4: skytime run subcommand (embedded transient worker) + connectClient variant routing + progressHandler slog shim + temporal-firewall allow-list extension for pkg/cli

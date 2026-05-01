@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-05-01T19:57:52.169Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-05-01T20:09:16.035Z"
 last_activity: 2026-05-01
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 19
-  completed_plans: 13
+  completed_plans: 14
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04 (static-validation-tier-cli-skeleton) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-05-01
 
@@ -63,6 +63,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03 P02 | 10min | 4 tasks | 10 files |
 | Phase 03-lambda-serialization-decision-interpreter-worker P04 | 18min | 3 tasks | 13 files |
 | Phase 04 P01 | 5min | 3 tasks | 10 files |
+| Phase 04 P02 | 6min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,10 @@ Recent decisions affecting current work:
 - [Phase 04]: Plan 04-01: tools.go anchor pattern extended to cobra/charm.land-log/v2/x-term — preserves W0 'deps in go.mod from day one' criterion across go mod tidy
 - [Phase 04]: Plan 04-01: D4-04 ValidationError.Action field + segment-slice bracket rendering — bracket appears only when at least one of Flow/Step/Action is non-empty, legacy callers (Pos+Msg) keep original format
 - [Phase 04]: Plan 04-01: posFormatRe regex broadened (vs. replaced) to accept optional [...] segment — preserves Phase 1 fixture-test intent under D4-04 format and is forward-compatible to future bracket additions
+- [Phase 04]: Plan 04-02: D4-02 ctx.<name> walker re-parses cached file bytes via Parser.FileBytes() — *starlark.Function discards AST after compilation per RESEARCH critical finding; findCtxAccesses + (*syntax.FileOptions).Parse + position match by (Filename, Line, Col) is the load-bearing primitive
+- [Phase 04]: Plan 04-02: stateSet clone-on-fork accumulator pins D4-02 stacking — flow inputs at entry, += script.OutputAlias after each, += for_each.ItemVar inside Steps, if_cond branches see same pre-branch state; ItemsLambdaID validated against pre-loop state (cannot see own item-var)
+- [Phase 04]: Plan 04-02: validateActionRefKwargs cross-validate uses Step.Pos (not ActionRef.Pos) — ActionRef.Pos may be zero on hand-built refs; enclosing Step is the closest guaranteed-present syntax-tree node. Pass ordering D4-02 BEFORE D-11 cross-validate so structural state errors surface before kwarg-shape errors
+- [Phase 04]: Plan 04-02: Rule 1 fixture-alignment fix — TestFreeVars_ModuleConstAllowed/ModuleLevelDefAllowed updated from inputs={} to inputs={"v":"int"} so D4-02 (now stricter) accepts ctx.v references; D-19 invariant under test (module-level free vars allowed) preserved unchanged
 
 ### Pending Todos
 
@@ -128,6 +133,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-01T19:57:52.166Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-05-01T20:09:16.032Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
