@@ -102,6 +102,73 @@ func TestValidationError_UnwrapWithErrorsAs(t *testing.T) {
 	assert.Equal(t, "inner-v", target.label)
 }
 
+// TestValidationError_FormatWithAction covers D4-04: the Action field plus
+// the [flow > step > action] bracket rendering. Six subtests cover every
+// combination the CLI's error renderer (D4-18) and existing Phase 1/2/3
+// callers can produce. Legacy callers leaving Action="" land in the
+// no-action subtest below; their output is unchanged.
+func TestValidationError_FormatWithAction(t *testing.T) {
+	pos := syntax.MakePosition(strPtr("flows/x.star"), 10, 5)
+	require.True(t, pos.IsValid(), "constructed position must be valid")
+
+	t.Run("all three set with valid pos", func(t *testing.T) {
+		e := &ValidationError{
+			Pos:    pos,
+			Flow:   "my_flow",
+			Step:   "step_2",
+			Action: "github.create_issue",
+			Msg:    "missing kwarg",
+		}
+		require.Equal(t,
+			"flows/x.star:10:5 [my_flow > step_2 > github.create_issue]: missing kwarg",
+			e.Error(),
+		)
+	})
+
+	t.Run("flow only with valid pos", func(t *testing.T) {
+		e := &ValidationError{
+			Pos:  pos,
+			Flow: "my_flow",
+			Msg:  "foo",
+		}
+		require.Equal(t, "flows/x.star:10:5 [my_flow]: foo", e.Error())
+	})
+
+	t.Run("flow plus action no step with valid pos", func(t *testing.T) {
+		e := &ValidationError{
+			Pos:    pos,
+			Flow:   "my_flow",
+			Action: "github.create_issue",
+			Msg:    "foo",
+		}
+		require.Equal(t,
+			"flows/x.star:10:5 [my_flow > github.create_issue]: foo",
+			e.Error(),
+		)
+	})
+
+	t.Run("none set with valid pos drops bracket entirely", func(t *testing.T) {
+		e := &ValidationError{
+			Pos: pos,
+			Msg: "bare msg",
+		}
+		require.Equal(t, "flows/x.star:10:5: bare msg", e.Error())
+	})
+
+	t.Run("invalid pos with flow set drops position prefix", func(t *testing.T) {
+		e := &ValidationError{
+			Flow: "my_flow",
+			Msg:  "bare msg",
+		}
+		require.Equal(t, "[my_flow]: bare msg", e.Error())
+	})
+
+	t.Run("invalid pos and none set falls back to msg", func(t *testing.T) {
+		e := &ValidationError{Msg: "bare msg"}
+		require.Equal(t, "bare msg", e.Error())
+	})
+}
+
 // --- helpers -----------------------------------------------------------------
 
 type sentinelInner struct{ label string }
