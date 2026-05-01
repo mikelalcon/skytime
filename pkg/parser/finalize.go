@@ -20,16 +20,25 @@ import (
 //  4. lintEmptyTaskQueue (D3-19, defense in depth): documented stub for
 //     direct dag.Flow / dag.Step construction outside the builtin path.
 //     The primary rejection lives in builtinFlow / builtinStep.
-//  5. validateActionRefKwargs (D-11 defense in depth): a no-op in Phase 1
-//     because real extension factories validate kwargs at construction
-//     time inside their *starlark.Builtin via UnpackOperationKwargs. The
-//     finalize pass is the seat for Phase 4's static validator to plug
-//     into without restructuring the parser.
+//  5. validateLambdaCtxAccesses (D4-02): re-parse cached file bytes via
+//     findCtxAccesses and reject any ctx.<name> reference inside a
+//     captured lambda whose attribute name is not in the lexically-visible
+//     state schema at that lambda's position. Stacking rules: flow inputs
+//     at entry, += script.OutputAlias after each script, += ItemVar
+//     inside for_each_parallel.Steps, if_cond branches see same pre-branch
+//     state.
+//  6. validateActionRefKwargs (D-11 defense in depth): cross-validate
+//     every dag.ActionRef.Kwargs against its registered OperationSpec via
+//     extension.DecodeKwargsFromDict. Catches hand-built ActionRefs (test
+//     fixtures, future programmatic callers) where the per-call extension
+//     factory was bypassed.
 //
 // finalize returns the FIRST error and stops; tests expect at-most-one
 // surfaced error per parse. Phase-2 lints run AFTER call_flow resolution
 // so a missing call_flow target surfaces with the more useful "target not
-// found" error (rather than getting masked by a downstream lint).
+// found" error (rather than getting masked by a downstream lint). D4-02
+// runs BEFORE D-11 cross-validate so structural state errors surface
+// before kwarg-shape errors.
 func (p *Parser) finalize() error {
 	if err := p.resolveCallFlows(); err != nil {
 		return err
@@ -41,6 +50,9 @@ func (p *Parser) finalize() error {
 		return err
 	}
 	if err := p.lintEmptyTaskQueue(); err != nil {
+		return err
+	}
+	if err := p.validateLambdaCtxAccesses(); err != nil {
 		return err
 	}
 	return p.validateActionRefKwargs()

@@ -16,10 +16,13 @@ import (
 // =============================================================================
 
 func TestFreeVars_ModuleLevelDefAllowed(t *testing.T) {
+	// `v` declared as a flow input so D4-02 (Phase 4 ctx.<name> check) sees
+	// it in the state schema. D-19's invariant under test is that the
+	// module-level `helper` def is a valid free var — orthogonal to D4-02.
 	src := []byte(`def helper(x):
     return x * 2
 
-flow(name="x", inputs={}, steps=[
+flow(name="x", inputs={"v":"int"}, steps=[
     script(id="s", fn=lambda ctx: helper(ctx.v), output_alias="r"),
 ])`)
 	p, _ := NewParser(WithExtensions(&fakeExtension{}))
@@ -33,9 +36,12 @@ flow(name="x", inputs={}, steps=[
 // =============================================================================
 
 func TestFreeVars_ModuleConstAllowed(t *testing.T) {
+	// `v` declared as a flow input so D4-02 (Phase 4 ctx.<name> check) sees
+	// it in the state schema. D-19's invariant under test is that the
+	// module-level constant `MAX` is a valid free var — orthogonal to D4-02.
 	src := []byte(`MAX = 10
 
-flow(name="x", inputs={}, steps=[
+flow(name="x", inputs={"v":"int"}, steps=[
     if_cond(cond=lambda ctx: ctx.v < MAX, then=[step(action=fake_ext.echo(msg="t"))]),
 ])`)
 	p, _ := NewParser(WithExtensions(&fakeExtension{}))
