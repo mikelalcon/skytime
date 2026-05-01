@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-04-PLAN.md
-last_updated: "2026-05-01T20:29:53.857Z"
+stopped_at: Completed 04-05-PLAN.md
+last_updated: "2026-05-01T20:39:29.229Z"
 last_activity: 2026-05-01
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 19
-  completed_plans: 16
+  completed_plans: 17
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04 (static-validation-tier-cli-skeleton) — EXECUTING
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Ready to execute
 Last activity: 2026-05-01
 
@@ -66,6 +66,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04 P02 | 6min | 3 tasks | 8 files |
 | Phase 04 P03 | 7min | 3 tasks | 8 files |
 | Phase 04 P04 | 5min | 3 tasks | 9 files |
+| Phase 04 P05 | 6min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -132,6 +133,12 @@ Recent decisions affecting current work:
 - [Phase 04]: Plan 04-04: Table-driven envBinding (flag/envVar/target *string) over per-flag if-block ladder — six SKYTIME_TEMPORAL_* fallbacks share identical 'if !Lookup(flag).Changed && env != "" → cfg.target = env' rule; one row per future flag.
 - [Phase 04]: Plan 04-04: Stub-then-fill TDD across multi-task plans — Task 1 ships render/validate stubs so root.go compiles and TestPkgCli_ImportsCobra activates immediately; Task 2 fills renderer; Task 3 fills validate. Each TDD cycle (RED+GREEN) stays atomic across the plan.
 - [Phase 04]: Plan 04-04: D4-16 hint heuristic accepts both 'undefined:' (Starlark resolver wording, current surface) AND 'unknown extension' (forward-compatible for a future parser refactor) — either substring match in lowered ParseError.Msg → docs/cli-binary.md hint.
+- [Phase 04]: Plan 04-05: clientFactory test seam (NewCloud/NewSelfHosted/NewDev funcs) — production wires defaultClientFactory; tests inject capturing factories. Mirrors Phase 3's clientDialFunc/sdkWorkerNew pattern.
+- [Phase 04]: Plan 04-05: D4-08 variant routing in switch order — api-key → cloud, mTLS triplet → self-hosted, partial-mTLS rejected with friendly error before any factory call, otherwise → dev. Mutually exclusive, one trace path.
+- [Phase 04]: Plan 04-05: progressHandler ships with no production effect — pkg/interpreter does NOT yet emit flow_name/step_kind/action_kind attrs (Phase 5/6 work). Handler is built and unit-tested; behavior is 'all SDK records pass through' until interpreter wires the attrs.
+- [Phase 04]: Plan 04-05: skytime run validates first via pkg/validator.Validate (D4-07) BEFORE connecting Temporal — validation failures must never leak into a partially-started workflow. Same renderer + errSilent path as skytime validate; single source of truth for error formatting.
+- [Phase 04]: Plan 04-05: Embedded transient worker uses filepath.Dir(file) as RootDir — single-binary UX, no separate --rootdir flag. Production daemons use --rootdir; D4-05 documents skytime run as dev-mode convenience.
+- [Phase 04]: Plan 04-05: Temporal firewall allow-list extended (allowedPkgs += 'cli') — pkg/cli's run subcommand is the legitimate consumer of client.ExecuteWorkflow. Single-line edit; matches the cobra firewall's existing pkg/cli allow-list (Phase 4 plan 04-04).
 
 ### Pending Todos
 
@@ -144,6 +151,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-01T20:29:53.854Z
-Stopped at: Completed 04-04-PLAN.md
+Last session: 2026-05-01T20:39:29.226Z
+Stopped at: Completed 04-05-PLAN.md
 Resume file: None
