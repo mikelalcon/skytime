@@ -41,7 +41,6 @@ created: 2026-05-01
 | 04-01-01 | 01 (deps + firewall) | 0 | CLI-05 | meta | `go test ./tests -run TestNoCobraImportsOutsideAllowList -count=1` | ❌ W0 | ⬜ pending |
 | 04-01-02 | 01 (deps + firewall) | 0 | CLI-05 | meta | `go test ./pkg/cli -run TestPkgCli_ImportsCobra -count=1` | ❌ W0 | ⬜ pending |
 | 04-01-03 | 01 (ValidationError) | 0 | VAL-03 | unit | `go test ./pkg/dag -run TestValidationError_FormatWithAction -count=1` | ❌ W0 | ⬜ pending |
-| 04-01-04 | 01 (corpus skeleton) | 0 | VAL-02 | integration | `go test ./pkg/validator -run TestDifferentialCorpus -count=1` (skips if no corpus yet — populated W4) | ❌ W0 | ⬜ pending |
 | 04-02-01 | 02 (ctx visitor) | 1 | VAL-01 | unit | `go test ./pkg/parser -run TestCtxWalk_FindsAttrAccesses -count=1` | ❌ W0 | ⬜ pending |
 | 04-02-02 | 02 (state schema accumulator) | 1 | VAL-01 | unit | `go test ./pkg/parser -run TestStateSchema_AccumulatesScopes -count=1` | ❌ W0 | ⬜ pending |
 | 04-02-03 | 02 (finalize wiring) | 1 | VAL-01 | unit | `go test ./pkg/parser -run TestFinalize_CtxAccess_Valid -count=1` | ❌ W0 | ⬜ pending |
@@ -49,7 +48,7 @@ created: 2026-05-01
 | 04-02-05 | 02 (kwarg cross-validate) | 1 | VAL-01 | unit | `go test ./pkg/parser -run TestFinalize_KwargCrossValidate -count=1` | ❌ W0 | ⬜ pending |
 | 04-03-01 | 03 (validator facade) | 2 | VAL-01 | unit | `go test ./pkg/validator -run TestValidate_ReturnsTypedErrors -count=1` | ❌ W0 | ⬜ pending |
 | 04-03-02 | 03 (dry-run dispatch) | 2 | VAL-02 | unit | `go test ./pkg/validator/internal/dryrun -run TestAlwaysOkDispatch -count=1` | ❌ W0 | ⬜ pending |
-| 04-03-03 | 03 (differential test) | 2 | VAL-02 | integration | `go test ./pkg/validator -run TestDifferentialCorpus -count=1` | ❌ W0 | ⬜ pending |
+| 04-03-03 | 03 (differential test) | 2 | VAL-02 | integration | `go test ./tests -run TestDifferentialCorpus -count=1` | ❌ W0 | ⬜ pending |
 | 04-04-01 | 04 (cli root + flags) | 3 | CLI-05 | unit | `go test ./pkg/cli -run TestRootCommand_FlagsRegistered -count=1` | ❌ W0 | ⬜ pending |
 | 04-04-02 | 04 (renderer) | 3 | VAL-03 | unit | `go test ./pkg/cli -run TestRenderer_StarlarkFirst -count=1` | ❌ W0 | ⬜ pending |
 | 04-04-03 | 04 (renderer --debug) | 3 | VAL-03 | unit | `go test ./pkg/cli -run TestRenderer_DebugUnwrapsChain -count=1` | ❌ W0 | ⬜ pending |
@@ -63,7 +62,7 @@ created: 2026-05-01
 | 04-06-02 | 06 (dev-server missing binary) | 4 | CLI-04 | unit | `go test ./pkg/cli -run TestDevServerCmd_MissingBinary -count=1` | ❌ W0 | ⬜ pending |
 | 04-06-03 | 06 (dev-server signal forward) | 4 | CLI-04 | integration | `go test ./pkg/cli -run TestDevServerCmd_SignalForward -count=1` (uses `sleep` fake on Unix; skips on Windows) | ❌ W0 | ⬜ pending |
 | 04-07-01 | 07 (HTTP extension) | 4 | CLI-02 / EX-01 prelim | unit | `go test ./pkg/extension/builtin/http -count=1` | ❌ W0 | ⬜ pending |
-| 04-07-02 | 07 (examples/skeleton corpus) | 4 | VAL-02 | integration | `go test ./pkg/validator -run TestDifferentialCorpus -count=1` | ❌ W0 | ⬜ pending |
+| 04-07-02 | 07 (examples/skeleton corpus) | 4 | VAL-02 | integration | `go test ./tests -run TestDifferentialCorpus -count=1` | ❌ W0 | ⬜ pending |
 | 04-07-03 | 07 (docs/cli-binary.md) | 4 | CLI-05 | meta | `test -f docs/cli-binary.md && grep -q 'pkg/cli' docs/cli-binary.md` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
@@ -103,7 +102,7 @@ created: 2026-05-01
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies (W0 task 04-01-04 explicitly skips when corpus is empty)
+- [ ] All tasks have `<automated>` verify or Wave 0 dependencies (the differential test 04-03-03 explicitly skips when corpus is empty until W4 lands fixtures)
 - [ ] Sampling continuity: no 3 consecutive tasks without automated verify (every task above has a `go test` invocation)
 - [ ] Wave 0 covers all MISSING references (cobra/charmlog deps, pkg/cli skeleton, pkg/validator skeleton, examples/skeleton/, docs/cli-binary.md, ValidationError.Action retrofit)
 - [ ] No watch-mode flags (`go test` is one-shot by default)
