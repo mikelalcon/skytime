@@ -82,7 +82,14 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. `skytime run <file.star> --flow=<name> --input=<json>` parses, validates, and triggers a workflow on a configured Temporal cluster, then streams progress to the terminal
   4. `skytime dev-server` spawns a local Temporal dev server (Temporalite or `temporal server start-dev`) suitable for the example project — `cobra` and `charmbracelet/log` are reachable only from `cmd/skytime/`, never from the library root
   5. The `--debug` flag is the only path that reveals Go internals in error output; default error rendering is Starlark-first
-**Plans**: TBD
+**Plans**: 7 plans
+  - [ ] 04-01-PLAN.md — Wave 0: Add cobra/charmlog deps + AST firewall extension + ValidationError.Action field + Parser.FileBytes() accessor + empty pkg/cli + pkg/validator + pkg/extension/builtin/http skeletons
+  - [ ] 04-02-PLAN.md — Wave 1: D4-02 ctx.<name> AST visitor (re-parse via syntax.FileOptions.Parse) + state-schema accumulator + finalize wiring + D-11 kwarg cross-validate
+  - [ ] 04-03-PLAN.md — Wave 2: pkg/validator thin facade + AlwaysOkDispatch (pkg/validator/internal/dryrun) + TestDifferentialCorpus (skip-on-empty until W4 lands corpus)
+  - [ ] 04-04-PLAN.md — Wave 3: pkg/cli root command + persistent flags + env-var binding + Starlark-first renderer + charm-log slog handler + skytime validate subcommand
+  - [ ] 04-05-PLAN.md — Wave 4: skytime run subcommand (embedded transient worker) + connectClient variant routing + progressHandler slog shim + temporal-firewall allow-list extension for pkg/cli
+  - [ ] 04-06-PLAN.md — Wave 4: skytime dev-server subcommand (subprocess wrapper around  with SIGINT forwarding and missing-binary install instructions)
+  - [ ] 04-07-PLAN.md — Wave 4: HTTP extension implementation (5 ops, D4-14 idempotence) + cmd/skytime binary + examples/skeleton/ corpus + docs/cli-binary.md + differential test wiring
 **UI hint**: no
 
 ### Phase 5: Tier-3 E2E Test Harness (`temporal_test`)
@@ -120,7 +127,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Type Spine + Extension Contract + Parser/Bridge Foundations | 5/5 | Complete   | 2026-04-27 |
 | 2. Generic Activity + Block-Batch Dispatch + Credentials | 2/3 | In Progress|  |
 | 3. Lambda-Serialization Decision + Interpreter + Worker | 3/4 | In Progress|  |
-| 4. Static Validation Tier + CLI Skeleton | 0/TBD | Not started | - |
+| 4. Static Validation Tier + CLI Skeleton | 0/7 | Not started | - |
 | 5. Tier-3 E2E Test Harness (`temporal_test`) | 0/TBD | Not started | - |
 | 6. Example Project (HTTP + GitHub + Slack) | 0/TBD | Not started | - |
 
