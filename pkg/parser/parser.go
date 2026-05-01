@@ -126,6 +126,28 @@ func (p *Parser) Register(ext extension.Extension) error {
 	return nil
 }
 
+// Lambdas returns the parser session's captured lambda map keyed by D-18
+// stable ID (sha256(fileBytes)[:8] + ":" + line + ":" + col). The returned
+// map is the live map — callers MUST NOT mutate it. Used by the worker
+// bootstrap (pkg/worker, plan 03-04) to populate the FlowRegistry's
+// per-ParsedFlow Lambdas field; lambda IDs are globally unique so a single
+// shared map is correct.
+//
+// Empty when called before any ParseFile / ParseSource invocation.
+func (p *Parser) Lambdas() map[string]*dag.CapturedLambda {
+	return p.lambdas
+}
+
+// Flows returns the parser session's accumulated flow map keyed by flow
+// name. The returned map is the live map — callers MUST NOT mutate it. Used
+// by the worker bootstrap (pkg/worker, plan 03-04) to enumerate all flows
+// across multiple ParseFile invocations during boot.
+//
+// Empty when called before any ParseFile / ParseSource invocation.
+func (p *Parser) Flows() map[string]*dag.Flow {
+	return p.flows
+}
+
 // ParseFile reads a .star file from disk and parses it (and any files
 // reached via load()). Returns the parser session's flow map keyed by flow
 // name. Errors are *dag.ParseError or *dag.ValidationError.
