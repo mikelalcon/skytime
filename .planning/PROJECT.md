@@ -33,14 +33,20 @@ A consultant team can take an extension catalog and a customer brief, write a `.
 - ✓ Worker bootstrap with three named client constructors (`NewCloudClient` / `NewSelfHostedClient` / `NewDevClient`); filesystem registry boot from `--rootdir` with frozen-after-boot semantics; `Worker.Stop` `sync.Once`-wrapped against double-call panic — Phase 3
 - ✓ Build ID-based versioning with build-time-injected default (`-ldflags "-X .../defaultBuildID=$(git rev-parse HEAD)"`); WorkflowInput on the wire is `{FlowName, ContentHash, InitState}` — Phase 3
 - ✓ DSL retrofits for runtime: `task_queue` kwarg on `flow()` and `step()` (precedence step > flow > worker default); `max_concurrency` kwarg on `for_each_parallel()` — Phase 3
+- ✓ Static validation tier (`pkg/validator` + filled-in `parser/finalize.go`) sharing the parser with the runtime; `[flow > step > action]` error attribution via `dag.ValidationError.Action`; D4-02 `ctx.<name>` AST re-parse visitor (load-bearing finding: `*starlark.Function` does not expose AST, so visitor re-parses cached file bytes via `(*syntax.FileOptions).Parse` and matches lambdas by position); D-11 kwarg cross-validate filled in — Phase 4
+- ✓ CI corpus differential test (`tests/differential_test.go`) running every `.star` in `examples/skeleton/` through static `validator.Validate` AND a dry-run interpreter (mock `OperationDispatch` returning `OkResult{}` for every kind); drift fails CI — Phase 4
+- ✓ CLI tree under `cmd/skytime/` (thin) + `pkg/cli` (reusable cobra root) with `validate`, `run`, `dev-server` subcommands; functional options (`cli.WithExtensions`, `cli.WithCredentialHandler`); Starlark-first error rendering with `--debug` as the only path to Go internals — Phase 4
+- ✓ `skytime run` embedded transient worker with connection-variant routing (`--api-key`→cloud, mTLS triplet→self-hosted, otherwise dev) and per-step slog progress streaming — Phase 4
+- ✓ `skytime dev-server` subprocess wrapper around `temporal server start-dev` (NOT embedded Temporalite); SIGINT/SIGTERM forwarded; missing-binary install instructions — Phase 4
+- ✓ Cobra/charm-log firewall — `cobra`/`pflag`/`charm.land/log/v2` reachable only from `{cmd/skytime, pkg/cli}`, enforced by AST-walking `tests/firewall_cli_test.go` plus non-vacuous `TestPkgCli_ImportsCobra` — Phase 4
+- ✓ Baked-in HTTP extension (`pkg/extension/builtin/http`, Go stdlib `net/http` only) with D4-14 idempotence (get/head=true, post/put/delete=false; deliberately diverges from RFC-7231 PUT/DELETE for v1 simplicity) — Phase 4
+- ✓ `examples/skeleton/{simple_check,parallel_fanout}.star` — 2-flow corpus exercising every primitive (sequential step, block batch, `if_cond`, `script`, `for_each_parallel`, `call_flow`) — Phase 4
 
 ### Active
 
-- [ ] Static validation tier — `skytime validate` shares the parser with the runtime via differential corpus testing
 - [ ] Starlark E2E testing tier — `temporal_test` builtin that bridges Temporal `testsuite` mocks back to Starlark lambdas, with `attempt` count for retry simulation
-- [ ] CLI for triggering and inspecting flows during development
 - [ ] Example project with HTTP + GitHub + Slack extensions exercising every primitive (retries, credentials, parallel for-each, child workflow)
-- [ ] Compatibility with Temporal Cloud and self-hosted Temporal clusters (BYO cluster, plus dev-server helper for examples) — verified by Phase 3's three named client constructors; example project (Phase 6) demonstrates end-to-end
+- [ ] Compatibility with Temporal Cloud and self-hosted Temporal clusters (BYO cluster, plus dev-server helper for examples) — verified by Phase 3's three named client constructors and Phase 4's `skytime run` variant routing; example project (Phase 6) demonstrates end-to-end
 
 ### Out of Scope
 
@@ -95,6 +101,11 @@ A consultant team can take an extension catalog and a customer brief, write a `.
 | Mixed-idempotency blocks rejected at parse time (Policy D, Phase 2) | "Make wrong things impossible" — keeps activity dumb and homogeneous; consultant gets a friendly fix-suggestion error at parse time instead of a runtime surprise | ✓ Good — verified by `TestLinter_MixedIdempotency_*` and defensive activity-side test |
 | Type-level secret protection via `Secret` wrapper (no regex scrubber, ACT-05 amended) | Java-style `toString` redaction via Go `Stringer` + Format/MarshalJSON; `.Reveal()` is greppable for audit. Regex deferred — additive in v1.x if a customer incident proves it needed | — Pending — first real customer with a leaky third-party SDK will tell us if regex is needed |
 | Per-worker credential cache with retry-aware bypass | 5-min TTL for happy path; `activity.GetInfo(ctx).Attempt > 1` invalidates batch's IDs to handle token rotation cleanly | ✓ Good — `TestExecuteBatch_RetryAttempt_BypassesCache` verifies |
+| `pkg/validator` is a thin facade; new lints live in `parser/finalize.go` | Validator owns the CLI surface and the dry-run differential seam; parser owns the actual checks. Single parse path → static and runtime can never disagree. | ✓ Good — `TestDifferentialCorpus` runs static + dry-run agreement on every `examples/skeleton/*.star` (Phase 4) |
+| `ctx.<name>` lambda visitor re-parses cached file bytes (does NOT use `*starlark.Function` AST) | `*starlark.Function.funcode` is unexported `*compile.Funcode`; the syntax tree is discarded after compilation. Re-parse via `(*syntax.FileOptions).Parse` + `syntax.Walk` is the only path. | ✓ Good — verified by `TestCtxWalk_*` (Phase 4); pitfall fixture for two-lambdas-same-line passes |
+| `skytime dev-server` shells out to `temporal server start-dev` (not embedded Temporalite) | Avoids pulling sqlite + heavy temporal-server transitive deps into `cmd/skytime`; familiar to Temporal users; documented prerequisite in Phase 6 README. Supersedes Phase 3 CONTEXT note about not spawning. | ✓ Good — `TestDevServerCmd_*` verify subprocess wrapper, SIGINT forwarding, and missing-binary install instructions (Phase 4) |
+| `pkg/cli` is reusable; `cmd/skytime` is a thin wrapper | Phase 6's example project (and any consultant team's custom CLI) imports `pkg/cli.NewRootCommand` and registers their own extensions via functional options. Single library-side package allowed cobra/charmlog imports — firewall enforces. | ✓ Good — `TestNoCobraImportsOutsideAllowList` + `TestPkgCli_ImportsCobra` (non-vacuous) (Phase 4) |
+| HTTP extension PUT/DELETE locked NON-idempotent (D4-14 diverges from RFC-7231) | Even though the HTTP standard considers PUT/DELETE idempotent, the baked-in extension treats them as side-effecting for v1. Consultants writing real GitHub/Slack flows in Phase 6 declare per-op idempotence themselves. | ✓ Good — `TestExtension_OperationsIdempotenceMatchesD4_14` pins this verbatim (Phase 4) |
 
 ## Evolution
 
@@ -114,4 +125,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-01 after Phase 3 completion*
+*Last updated: 2026-05-01 after Phase 4 completion*
