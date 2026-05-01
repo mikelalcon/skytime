@@ -6,6 +6,9 @@
 coverage.txt
 coverage.html
 
+# Stray binary from `go build ./cmd/skytime` at repo root
+/skytime
+
 # Editor
 .idea/
 .vscode/
