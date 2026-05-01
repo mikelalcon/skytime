@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-05-PLAN.md
-last_updated: "2026-05-01T20:39:29.229Z"
+stopped_at: Completed 04-06-PLAN.md
+last_updated: "2026-05-01T20:45:55.275Z"
 last_activity: 2026-05-01
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 19
-  completed_plans: 17
+  completed_plans: 18
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04 (static-validation-tier-cli-skeleton) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Last activity: 2026-05-01
 
@@ -67,6 +67,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04 P03 | 7min | 3 tasks | 8 files |
 | Phase 04 P04 | 5min | 3 tasks | 9 files |
 | Phase 04 P05 | 6min | 3 tasks | 8 files |
+| Phase 04 P06 | 3min | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -139,6 +140,9 @@ Recent decisions affecting current work:
 - [Phase 04]: Plan 04-05: skytime run validates first via pkg/validator.Validate (D4-07) BEFORE connecting Temporal — validation failures must never leak into a partially-started workflow. Same renderer + errSilent path as skytime validate; single source of truth for error formatting.
 - [Phase 04]: Plan 04-05: Embedded transient worker uses filepath.Dir(file) as RootDir — single-binary UX, no separate --rootdir flag. Production daemons use --rootdir; D4-05 documents skytime run as dev-mode convenience.
 - [Phase 04]: Plan 04-05: Temporal firewall allow-list extended (allowedPkgs += 'cli') — pkg/cli's run subcommand is the legitimate consumer of client.ExecuteWorkflow. Single-line edit; matches the cobra firewall's existing pkg/cli allow-list (Phase 4 plan 04-04).
+- [Phase 04]: Plan 04-06: Subprocess wrapper subcommand pattern — DisableFlagParsing: true + ctx-aware exec.CommandContext + foreground stdio + signal.Notify forwarding goroutine + errors.As over *exec.ExitError. Reusable for any future skytime subcommand wrapping an external CLI.
+- [Phase 04]: Plan 04-06: Two-seam test design — lookPath (input substitution: point at fake binary) + testRunningCmd (output observation: read running *exec.Cmd to dispatch signals). Lets behavioral tests exercise signal-forwarding without dispatching at the test process itself.
+- [Phase 04]: Plan 04-06: TestDevServerCmd_SignalForward uses temp shell wrapper script (#!/bin/sh; exec sleep 10) — Rule 1 deviation. dev_server.go ALWAYS prepends 'server start-dev'; /bin/sleep would reject those as non-numeric and exit before the seam-observer poll. Wrapper ignores $@ and keeps subprocess alive long enough for testRunningCmd observation.
 
 ### Pending Todos
 
@@ -151,6 +155,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-01T20:39:29.226Z
-Stopped at: Completed 04-05-PLAN.md
+Last session: 2026-05-01T20:45:44.692Z
+Stopped at: Completed 04-06-PLAN.md
 Resume file: None

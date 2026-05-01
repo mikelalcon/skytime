@@ -82,7 +82,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **CLI-01**: `skytime validate <file.star>` runs static validation (Tier 1) and exits with structured errors
 - [x] **CLI-02**: `skytime run <file.star> --flow=<name> --input=<json>` parses, validates, and triggers a workflow on a configured Temporal cluster, then streams progress
 - [ ] **CLI-03**: `skytime test <dir>` discovers `.star` test files, runs the Tier 3 harness, and reports pass/fail with Starlark callsite errors
-- [ ] **CLI-04**: `skytime dev-server` spawns a local Temporal dev server (Temporalite or `temporal server start-dev`) for local development of the example project
+- [x] **CLI-04**: `skytime dev-server` spawns a local Temporal dev server (Temporalite or `temporal server start-dev`) for local development of the example project
 - [x] **CLI-05**: The CLI lives under `cmd/skytime/`; cobra and charmbracelet/log are CLI-only dependencies — they are not reachable from the library root
 
 ### Example Project (Dogfood + Demo)
@@ -190,7 +190,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CLI-01 | Phase 4 | Complete |
 | CLI-02 | Phase 4 | Complete |
 | CLI-03 | Phase 5 | Pending |
-| CLI-04 | Phase 4 | Pending |
+| CLI-04 | Phase 4 | Complete |
 | CLI-05 | Phase 4 | Complete |
 | TEST-01 | Phase 5 | Pending |
 | TEST-02 | Phase 5 | Pending |
