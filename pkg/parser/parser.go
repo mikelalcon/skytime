@@ -148,6 +148,17 @@ func (p *Parser) Flows() map[string]*dag.Flow {
 	return p.flows
 }
 
+// FileBytes returns the parser session's cached file bytes keyed by absolute
+// path (the same path stored on captured lambda syntax.Position.Filename()).
+// Used by the Phase 4 AST re-parse path (pkg/parser/ctx_walk.go, plan 04-02)
+// to recover *syntax.File for the ctx.<name> attribute walk —
+// *starlark.Function does NOT retain AST after compilation per
+// 04-RESEARCH §Pattern 3 critical finding.
+//
+// Returns the LIVE map; callers MUST NOT mutate. Empty when called
+// before any ParseFile/ParseSource invocation.
+func (p *Parser) FileBytes() map[string][]byte { return p.fileBytes }
+
 // ParseFile reads a .star file from disk and parses it (and any files
 // reached via load()). Returns the parser session's flow map keyed by flow
 // name. Errors are *dag.ParseError or *dag.ValidationError.
