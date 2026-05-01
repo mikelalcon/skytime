@@ -26,6 +26,7 @@ import (
 	"github.com/mikelalcon/skytime/pkg/activity"
 	"github.com/mikelalcon/skytime/pkg/dag"
 	"github.com/mikelalcon/skytime/pkg/extension"
+	httpext "github.com/mikelalcon/skytime/pkg/extension/builtin/http"
 	"github.com/mikelalcon/skytime/pkg/interpreter"
 	"github.com/mikelalcon/skytime/pkg/parser"
 	"github.com/mikelalcon/skytime/pkg/validator"
@@ -33,15 +34,15 @@ import (
 )
 
 // corpusExtensions returns the extension list the differential test
-// injects into both static + dry-run sides. Currently empty — W4
-// (plan 04-07) populates this with the baked-in HTTP extension once
-// pkg/extension/builtin/http lands. Until then, the corpus directory
-// is empty and the test t.Skip()s.
+// injects into both static + dry-run sides. Wave 4 (plan 04-07)
+// populated this with the baked-in HTTP extension; the examples/skeleton/
+// fixtures use http.endpoint(...) exclusively, so this list is the
+// single registration point that makes the test exercise the corpus.
 //
-// Build-tag-free: extending this slice is the W4 wiring point.
+// To extend the corpus with new extensions, append them here.
 func corpusExtensions(t *testing.T) []extension.Extension {
 	t.Helper()
-	return nil // W4 will append httpext.New() once the extension exists
+	return []extension.Extension{httpext.New()}
 }
 
 // TestDifferentialCorpus walks examples/skeleton/ and asserts static
@@ -188,7 +189,7 @@ func runDryRun(t *testing.T, file, rootDir string, exts []extension.Extension) (
 		env.ExecuteWorkflow("SkytimeWorkflow", dag.WorkflowInput{
 			FlowName:    name,
 			ContentHash: contentHash,
-			InitState:   map[string]any{},
+			InitState:   stubInitState(flows[name]),
 		})
 		if !env.IsWorkflowCompleted() {
 			return false, errors.New("workflow did not complete: " + name)
@@ -216,20 +217,61 @@ func assertNotRuntimePanic(t *testing.T, side string, err error) {
 }
 
 // noopCredentialHandler is the no-op handler used by the dry-run path.
-// AlwaysOkDispatch's wrapped Func never reaches the resolver, but
-// activity.New requires a non-nil handler — so Resolve returns an
-// explicit "should-not-be-called" error to make any unintended call
-// surface loudly.
+//
+// Empty IDs (anonymous endpoints — fixtures that use http.endpoint
+// without a credential= arg) return (nil, nil) so the activity's
+// runAction proceeds with cred=nil. Non-empty IDs return an explicit
+// "should-not-be-called" error: real credentials should never reach
+// the dry-run path because AlwaysOkDispatch's wrapped Func ignores
+// them, but activity-side credential resolution happens BEFORE Func
+// dispatch, so a non-empty ID surfacing here means the corpus has
+// drifted away from the "anonymous endpoints only" assumption — fail
+// loudly rather than silently succeeding.
 type noopCredentialHandler struct{}
 
-func (noopCredentialHandler) Resolve(_ context.Context, _ string) (extension.Credential, error) {
-	return nil, errors.New("noopCredentialHandler.Resolve called — dry-run should not require credentials")
+func (noopCredentialHandler) Resolve(_ context.Context, id string) (extension.Credential, error) {
+	if id == "" {
+		return nil, nil
+	}
+	return nil, errors.New("noopCredentialHandler.Resolve called with non-empty id — corpus uses a credential the dry-run path cannot resolve: " + id)
 }
 
 // sha256Hex matches pkg/worker/boot.go's content_hash format.
 func sha256Hex(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// stubInitState seeds InitState from a flow's declared inputs so the
+// dry-run path's lambdas see a populated ctx. Maps each declared input
+// name to a stub value chosen by the type-hint string. The static
+// validator (D4-02) accepts any ctx.<input_name> reference; the dry-run
+// path needs the keys to exist on the runtime ctx struct so the lambdas
+// don't fail with "struct has no .<name> attribute".
+//
+// This mirrors what `skytime run --input=<json>` would pass at the
+// CLI; the differential test substitutes a deterministic stub so the
+// corpus does not need to ship per-flow input fixtures.
+func stubInitState(f *dag.Flow) map[string]any {
+	if f == nil {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(f.Inputs))
+	for name, hint := range f.Inputs {
+		switch hint {
+		case "int":
+			out[name] = int64(0)
+		case "bool":
+			out[name] = false
+		case "list":
+			out[name] = []any{}
+		case "dict":
+			out[name] = map[string]any{}
+		default: // "string" or unknown → empty string
+			out[name] = ""
+		}
+	}
+	return out
 }
 
 // findModuleRootCLI is shared with firewall_cli_test.go in the same
