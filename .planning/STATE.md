@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 04-06-PLAN.md
-last_updated: "2026-05-01T20:45:55.275Z"
+status: verifying
+stopped_at: Completed 04-07-PLAN.md (Phase 4 feature-complete)
+last_updated: "2026-05-01T20:59:36.206Z"
 last_activity: 2026-05-01
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 19
-  completed_plans: 18
+  completed_plans: 19
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 
 Phase: 04 (static-validation-tier-cli-skeleton) — EXECUTING
 Plan: 7 of 7
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-01
 
 Progress: [░░░░░░░░░░] 0%
@@ -68,6 +68,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04 P04 | 5min | 3 tasks | 9 files |
 | Phase 04 P05 | 6min | 3 tasks | 8 files |
 | Phase 04 P06 | 3min | 1 tasks | 3 files |
+| Phase 04-static-validation-tier-cli-skeleton P07 | 7min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -143,6 +144,11 @@ Recent decisions affecting current work:
 - [Phase 04]: Plan 04-06: Subprocess wrapper subcommand pattern — DisableFlagParsing: true + ctx-aware exec.CommandContext + foreground stdio + signal.Notify forwarding goroutine + errors.As over *exec.ExitError. Reusable for any future skytime subcommand wrapping an external CLI.
 - [Phase 04]: Plan 04-06: Two-seam test design — lookPath (input substitution: point at fake binary) + testRunningCmd (output observation: read running *exec.Cmd to dispatch signals). Lets behavioral tests exercise signal-forwarding without dispatching at the test process itself.
 - [Phase 04]: Plan 04-06: TestDevServerCmd_SignalForward uses temp shell wrapper script (#!/bin/sh; exec sleep 10) — Rule 1 deviation. dev_server.go ALWAYS prepends 'server start-dev'; /bin/sleep would reject those as non-numeric and exit before the seam-observer poll. Wrapper ignores $@ and keeps subprocess alive long enough for testRunningCmd observation.
+- [Phase 04-static-validation-tier-cli-skeleton]: Plan 04-07: Baked-in HTTP extension at pkg/extension/builtin/http — Initialize returns *starlarkstruct.Module (matches fakeExtension convention); per-method builtins close over base_url+credential at endpoint() time and inject base_url into output Kwargs Dict so activity-side OperationFunc reads endpoint state via the existing DecodeKwargsFromDict reflection path
+- [Phase 04-static-validation-tier-cli-skeleton]: Plan 04-07: D4-14 idempotence locked verbatim (get/head=true; post/put/delete=false) — TestExtension_OperationsIdempotenceMatchesD4_14 pins the RFC-7231 PUT/DELETE override; any future change requires a CONTEXT.md amendment
+- [Phase 04-static-validation-tier-cli-skeleton]: Plan 04-07: GetArgs vs BodyArgs schema split — get/head/delete share GetArgs (no body); post/put share BodyArgs (with body field); two types instead of one with optional body keeps the kwargs reflection clean and enables a one-line KwargsType.Name() schema-shape assertion
+- [Phase 04-static-validation-tier-cli-skeleton]: Plan 04-07: noopCredentialHandler bifurcation in tests/differential_test.go (Rule 1 bug) — empty IDs return (nil, nil) so anonymous endpoints (http.endpoint without credential=) traverse runAction; non-empty IDs error loudly to catch corpus drift. Pre-existing pkg/activity/credential_cache.go does not short-circuit on empty IDs (logged as v1.x audit item; out of scope per scope-boundary rule)
+- [Phase 04-static-validation-tier-cli-skeleton]: Plan 04-07: stubInitState helper in tests/differential_test.go (Rule 3 blocking) — runDryRun seeds InitState from flow.Inputs via type-hint→typed-zero mapping (int→0, bool→false, list→[], dict→{}, default→""); required because static D4-02 accepts ctx.<input> declarations but dry-run runtime needs the keys populated on ctx struct. Mirrors what skytime run --input=<json> would supply
 
 ### Pending Todos
 
@@ -155,6 +161,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-01T20:45:44.692Z
-Stopped at: Completed 04-06-PLAN.md
+Last session: 2026-05-01T20:59:36.203Z
+Stopped at: Completed 04-07-PLAN.md (Phase 4 feature-complete)
 Resume file: None

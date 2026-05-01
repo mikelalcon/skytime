@@ -89,7 +89,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   - [x] 04-04-PLAN.md — Wave 3: pkg/cli root command + persistent flags + env-var binding + Starlark-first renderer + charm-log slog handler + skytime validate subcommand
   - [x] 04-05-PLAN.md — Wave 4: skytime run subcommand (embedded transient worker) + connectClient variant routing + progressHandler slog shim + temporal-firewall allow-list extension for pkg/cli
   - [x] 04-06-PLAN.md — Wave 4: skytime dev-server subcommand (subprocess wrapper around  with SIGINT forwarding and missing-binary install instructions)
-  - [ ] 04-07-PLAN.md — Wave 4: HTTP extension implementation (5 ops, D4-14 idempotence) + cmd/skytime binary + examples/skeleton/ corpus + docs/cli-binary.md + differential test wiring
+  - [x] 04-07-PLAN.md — Wave 4: HTTP extension implementation (5 ops, D4-14 idempotence) + cmd/skytime binary + examples/skeleton/ corpus + docs/cli-binary.md + differential test wiring
 **UI hint**: no
 
 ### Phase 5: Tier-3 E2E Test Harness (`temporal_test`)
