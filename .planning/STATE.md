@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 04-07-PLAN.md (Phase 4 feature-complete)
-last_updated: "2026-05-01T21:08:03.096Z"
+stopped_at: Completed quick 260501-p7c (worker versioning auto-enable bug fix)
+last_updated: "2026-05-01T22:20:16.403Z"
 last_activity: 2026-05-01
 progress:
   total_phases: 6
@@ -69,6 +69,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04 P05 | 6min | 3 tasks | 8 files |
 | Phase 04 P06 | 3min | 1 tasks | 3 files |
 | Phase 04-static-validation-tier-cli-skeleton P07 | 7min | 3 tasks | 11 files |
+| Phase 260501-p7c P01 | 6min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -149,6 +150,8 @@ Recent decisions affecting current work:
 - [Phase 04-static-validation-tier-cli-skeleton]: Plan 04-07: GetArgs vs BodyArgs schema split — get/head/delete share GetArgs (no body); post/put share BodyArgs (with body field); two types instead of one with optional body keeps the kwargs reflection clean and enables a one-line KwargsType.Name() schema-shape assertion
 - [Phase 04-static-validation-tier-cli-skeleton]: Plan 04-07: noopCredentialHandler bifurcation in tests/differential_test.go (Rule 1 bug) — empty IDs return (nil, nil) so anonymous endpoints (http.endpoint without credential=) traverse runAction; non-empty IDs error loudly to catch corpus drift. Pre-existing pkg/activity/credential_cache.go does not short-circuit on empty IDs (logged as v1.x audit item; out of scope per scope-boundary rule)
 - [Phase 04-static-validation-tier-cli-skeleton]: Plan 04-07: stubInitState helper in tests/differential_test.go (Rule 3 blocking) — runDryRun seeds InitState from flow.Inputs via type-hint→typed-zero mapping (int→0, bool→false, list→[], dict→{}, default→""); required because static D4-02 accepts ctx.<input> declarations but dry-run runtime needs the keys populated on ctx struct. Mirrors what skytime run --input=<json> would supply
+- [Phase 260501-p7c]: Quick 260501-p7c: WorkerOptions.UseBuildIDVersioning auto-enable removed from applyDefaults — versioning is now opt-in (default false). Production opt-in path preserved verbatim through to sdkworker.Options.UseBuildIDForVersioning. Default skytime dev-server + skytime run no longer hangs on first dispatch against a fresh task queue with no Build ID compatibility set.
+- [Phase 260501-p7c]: Quick 260501-p7c: End-to-end no-hang verification re-anchored from RUN_EXIT to log-evidence (Started Worker / workflow start / ExecuteActivity present in stdout) — the noopCredentialHandler-on-empty-id retry loop is pre-existing and out-of-scope, but it dominates RUN_EXIT and would have masked the bug-fix evidence. Constraint-aligned per the prompt's stated 'verification target is the worker scheduled the workflow' rule.
 
 ### Pending Todos
 
@@ -161,6 +164,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-01T20:59:36.203Z
-Stopped at: Completed 04-07-PLAN.md (Phase 4 feature-complete)
+Last session: 2026-05-01T22:20:16.400Z
+Stopped at: Completed quick 260501-p7c (worker versioning auto-enable bug fix)
 Resume file: None
