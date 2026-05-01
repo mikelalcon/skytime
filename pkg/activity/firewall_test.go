@@ -35,7 +35,9 @@ func TestNoTemporalImportsOutsideAllowList(t *testing.T) {
 
 	// Allowlist of pkg/* subdirectories permitted to import go.temporal.io/sdk/*.
 	// Order is irrelevant; kept in phase-introduction order for readability.
-	allowedPkgs := []string{"activity", "interpreter", "worker"}
+	// Phase 4 plan 04-05 added "cli" — pkg/cli's run subcommand is the
+	// legitimate consumer of client.ExecuteWorkflow / WorkflowRun.Get.
+	allowedPkgs := []string{"activity", "interpreter", "worker", "cli"}
 	sep := string(filepath.Separator)
 
 	fset := token.NewFileSet()
