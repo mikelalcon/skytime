@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-05-01T20:09:16.035Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-05-01T20:20:09.056Z"
 last_activity: 2026-05-01
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 19
-  completed_plans: 14
+  completed_plans: 15
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04 (static-validation-tier-cli-skeleton) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-05-01
 
@@ -64,6 +64,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03-lambda-serialization-decision-interpreter-worker P04 | 18min | 3 tasks | 13 files |
 | Phase 04 P01 | 5min | 3 tasks | 10 files |
 | Phase 04 P02 | 6min | 3 tasks | 8 files |
+| Phase 04 P03 | 7min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -121,6 +122,10 @@ Recent decisions affecting current work:
 - [Phase 04]: Plan 04-02: stateSet clone-on-fork accumulator pins D4-02 stacking — flow inputs at entry, += script.OutputAlias after each, += for_each.ItemVar inside Steps, if_cond branches see same pre-branch state; ItemsLambdaID validated against pre-loop state (cannot see own item-var)
 - [Phase 04]: Plan 04-02: validateActionRefKwargs cross-validate uses Step.Pos (not ActionRef.Pos) — ActionRef.Pos may be zero on hand-built refs; enclosing Step is the closest guaranteed-present syntax-tree node. Pass ordering D4-02 BEFORE D-11 cross-validate so structural state errors surface before kwarg-shape errors
 - [Phase 04]: Plan 04-02: Rule 1 fixture-alignment fix — TestFreeVars_ModuleConstAllowed/ModuleLevelDefAllowed updated from inputs={} to inputs={"v":"int"} so D4-02 (now stricter) accepts ctx.v references; D-19 invariant under test (module-level free vars allowed) preserved unchanged
+- [Phase 04]: Plan 04-03: Moved dryrun out of internal/ — Go's internal-package rule blocked tests/differential_test.go from importing pkg/validator/internal/dryrun (cross-tree path). Final at pkg/validator/dryrun/; test-only guarantee is now social rather than syntactic, documented in dryrun/doc.go
+- [Phase 04]: Plan 04-03: validator.Validate returns empty (non-nil) []error on success — empty slice signals 'no errors' unambiguously and lets future multi-error reporting append without forcing callers to switch from nil-check to make([]error, 0)
+- [Phase 04]: Plan 04-03: AlwaysOkDispatch shallow-copies OperationSpec and replaces ONLY Func — preserves Name/Idempotent/KwargsType/DefaultTimeout so the activity layer's DecodeKwargsFromDict path still fires on bad inputs. Phase 5's Starlark mock harness will reuse this dispatch-replacement seam shape.
+- [Phase 04]: Plan 04-03: TestDifferentialCorpus skip-on-empty is REQUIRED behavior — W2 differential infrastructure ships before W4 corpus by design. Test t.Skip()s when examples/skeleton/ doesn't exist OR has no .star files; activates automatically when W4 plan 04-07 lands fixtures.
 
 ### Pending Todos
 
@@ -133,6 +138,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-01T20:09:16.032Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-05-01T20:20:09.052Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None

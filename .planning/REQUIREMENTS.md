@@ -66,7 +66,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Static Validation (Tier 1)
 
 - [x] **VAL-01**: `skytime validate <file.star>` parses and checks every flow without executing — verifies kwargs match each extension's declared schema, every input maps to a registered schema, every lambda's free variables reference declared state, and the lambda predeclared-global subset is honored
-- [ ] **VAL-02**: Static validation and runtime parsing share the same parser code path — a CI corpus test runs every `.star` file in `examples/` through both static `validate` and a dry-run interpreter (all actions mocked) and asserts they agree on accept/reject
+- [x] **VAL-02**: Static validation and runtime parsing share the same parser code path — a CI corpus test runs every `.star` file in `examples/` through both static `validate` and a dry-run interpreter (all actions mocked) and asserts they agree on accept/reject
 - [x] **VAL-03**: Validation errors are formatted `<file>:<line>:<col> [flow > step > action]: <message>` and exit non-zero; `--debug` reveals Go internals only
 
 ### E2E Test Harness (Tier 3)
@@ -185,7 +185,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | WORK-02 | Phase 3 | Complete |
 | WORK-03 | Phase 3 | Complete |
 | VAL-01 | Phase 4 | Complete |
-| VAL-02 | Phase 4 | Pending |
+| VAL-02 | Phase 4 | Complete |
 | VAL-03 | Phase 4 | Complete |
 | CLI-01 | Phase 4 | Pending |
 | CLI-02 | Phase 4 | Pending |
