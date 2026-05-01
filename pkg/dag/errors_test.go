@@ -84,7 +84,11 @@ func TestValidationError_ExposesPosition(t *testing.T) {
 func TestValidationError_ErrorWithValidPos(t *testing.T) {
 	pos := validPos(t)
 	ve := &ValidationError{Pos: pos, Flow: "approve_pr", Step: "create_issue", Msg: "missing required 'title'"}
-	re := regexp.MustCompile(`^[^:]+:\d+:\d+: missing required 'title'$`)
+	// D4-04 (Phase 4): when Flow and/or Step are set, Error() now renders
+	// the [flow > step > action] bracket. Update the regex to expect the
+	// bracket. The pure no-bracket fallback is covered by the
+	// "none set" subtest in TestValidationError_FormatWithAction.
+	re := regexp.MustCompile(`^[^:]+:\d+:\d+ \[approve_pr > create_issue\]: missing required 'title'$`)
 	assert.Regexp(t, re, ve.Error())
 }
 

@@ -185,7 +185,12 @@ func TestValidFixtures(t *testing.T) {
 // an error matching its `# expects: <substring>` header
 // =============================================================================
 
-var posFormatRe = regexp.MustCompile(`^[^:]+:\d+:\d+: `)
+// posFormatRe enforces the D-04 format with the D4-04 (Phase 4) extension:
+// "<file>:<line>:<col>" optionally followed by " [flow > step > action]"
+// before the trailing ": <msg>". The bracket is omitted when no Flow/Step/
+// Action is set (legacy ParseError shape, plus ValidationError without
+// any DAG context).
+var posFormatRe = regexp.MustCompile(`^[^:]+:\d+:\d+(?: \[[^\]]+\])?: `)
 
 func TestInvalidFixtures(t *testing.T) {
 	fixtures, err := filepath.Glob("../../tests/fixtures/invalid/*.star")

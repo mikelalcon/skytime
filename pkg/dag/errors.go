@@ -9,6 +9,7 @@ package dag
 
 import (
 	"fmt"
+	"strings"
 
 	"go.starlark.net/syntax"
 )
@@ -40,21 +41,57 @@ func (e *ParseError) Unwrap() error { return e.Wrapped }
 
 // ValidationError reports a parse-time semantic problem against an extension
 // schema or a flow-level invariant: missing required kwargs, duplicate flow
-// names, unresolvable call_flow targets. Flow and Step name the offending DAG
-// nodes when known.
+// names, unresolvable call_flow targets. Flow, Step, and Action name the
+// offending DAG nodes when known.
+//
+// D4-04 (Phase 4 CONTEXT.md): the Action field carries the operation kind
+// (e.g., "github.create_issue") for lints scoped to a specific action ref.
+// Lints scoped to the step level leave Action empty; lints scoped to the
+// flow level leave both Step and Action empty.
 type ValidationError struct {
 	Pos     syntax.Position
 	Flow    string
 	Step    string
+	Action  string // D4-04: action kind (e.g., "github.create_issue") for [flow > step > action] error rendering
 	Msg     string
 	Wrapped error
 }
 
-// Error formats as "<file>:<line>:<col>: <msg>" when Pos is valid; otherwise
-// returns just Msg.
+// Error formats as "<file>:<line>:<col> [flow > step > action]: <msg>" when
+// Pos is valid and at least one of Flow/Step/Action is non-empty. Empty
+// segments inside the bracket are dropped and the remaining ones joined with
+// " > ". When all three are empty, the bracket is omitted. When Pos is
+// invalid, the position prefix is dropped (existing fallback).
+//
+// Examples:
+//
+//	flows/x.star:10:5 [my_flow > step_2 > github.create_issue]: missing kwarg
+//	flows/x.star:10:5 [my_flow]: foo
+//	flows/x.star:10:5 [my_flow > github.create_issue]: foo  (Step empty)
+//	flows/x.star:10:5: bare msg                             (no bracket at all)
+//	[my_flow]: bare msg                                     (Pos invalid)
+//	bare msg                                                (Pos invalid + no segments)
 func (e *ValidationError) Error() string {
+	var segments []string
+	if e.Flow != "" {
+		segments = append(segments, e.Flow)
+	}
+	if e.Step != "" {
+		segments = append(segments, e.Step)
+	}
+	if e.Action != "" {
+		segments = append(segments, e.Action)
+	}
+	bracket := ""
+	if len(segments) > 0 {
+		bracket = " [" + strings.Join(segments, " > ") + "]"
+	}
 	if e.Pos.IsValid() {
-		return fmt.Sprintf("%s:%d:%d: %s", e.Pos.Filename(), e.Pos.Line, e.Pos.Col, e.Msg)
+		return fmt.Sprintf("%s:%d:%d%s: %s", e.Pos.Filename(), e.Pos.Line, e.Pos.Col, bracket, e.Msg)
+	}
+	if bracket != "" {
+		// Trim the leading space when no position prefix.
+		return strings.TrimPrefix(bracket, " ") + ": " + e.Msg
 	}
 	return e.Msg
 }
