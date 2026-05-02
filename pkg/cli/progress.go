@@ -5,55 +5,79 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
+
+	"golang.org/x/term"
 )
 
 // progressHandler wraps another slog.Handler and intercepts records
-// carrying a "flow_name" attribute, rendering them as compact progress
-// lines on its output writer. Records without "flow_name" pass through
-// to the wrapped handler unchanged.
+// carrying an "event" attribute, rendering them as Bazel-style progress
+// lines on its output writer. Records without "event" pass through to
+// the wrapped handler unchanged (e.g., raw SDK INFO/DEBUG lines, which
+// then either render via charm-log when --verbose is set, or get dropped
+// when --verbose is off and the wrapped handler is at LevelError+1).
 //
-// Phase 4 W5 ships the handler; the interpreter walkers (pkg/interpreter)
-// will be updated in Phase 5/6 to emit `flow_name`/`step_kind`/`action_kind`
-// attrs at each tick. Until then, this handler is transparently a no-op
-// (no records carry the attribute → all pass through).
+// Bazel-style format (quick 260502-guu Fix B):
 //
-// Format (D4-06 spec):
+//	[skytime] flow simple_check  3 steps  starting
+//	[1/3] step                gh.get(/repos/example/repo)
+//	     ✓ 234ms  status=200
+//	[3/3] if_cond             ctx.health  → then
+//	[skytime] flow complete  3/3 steps  total 433ms
 //
-//	[skytime] flow=<flow_name> step=<step_kind> action=<action_kind> at <pos> elapsed=<ms>ms <message>
+// The renderer dispatches on the `event` attribute value:
+//   - flow_start    → renderFlowStart(r)
+//   - step_dispatch → renderStepDispatch(r)
+//   - step_complete → renderStepComplete(r)
+//   - branch        → renderBranch(r)
+//   - flow_complete → renderFlowComplete(r)
 //
-// Missing attributes are dropped from the line; the ordering is fixed
-// for greppability.
+// Color is applied only when the output writer is a TTY; non-TTY drops
+// to plain ASCII (greppable by tooling).
 type progressHandler struct {
 	wrapped slog.Handler
 	out     io.Writer
+
+	// ttyKnown caches the TTY check on `out`. We compute it once at
+	// first Handle() rather than at construction so callers can swap
+	// out (rare in production, common in tests) and the cache resets
+	// per-handler.
+	ttyKnown bool
+	tty      bool
 }
 
-// newProgressHandler returns a handler that writes progress lines to
-// out and delegates everything else to wrapped.
+// newProgressHandler returns a handler that writes Bazel-style progress
+// lines to out and delegates everything else to wrapped.
 func newProgressHandler(wrapped slog.Handler, out io.Writer) *progressHandler {
 	return &progressHandler{wrapped: wrapped, out: out}
 }
 
-// Enabled delegates to the wrapped handler. Skytime-namespaced records
-// (those carrying flow_name) are rendered to the progress writer
-// regardless of level — they are progress events, not log severity
-// signals — but slog calls Enabled BEFORE invoking Handle, so we must
-// not return false for Skytime records. Returning the wrapped handler's
-// answer is a pragmatic v1 choice: production CLI runs at INFO+, and
-// the interpreter emits progress at INFO; if a future emitter uses
-// DEBUG level, raise --debug or override the wrapped handler's level.
-func (p *progressHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	return p.wrapped.Enabled(ctx, level)
+// Enabled returns true unconditionally so SDK-level Enabled() pre-checks
+// never gate Skytime progress records before they reach Handle. The
+// wrapped handler still controls passthrough records via its own
+// Enabled() inside Handle's delegation path.
+//
+// Why unconditional: when --verbose is false the wrapped charm-log
+// handler runs at LevelError+1 and would drop INFO records — including
+// our progress events — before Handle ever runs. The progress events
+// are routed by attribute, not severity; Enabled must let them through.
+func (p *progressHandler) Enabled(_ context.Context, _ slog.Level) bool {
+	return true
 }
 
-// Handle routes the record to the progress writer when it carries the
-// flow_name attribute, or to the wrapped handler otherwise.
+// Handle routes the record to the Bazel renderer when it carries the
+// `event` attribute, or to the wrapped handler otherwise. The wrapped
+// handler's Enabled() filters passthrough records by level.
 func (p *progressHandler) Handle(ctx context.Context, r slog.Record) error {
-	if hasAttr(r, "flow_name") {
-		return p.renderProgressLine(r)
+	if !hasAttr(r, "event") {
+		// Passthrough — but respect the wrapped handler's level.
+		if !p.wrapped.Enabled(ctx, r.Level) {
+			return nil
+		}
+		return p.wrapped.Handle(ctx, r)
 	}
-	return p.wrapped.Handle(ctx, r)
+	return p.renderBazelLine(r)
 }
 
 // WithAttrs returns a new progressHandler whose wrapped handler has the
@@ -69,37 +93,184 @@ func (p *progressHandler) WithGroup(name string) slog.Handler {
 	return &progressHandler{wrapped: p.wrapped.WithGroup(name), out: p.out}
 }
 
-// renderProgressLine formats one Skytime progress record. Layout:
-//
-//	[skytime] flow=<f> step=<k> action=<a> at <pos> elapsed=<ms>ms <message>
-//
-// Missing attrs are skipped; ordering is fixed for greppability.
-func (p *progressHandler) renderProgressLine(r slog.Record) error {
-	attrs := map[string]string{}
+// renderBazelLine inspects the `event` attribute value and dispatches
+// to the per-event renderer. Unknown event values fall back to a no-op
+// (defense in depth — the interpreter is the only known producer and
+// the schema is closed).
+func (p *progressHandler) renderBazelLine(r slog.Record) error {
+	attrs := collectAttrs(r)
+	switch attrs.str("event") {
+	case "flow_start":
+		return p.renderFlowStart(attrs)
+	case "step_dispatch":
+		return p.renderStepDispatch(attrs)
+	case "step_complete":
+		return p.renderStepComplete(attrs)
+	case "branch":
+		return p.renderBranch(attrs)
+	case "flow_complete":
+		return p.renderFlowComplete(attrs)
+	}
+	return nil
+}
+
+// attrMap is a parsed view of a slog.Record's attributes — string keyed
+// for easy lookup with type-aware accessors. Building this map once per
+// record (instead of iterating r.Attrs in every renderer) keeps the
+// dispatch-and-format split clean.
+type attrMap map[string]slog.Value
+
+func (m attrMap) str(k string) string {
+	v, ok := m[k]
+	if !ok {
+		return ""
+	}
+	return v.String()
+}
+
+func (m attrMap) int(k string) int64 {
+	v, ok := m[k]
+	if !ok {
+		return 0
+	}
+	return v.Int64()
+}
+
+// collectAttrs walks r.Attrs once and builds an attrMap. slog.Record
+// stores attrs internally so we can't iterate them as a slice without
+// allocating; the visitor pattern is the documented API.
+func collectAttrs(r slog.Record) attrMap {
+	m := make(attrMap, r.NumAttrs())
 	r.Attrs(func(a slog.Attr) bool {
-		attrs[a.Key] = a.Value.String()
+		m[a.Key] = a.Value
 		return true
 	})
-	parts := []string{"[skytime]"}
-	if v, ok := attrs["flow_name"]; ok {
-		parts = append(parts, "flow="+v)
+	return m
+}
+
+// renderFlowStart: `[skytime] flow <flow_name>  <step_count> steps  starting`
+func (p *progressHandler) renderFlowStart(a attrMap) error {
+	flow := a.str("flow_name")
+	count := a.int("step_count")
+	line := fmt.Sprintf("%s flow %s  %d steps  starting",
+		p.colorBanner("[skytime]"), flow, count)
+	return p.println(line)
+}
+
+// renderStepDispatch: `[N/M] kind                label`
+//
+// When path indicates nested context (anything other than the bare
+// numeric idx), the row is indented 2 spaces and the counter uses
+// `[path/path]`.
+func (p *progressHandler) renderStepDispatch(a attrMap) error {
+	idx := a.int("idx")
+	total := a.int("total")
+	kind := a.str("kind")
+	label := a.str("label")
+	path := a.str("path")
+
+	indent, counter := p.computeCounter(idx, total, path)
+	line := fmt.Sprintf("%s%s %s %s",
+		indent,
+		p.colorCounter(counter),
+		p.colorKind(padKind(kind)),
+		label,
+	)
+	return p.println(line)
+}
+
+// renderStepComplete:
+//   - on status=ok: `     ✓ <duration_ms>ms  <summary>`
+//   - on status=err: `     ✗ <duration_ms>ms  <summary>`
+//
+// The completion line is indented 5 spaces from column 0 so the marker
+// column-aligns roughly under the counter.
+func (p *progressHandler) renderStepComplete(a attrMap) error {
+	status := a.str("status")
+	dur := a.int("duration_ms")
+	summary := a.str("summary")
+	path := a.str("path")
+	idx := a.int("idx")
+
+	// Nested rows already had their dispatch indented 2 spaces; their
+	// completion row indents an additional 2 (total 4) so the marker
+	// sits under the nested counter. Top-level rows indent 5 from col 0.
+	indent := "     "
+	if isNestedPath(idx, path) {
+		indent = "       "
 	}
-	if v, ok := attrs["step_kind"]; ok {
-		parts = append(parts, "step="+v)
+
+	marker := p.colorOk("✓")
+	if status == "err" {
+		marker = p.colorErr("✗")
 	}
-	if v, ok := attrs["action_kind"]; ok {
-		parts = append(parts, "action="+v)
+	line := fmt.Sprintf("%s%s %dms  %s", indent, marker, dur, summary)
+	return p.println(line)
+}
+
+// renderBranch: `<indent>→ <branch>` — the arrow indicates an if_cond
+// took the named branch (then|else).
+func (p *progressHandler) renderBranch(a attrMap) error {
+	branch := a.str("branch")
+	path := a.str("path")
+	idx := a.int("idx")
+
+	indent := "     "
+	if isNestedPath(idx, path) {
+		indent = "       "
 	}
-	if v, ok := attrs["pos"]; ok {
-		parts = append(parts, "at "+v)
+
+	line := fmt.Sprintf("%s%s %s", indent, p.colorArrow("→"), branch)
+	return p.println(line)
+}
+
+// renderFlowComplete: `[skytime] flow complete  <ok>/<total> steps  total <ms>ms`
+func (p *progressHandler) renderFlowComplete(a attrMap) error {
+	ok := a.int("ok_count")
+	errc := a.int("err_count")
+	totalMs := a.int("total_ms")
+	line := fmt.Sprintf("%s flow complete  %d/%d steps  total %dms",
+		p.colorBanner("[skytime]"), ok, ok+errc, totalMs)
+	return p.println(line)
+}
+
+// computeCounter picks the right counter format and indent for a row.
+// Top-level rows render `[idx/total]` and have no indent; nested rows
+// render `[path/path]` and indent 2 spaces.
+func (p *progressHandler) computeCounter(idx, total int64, path string) (indent, counter string) {
+	if isNestedPath(idx, path) {
+		return "  ", fmt.Sprintf("[%s/%s]", path, path)
 	}
-	if v, ok := attrs["elapsed_ms"]; ok {
-		parts = append(parts, "elapsed="+v+"ms")
+	return "", fmt.Sprintf("[%d/%d]", idx, total)
+}
+
+// isNestedPath returns true when path indicates a nested step (anything
+// other than the bare decimal representation of idx, or empty).
+//
+// Top-level path conventions: "1", "2", "3", ... (matches fmt.Sprintf("%d", idx)).
+// Nested conventions: "3a", "3b" (if_cond branches), "3.0.0", "3.1.0" (for_each).
+//
+// Empty path is treated as top-level (defensive — early callers may
+// emit dispatch events before the stepPath is initialized).
+func isNestedPath(idx int64, path string) bool {
+	if path == "" {
+		return false
 	}
-	line := strings.Join(parts, " ")
-	if r.Message != "" {
-		line = line + " " + r.Message
+	return path != fmt.Sprintf("%d", idx)
+}
+
+// padKind right-pads a kind label so kind columns align across rows.
+// Width 19 is just over the longest known kind ("for_each_parallel" = 17).
+func padKind(kind string) string {
+	const width = 19
+	if len(kind) >= width {
+		return kind
 	}
+	return kind + strings.Repeat(" ", width-len(kind))
+}
+
+// println writes line followed by a newline to p.out.
+func (p *progressHandler) println(line string) error {
 	_, err := fmt.Fprintln(p.out, line)
 	return err
 }
@@ -116,3 +287,54 @@ func hasAttr(r slog.Record, key string) bool {
 	})
 	return found
 }
+
+// ---------------------------------------------------------------------------
+// Color helpers
+// ---------------------------------------------------------------------------
+//
+// We intentionally use raw ANSI escapes rather than pulling in lipgloss —
+// the cli firewall keeps charmbracelet deps to charm-log only, and these
+// six escape sequences are well-known and trivially testable.
+//
+// When out is not a TTY (test buffers, file redirects), the helpers
+// return the input unchanged → plain ASCII output that's greppable.
+
+const (
+	ansiReset      = "\x1b[0m"
+	ansiDimCyan    = "\x1b[2;36m"
+	ansiBrightCyan = "\x1b[1;36m"
+	ansiBrightWhite = "\x1b[1;37m"
+	ansiGreen      = "\x1b[32m"
+	ansiRed        = "\x1b[31m"
+	ansiYellow     = "\x1b[33m"
+)
+
+// isTTY memoizes the term.IsTerminal check on p.out. When p.out is a
+// *os.File whose fd is a terminal, color is enabled; otherwise (bytes
+// buffer, pipe, redirect, non-file Writer) ASCII fallback applies.
+func (p *progressHandler) isTTY() bool {
+	if p.ttyKnown {
+		return p.tty
+	}
+	p.ttyKnown = true
+	if f, ok := p.out.(*os.File); ok {
+		p.tty = term.IsTerminal(int(f.Fd()))
+	} else {
+		p.tty = false
+	}
+	return p.tty
+}
+
+func (p *progressHandler) wrap(s, color string) string {
+	if !p.isTTY() {
+		return s
+	}
+	return color + s + ansiReset
+}
+
+func (p *progressHandler) colorBanner(s string) string  { return p.wrap(s, ansiDimCyan) }
+func (p *progressHandler) colorCounter(s string) string { return p.wrap(s, ansiBrightCyan) }
+func (p *progressHandler) colorKind(s string) string    { return p.wrap(s, ansiBrightWhite) }
+func (p *progressHandler) colorOk(s string) string      { return p.wrap(s, ansiGreen) }
+func (p *progressHandler) colorErr(s string) string     { return p.wrap(s, ansiRed) }
+func (p *progressHandler) colorArrow(s string) string   { return p.wrap(s, ansiYellow) }
