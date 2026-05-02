@@ -52,10 +52,25 @@ func (a *Activity) runAction(ctx context.Context, idx int, ref *dag.ActionRef) (
 	// just skips the cache READ — the cache WRITE still warms the entry
 	// for any subsequent action in the same retried batch (idempotent
 	// invalidate-then-warm sequence).
-	bypass := a.attemptFn(ctx) > 1
-	cred, err := a.cache.resolve(ctx, ref.CredentialID, bypass)
-	if err != nil {
-		return nil, classifyResolveError(err) // D2-12
+	//
+	// Fix A (quick 260502-guu): when ref.CredentialID == "", short-circuit
+	// the resolve call entirely and pass nil to the OperationFunc. Without
+	// this guard the noopCredentialHandler / FakeCredentialHandler (when
+	// no entry is stored under "") returns ErrUnknownCredential — D2-12
+	// classifies that as RETRYABLE, and Temporal retries the WHOLE batch
+	// every ~5 s for the activity StartToCloseTimeout (30 s default) →
+	// 30 s of error spam before timeout. Operations document nil as a
+	// legal credential value (extension/builtin/http applyCredential
+	// short-circuits on nil); the per-action guard makes that contract
+	// the production path for endpoints declared without `credential=`.
+	var cred extension.Credential // explicit zero-value nil
+	if ref.CredentialID != "" {
+		bypass := a.attemptFn(ctx) > 1
+		c, err := a.cache.resolve(ctx, ref.CredentialID, bypass)
+		if err != nil {
+			return nil, classifyResolveError(err) // D2-12
+		}
+		cred = c
 	}
 
 	// Per-action timeout (D2-15). DefaultTimeout==0 means "no per-action
