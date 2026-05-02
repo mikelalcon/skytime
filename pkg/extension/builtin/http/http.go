@@ -172,28 +172,55 @@ func callerPosition(thread *starlark.Thread) syntax.Position {
 // Activity-side OperationFunc implementations
 // ---------------------------------------------------------------------------
 
+// asGetArgs accepts either GetArgs (value) or *GetArgs (pointer) so the
+// op functions stay tolerant to caller convention. The activity-side
+// decoder (pkg/activity/action_executor.go decodeActionRefKwargs)
+// returns the decoded struct as a VALUE per its documented contract;
+// the http_test.go tier passes a POINTER built via
+// `reflect.New(argsType).Interface()`. Both must work.
+//
+// Quick 260502-guu Rule 1 fix: previously these doX funcs hard-cast to
+// *GetArgs / *BodyArgs which panicked at runtime for any flow whose
+// activity layer uses the production decoder. The pre-existing test
+// coverage masked the bug because tests built pointer-typed args.
+func asGetArgs(args any) *GetArgs {
+	if p, ok := args.(*GetArgs); ok {
+		return p
+	}
+	v := args.(GetArgs)
+	return &v
+}
+
+func asBodyArgs(args any) *BodyArgs {
+	if p, ok := args.(*BodyArgs); ok {
+		return p
+	}
+	v := args.(BodyArgs)
+	return &v
+}
+
 func doGet(ctx context.Context, args any, cred extension.Credential) (dag.OperationOutput, error) {
-	a := args.(*GetArgs)
+	a := asGetArgs(args)
 	return doHTTP(ctx, "GET", a.BaseURL, a.Path, nil, a.Headers, cred)
 }
 
 func doHead(ctx context.Context, args any, cred extension.Credential) (dag.OperationOutput, error) {
-	a := args.(*GetArgs)
+	a := asGetArgs(args)
 	return doHTTP(ctx, "HEAD", a.BaseURL, a.Path, nil, a.Headers, cred)
 }
 
 func doPost(ctx context.Context, args any, cred extension.Credential) (dag.OperationOutput, error) {
-	a := args.(*BodyArgs)
+	a := asBodyArgs(args)
 	return doHTTP(ctx, "POST", a.BaseURL, a.Path, []byte(a.Body), a.Headers, cred)
 }
 
 func doPut(ctx context.Context, args any, cred extension.Credential) (dag.OperationOutput, error) {
-	a := args.(*BodyArgs)
+	a := asBodyArgs(args)
 	return doHTTP(ctx, "PUT", a.BaseURL, a.Path, []byte(a.Body), a.Headers, cred)
 }
 
 func doDelete(ctx context.Context, args any, cred extension.Credential) (dag.OperationOutput, error) {
-	a := args.(*GetArgs)
+	a := asGetArgs(args)
 	return doHTTP(ctx, "DELETE", a.BaseURL, a.Path, nil, a.Headers, cred)
 }
 
