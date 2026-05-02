@@ -15,6 +15,14 @@ import (
 	"github.com/mikelalcon/skytime/pkg/dag"
 )
 
+// silentSDKLevel is the threshold the SDK-side slog logger runs at when
+// --verbose is false. slog.LevelError is +8 (the highest standard
+// level); +1 above it drops every record the SDK might emit at standard
+// levels (Debug, Info, Warn, Error). The pkg/cli renderer routes
+// `event=*` records BEFORE delegating to this handler, so Skytime
+// progress events are unaffected — only raw SDK noise is suppressed.
+const silentSDKLevel = slog.LevelError + 1
+
 // setupLogging returns the *slog.Logger pkg/cli uses. Library packages
 // log through slog.Default(); pkg/cli swaps the default to this handler
 // at PersistentPreRunE so every Skytime-side log line renders through
@@ -50,6 +58,43 @@ func setupLogging(debug bool) *slog.Logger {
 	logger := slog.New(h)
 	slog.SetDefault(logger)
 	return logger
+}
+
+// buildSDKSlogLogger returns the *slog.Logger handed to the Temporal
+// SDK (worker, client). Behavior depends on cfg.Verbose:
+//
+//   - Verbose=false → wraps a slog.NewTextHandler at level=silentSDKLevel
+//     pointing at io.Discard. SDK INFO/DEBUG records are dropped before
+//     reaching any user-visible writer.
+//
+//   - Verbose=true → returns cfg.logger (the same charm-log handler used
+//     for Skytime-side messages) so SDK lines render with the same
+//     formatting as everything else.
+//
+// Skytime's interpreter `event=*` records are unaffected by this choice
+// because the progressHandler in front of the SDK logger short-circuits
+// them to the Bazel renderer before any level threshold applies (see
+// progress.go Enabled).
+func buildSDKSlogLogger(cfg *config) *slog.Logger {
+	if cfg.Verbose {
+		return cfg.logger
+	}
+	return slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: silentSDKLevel}))
+}
+
+// buildRoutedSlogLogger returns the *slog.Logger handed to the worker
+// + Temporal client. It wraps cfg.sdkLogger's handler with a
+// *progressHandler that renders Skytime `event=*` records to
+// progressOut (Bazel-style) and delegates everything else to the
+// cfg.sdkLogger handler.
+//
+// progressOut is normally cmd.OutOrStdout() — the Bazel rendering goes
+// to stdout, the SDK passthrough goes to stderr (via the wrapped
+// charm-log handler). Tests pass a *bytes.Buffer for assertion.
+func buildRoutedSlogLogger(cfg *config, progressOut io.Writer) *slog.Logger {
+	wrapped := cfg.sdkLogger.Handler()
+	routed := newProgressHandler(wrapped, progressOut)
+	return slog.New(routed)
 }
 
 // renderError writes a single error to out using D4-18 Starlark-first

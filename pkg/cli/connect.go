@@ -51,6 +51,10 @@ func connectClient(cfg *config) (client.Client, error) {
 // connectClientWithFactory is the test-friendly variant of connectClient.
 // Production code calls connectClient; tests inject a custom factory that
 // captures which constructor was selected.
+//
+// Quick 260502-guu Fix B: cfg.sdkLogger is threaded into the chosen
+// constructor's options struct via .Logger so the SDK client's
+// gRPC-side logs flow through the same handler as the worker's.
 func connectClientWithFactory(cfg *config, f clientFactory) (client.Client, error) {
 	switch {
 	case cfg.apiKey != "":
@@ -58,6 +62,7 @@ func connectClientWithFactory(cfg *config, f clientFactory) (client.Client, erro
 			HostPort:  cfg.address,
 			Namespace: cfg.namespace,
 			APIKey:    cfg.apiKey,
+			Logger:    cfg.sdkLogger,
 		})
 	case cfg.clientCert != "" && cfg.clientKey != "":
 		cert, err := tls.LoadX509KeyPair(cfg.clientCert, cfg.clientKey)
@@ -68,6 +73,7 @@ func connectClientWithFactory(cfg *config, f clientFactory) (client.Client, erro
 			HostPort:   cfg.address,
 			Namespace:  cfg.namespace,
 			ClientCert: cert,
+			Logger:     cfg.sdkLogger,
 		}
 		if cfg.serverCA != "" {
 			pool := x509.NewCertPool()
@@ -87,6 +93,7 @@ func connectClientWithFactory(cfg *config, f clientFactory) (client.Client, erro
 		return f.NewDev(worker.DevClientOptions{
 			HostPort:  cfg.address,
 			Namespace: cfg.namespace,
+			Logger:    cfg.sdkLogger,
 		})
 	}
 }

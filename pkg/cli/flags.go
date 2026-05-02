@@ -14,6 +14,8 @@ import (
 func registerPersistentFlags(root *cobra.Command, cfg *config) {
 	root.PersistentFlags().BoolVar(&cfg.debug, "debug", false,
 		"reveal Go internals in error output (VAL-03 / D4-19)")
+	root.PersistentFlags().BoolVar(&cfg.Verbose, "verbose", false,
+		"show Temporal SDK INFO/DEBUG logs alongside Skytime progress (default: hidden)")
 	root.PersistentFlags().StringVar(&cfg.address, "address", "",
 		"Temporal address (env: SKYTIME_TEMPORAL_ADDRESS)")
 	root.PersistentFlags().StringVar(&cfg.namespace, "namespace", "",

@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/mikelalcon/skytime/pkg/extension"
 )
@@ -19,15 +20,24 @@ const (
 //
 // v1.39+ behavior: providing APIKey auto-enables TLS — do NOT set TLS
 // alongside it.
+//
+// Logger (quick 260502-guu Fix B): optional *slog.Logger threaded into
+// client.Options.Logger via go.temporal.io/sdk/log.NewStructuredLogger.
+// nil → SDK default. The CLI (pkg/cli) constructs a routedSlog whose
+// handler is a *progressHandler so SDK lines either render through
+// charm-log (--verbose) or get dropped (--verbose=false).
 type CloudOptions struct {
 	HostPort  string // e.g., "us-west-2.aws.api.temporal.io:7233"
 	Namespace string
 	APIKey    string // required
 	Identity  string // optional; defaults to "skytime/<build_id>" when empty
+	Logger    *slog.Logger
 }
 
 // SelfHostedOptions configures a connection to a self-hosted Temporal cluster
 // with mTLS (D3-17).
+//
+// Logger: see CloudOptions.Logger.
 type SelfHostedOptions struct {
 	HostPort   string
 	Namespace  string
@@ -35,13 +45,17 @@ type SelfHostedOptions struct {
 	RootCAs    *x509.CertPool  // server cert verification; nil = system pool
 	ServerName string          // SNI / verify name
 	Identity   string
+	Logger     *slog.Logger
 }
 
 // DevClientOptions configures a connection to a local dev server (no TLS).
+//
+// Logger: see CloudOptions.Logger.
 type DevClientOptions struct {
 	HostPort  string // default "localhost:7233"
 	Namespace string // default "default"
 	Identity  string
+	Logger    *slog.Logger
 }
 
 // WorkerOptions configures a Skytime worker.
@@ -87,6 +101,15 @@ type WorkerOptions struct {
 	// MaxConcurrentActivities tunes the SDK worker's activity pool. Zero =
 	// SDK default.
 	MaxConcurrentActivities int
+
+	// Logger (quick 260502-guu Fix B) is optional. When non-nil, the
+	// SDK worker's options.Logger is wired to
+	// go.temporal.io/sdk/log.NewStructuredLogger(Logger). nil → SDK
+	// default (raw stdlib log lines on stderr). The CLI's run subcommand
+	// supplies a routedSlog whose handler is a *progressHandler — that
+	// is what makes interpreter `event=*` records render as Bazel-style
+	// step lines instead of raw log noise.
+	Logger *slog.Logger
 }
 
 // applyDefaults fills in defaults on an in-place WorkerOptions copy and

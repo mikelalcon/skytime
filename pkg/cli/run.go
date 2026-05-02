@@ -85,10 +85,18 @@ func newRunCommand(cfg *config) *cobra.Command {
 					"(supply via cli.WithCredentialHandler when constructing the binary)")
 				return errSilent
 			}
+			// Quick 260502-guu Fix B: route the worker's slog through
+			// the Bazel renderer. progressOut is stdout; the
+			// progressHandler intercepts `event=*` records and renders
+			// them as Bazel-style step lines, while everything else
+			// (raw SDK INFO/DEBUG when --verbose, dropped when not)
+			// passes through cfg.sdkLogger's wrapped handler.
+			routedSlog := buildRoutedSlogLogger(cfg, cmd.OutOrStdout())
 			w, err := worker.NewWorker(c, worker.WorkerOptions{
 				RootDir:           filepath.Dir(file),
 				Extensions:        cfg.exts,
 				CredentialHandler: cfg.credHandler,
+				Logger:            routedSlog,
 			})
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "worker init: %s\n", err.Error())

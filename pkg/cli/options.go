@@ -26,7 +26,9 @@ type config struct {
 
 	// PersistentPreRunE-populated runtime fields:
 	debug      bool
-	logger     *slog.Logger
+	Verbose    bool         // exposed (capitalized) for white-box tests; persistent --verbose flag value
+	logger     *slog.Logger // charm-log handler used for Skytime-side logging (slog.Default after PreRunE)
+	sdkLogger  *slog.Logger // SDK-side handler — verbose=false → near-silent text/discard; verbose=true → same charm-log handler
 	address    string
 	namespace  string
 	apiKey     string

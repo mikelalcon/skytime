@@ -6,6 +6,7 @@ import (
 
 	sdkactivity "go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
+	sdklog "go.temporal.io/sdk/log"
 	sdkworker "go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 
@@ -62,6 +63,20 @@ func NewWorker(c client.Client, opts WorkerOptions) (*Worker, error) {
 	if opts.MaxConcurrentActivities > 0 {
 		sdkOpts.MaxConcurrentActivityExecutionSize = opts.MaxConcurrentActivities
 	}
+	// Quick 260502-guu Fix B: the SDK's worker.Options struct does NOT
+	// expose a Logger field (verified against go.temporal.io/sdk@v1.42.0
+	// internal/worker.go WorkerOptions). The worker INHERITS the
+	// client's Logger (set via client.Options.Logger). Wiring lives in
+	// pkg/worker/client.go's three constructors which thread
+	// {Cloud,SelfHosted,Dev}ClientOptions.Logger into client.Options.Logger
+	// via sdklog.NewStructuredLogger.
+	//
+	// WorkerOptions.Logger is preserved as a field for API symmetry with
+	// the client option structs and as a future seam (the SDK may add
+	// worker-level Logger override in a later version), but in v1.42.0
+	// it is informational only — opts.Logger is not consumed here.
+	_ = sdklog.NewStructuredLogger // import retained for future Logger-on-worker hook
+	_ = opts.Logger
 	sdkW := sdkWorkerNew(c, opts.TaskQueue, sdkOpts)
 
 	// Register the single interpreter workflow.

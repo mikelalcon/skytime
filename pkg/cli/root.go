@@ -46,6 +46,7 @@ func NewRootCommand(opts ...Option) (*cobra.Command, error) {
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		bindEnvVars(cmd, cfg)
 		cfg.logger = setupLogging(cfg.debug)
+		cfg.sdkLogger = buildSDKSlogLogger(cfg)
 		return nil
 	}
 
