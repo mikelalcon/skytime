@@ -10,6 +10,13 @@ Combined with parallel_fanout.star this corpus covers all six DSL
 primitives. The differential test (tests/differential_test.go) parses
 this through the static validator AND a dry-run interpreter and asserts
 they agree on accept/reject.
+
+Note: --input='{"repo_path":"..."}' is illustrative; v1 does not yet
+support `step(action=gh.get(path=ctx.repo_path))` — step kwargs are
+static at parse time. The corpus path is hardcoded to
+/repos/octocat/Hello-World for the happy-path demo (a real public
+GitHub endpoint that has returned 200 for over a decade); v1.x will
+add script-builds-path when a real consumer needs it.
 """
 
 gh = http.endpoint(base_url = "https://api.github.com")
@@ -20,7 +27,7 @@ flow(
     steps = [
         # Sequential step — single ActionRef.
         step(
-            action = gh.get(path = "/repos/example/repo"),
+            action = gh.get(path = "/repos/octocat/Hello-World"),
         ),
         # Script — pure state mutation, no I/O. Computes a derived
         # field from inputs and stores it under output_alias="health".
@@ -34,10 +41,10 @@ flow(
         if_cond(
             cond = lambda ctx: ctx.health,
             then = [
-                step(action = gh.get(path = "/repos/example/repo/branches")),
+                step(action = gh.get(path = "/repos/octocat/Hello-World/branches")),
             ],
             else_ = [
-                step(action = gh.get(path = "/repos/example/repo")),
+                step(action = gh.get(path = "/repos/octocat/Hello-World")),
             ],
         ),
     ],

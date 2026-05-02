@@ -22,12 +22,14 @@ flow(
     steps = [
         # Block batch — three idempotent gets in one activity invocation.
         # All idempotent (D4-14 says http.get is idempotent), so the
-        # parser's mixed-idempotency lint (D2-05) accepts this.
+        # parser's mixed-idempotency lint (D2-05) accepts this. Three
+        # real GET endpoints on the public octocat/Hello-World repo,
+        # each returns 200 against api.github.com.
         step(
             block = [
-                gh.get(path = "/repos/example/one"),
-                gh.get(path = "/repos/example/two"),
-                gh.get(path = "/repos/example/three"),
+                gh.get(path = "/repos/octocat/Hello-World"),
+                gh.get(path = "/repos/octocat/Hello-World/branches"),
+                gh.get(path = "/repos/octocat/Hello-World/contributors"),
             ],
         ),
     ],

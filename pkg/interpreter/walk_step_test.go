@@ -298,6 +298,41 @@ func TestExtractStatusSummary_EmptyResults(t *testing.T) {
 	require.Equal(t, "", extractStatusSummary(nil))
 }
 
+// TestExtractStatusSummary_RawOperationOutput — Quick 260502-onc Fix B
+// Rule 1 deviation: production results round-trip through Temporal's
+// JSON DataConverter, which decodes OkResult.Output as
+// dag.RawOperationOutput{Bytes: <raw json>}, NOT the original concrete
+// Output type. The helper must parse the raw JSON for a "status" key
+// so the renderer sees status=N in the production path. Without this
+// the e2e happy path renders an empty summary on success.
+func TestExtractStatusSummary_RawOperationOutput(t *testing.T) {
+	t.Run("status present", func(t *testing.T) {
+		raw := dag.RawOperationOutput{Bytes: []byte(`{"status":200,"body":"ok","headers":{}}`)}
+		results := dag.ActionResults{dag.OkResult{Idx: 0, Output: raw}}
+		require.Equal(t, "status=200", extractStatusSummary(results))
+	})
+	t.Run("status absent", func(t *testing.T) {
+		raw := dag.RawOperationOutput{Bytes: []byte(`{"foo":"bar"}`)}
+		results := dag.ActionResults{dag.OkResult{Idx: 0, Output: raw}}
+		require.Equal(t, "", extractStatusSummary(results))
+	})
+	t.Run("empty bytes", func(t *testing.T) {
+		raw := dag.RawOperationOutput{Bytes: nil}
+		results := dag.ActionResults{dag.OkResult{Idx: 0, Output: raw}}
+		require.Equal(t, "", extractStatusSummary(results))
+	})
+	t.Run("invalid json", func(t *testing.T) {
+		raw := dag.RawOperationOutput{Bytes: []byte(`not-json`)}
+		results := dag.ActionResults{dag.OkResult{Idx: 0, Output: raw}}
+		require.Equal(t, "", extractStatusSummary(results))
+	})
+	t.Run("status not int", func(t *testing.T) {
+		raw := dag.RawOperationOutput{Bytes: []byte(`{"status":"ok"}`)}
+		results := dag.ActionResults{dag.OkResult{Idx: 0, Output: raw}}
+		require.Equal(t, "", extractStatusSummary(results))
+	})
+}
+
 // TestExtractStatusSummary_NonOkSingleResult — a single-result slice
 // containing a NonRetryableErrResult or SkippedResult does not have a
 // reflectable Output; helper returns "" (caller's failure-path summary

@@ -1,6 +1,7 @@
 package interpreter
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
@@ -91,6 +92,14 @@ func (i *interpreter) walkStep(ctx workflow.Context, step *dag.Step) (err error)
 // import pkg/extension/builtin/http (interpreter is a foundation
 // package, builtin extensions are leaves). reflect.FieldByName is
 // O(struct-fields) per call — negligible at single-step granularity.
+//
+// Production round-trip handling: when results have crossed the Temporal
+// JSON wire (e.g., real ExecuteBatch invocation, NOT a unit-test direct
+// return), OkResult.Output is decoded as dag.RawOperationOutput{Bytes:
+// <json>} per result_marshal.go's UnmarshalActionResult contract. The
+// helper falls through to a JSON-keyed "status" lookup so the production
+// renderer still sees status=N. The plain reflect path remains for unit
+// tests that bypass the round-trip.
 func extractStatusSummary(results dag.ActionResults) string {
 	if len(results) == 0 {
 		return ""
@@ -102,6 +111,25 @@ func extractStatusSummary(results dag.ActionResults) string {
 	if !isOK || ok.Output == nil {
 		return ""
 	}
+
+	// Fast path: production round-trip puts a RawOperationOutput here.
+	// Parse the raw JSON for a "status" key (HTTPResponse and any other
+	// extension Output that follows the convention).
+	if raw, isRaw := ok.Output.(dag.RawOperationOutput); isRaw {
+		if len(raw.Bytes) == 0 {
+			return ""
+		}
+		var probe struct {
+			Status *int `json:"status"`
+		}
+		if err := json.Unmarshal(raw.Bytes, &probe); err == nil && probe.Status != nil {
+			return fmt.Sprintf("status=%d", *probe.Status)
+		}
+		return ""
+	}
+
+	// Reflection path: unit tests pass the typed Output directly (no
+	// round-trip), so the Status field is reachable via reflect.
 	v := reflect.ValueOf(ok.Output)
 	if v.Kind() == reflect.Ptr {
 		if v.IsNil() {
