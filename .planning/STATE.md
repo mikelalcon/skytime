@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed quick 260502-guu (Fix A empty-CredentialID bypass + Fix B Bazel-style colored CLI output)
-last_updated: "2026-05-02T17:20:26.948Z"
+stopped_at: Completed quick 260502-onc (Fix A non-2xx auto-fail + Fix B status=N summary + Fix C flow_failed renderer + Fix D corpus + e2e smokes)
+last_updated: "2026-05-02T22:24:56.779Z"
 last_activity: 2026-05-01
 progress:
   total_phases: 6
@@ -152,6 +152,12 @@ Recent decisions affecting current work:
 - [Phase 04-static-validation-tier-cli-skeleton]: Plan 04-07: stubInitState helper in tests/differential_test.go (Rule 3 blocking) — runDryRun seeds InitState from flow.Inputs via type-hint→typed-zero mapping (int→0, bool→false, list→[], dict→{}, default→""); required because static D4-02 accepts ctx.<input> declarations but dry-run runtime needs the keys populated on ctx struct. Mirrors what skytime run --input=<json> would supply
 - [Phase 260501-p7c]: Quick 260501-p7c: WorkerOptions.UseBuildIDVersioning auto-enable removed from applyDefaults — versioning is now opt-in (default false). Production opt-in path preserved verbatim through to sdkworker.Options.UseBuildIDForVersioning. Default skytime dev-server + skytime run no longer hangs on first dispatch against a fresh task queue with no Build ID compatibility set.
 - [Phase 260501-p7c]: Quick 260501-p7c: End-to-end no-hang verification re-anchored from RUN_EXIT to log-evidence (Started Worker / workflow start / ExecuteActivity present in stdout) — the noopCredentialHandler-on-empty-id retry loop is pre-existing and out-of-scope, but it dominates RUN_EXIT and would have masked the bug-fix evidence. Constraint-aligned per the prompt's stated 'verification target is the worker scheduled the workflow' rule.
+- [Phase quick-260502-onc]: Quick 260502-onc: extension.ErrNonRetryable sentinel + activity-side classification — established pattern for any extension surfacing non-retryable failures (mirrors ErrUnknownCredential)
+- [Phase quick-260502-onc]: Quick 260502-onc: 4xx vs 5xx split — 4xx wraps ErrNonRetryable (no retry); 5xx plain wrap (Temporal RetryPolicy fires)
+- [Phase quick-260502-onc]: Quick 260502-onc: Reflection + JSON-fallback summary extraction (Rule 1 deviation) — extractStatusSummary handles both typed Output (unit tests) and round-tripped RawOperationOutput (production wire) since Temporal's JSON DataConverter erases concrete output types
+- [Phase quick-260502-onc]: Quick 260502-onc: walkStep extractFirstNonRetryable wires D2-14 (results, nil) soft failures into workflow-level errors so the renderer prints flow_failed; helper-level test coverage for first-wins property keeps test count manageable
+- [Phase quick-260502-onc]: Quick 260502-onc: progressHandler lastErr lifecycle — schema-stable (no new event attrs), reset on flow_start, shallow-copied through WithAttrs/WithGroup; defensive '(no per-step error captured)' placeholder for malformed event sequences
+- [Phase quick-260502-onc]: Quick 260502-onc: e2e subprocess teardown — Setpgid + syscall.Kill(-pgid, SIGTERM→3s grace→SIGKILL) wired from defer + signal.Notify; ensureDevServer probe-then-spawn reuses existing 7233 listener; //go:build !windows (Setpgid is Unix-only)
 
 ### Pending Todos
 
@@ -164,6 +170,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-02T17:20:26.940Z
-Stopped at: Completed quick 260502-guu (Fix A empty-CredentialID bypass + Fix B Bazel-style colored CLI output)
+Last session: 2026-05-02T22:24:37.721Z
+Stopped at: Completed quick 260502-onc (Fix A non-2xx auto-fail + Fix B status=N summary + Fix C flow_failed renderer + Fix D corpus + e2e smokes)
 Resume file: None
