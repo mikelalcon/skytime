@@ -250,6 +250,26 @@ func doHTTP(ctx context.Context, method, baseURL, path string, body []byte, head
 	if err != nil {
 		return nil, fmt.Errorf("http %s %s: read body: %w", method, url, err)
 	}
+	// Fix A (quick 260502-onc): non-2xx responses are first-class
+	// workflow failures. 4xx → wrap with extension.ErrNonRetryable so
+	// the activity classifier surfaces NonRetryable
+	// temporal.ApplicationError. 5xx → plain wrapped error so the
+	// activity's default-retryable branch lets the Temporal RetryPolicy
+	// do its job. 2xx falls through to the success return below
+	// unchanged.
+	if resp.StatusCode >= 400 {
+		bodySnippet := string(respBody)
+		if len(bodySnippet) > 200 {
+			bodySnippet = bodySnippet[:200] + "..."
+		}
+		if resp.StatusCode < 500 {
+			return nil, fmt.Errorf("HTTP %d %s %s: %s: %w",
+				resp.StatusCode, method, url, bodySnippet, extension.ErrNonRetryable)
+		}
+		// 5xx (and any other >=500): plain wrapped error → retryable.
+		return nil, fmt.Errorf("HTTP %d %s %s: %s",
+			resp.StatusCode, method, url, bodySnippet)
+	}
 	respHeaders := make(map[string]string, len(resp.Header))
 	for k, v := range resp.Header {
 		respHeaders[k] = strings.Join(v, ", ")

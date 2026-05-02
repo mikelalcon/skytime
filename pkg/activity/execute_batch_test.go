@@ -699,3 +699,99 @@ func TestActionExecutor_PerActionTimeout(t *testing.T) {
 	require.Contains(t, err.Error(), "deadline exceeded",
 		"per-action timeout fired and surfaced through the activity error")
 }
+
+// TestIsRetryable_HonorsExtensionErrNonRetryable — Quick 260502-onc Fix A:
+// extensions outside the temporal-firewall (pkg/extension/builtin/http,
+// future ones) cannot construct a *temporal.ApplicationError directly.
+// The extension.ErrNonRetryable sentinel is the contract: any error
+// wrapping it via fmt.Errorf %w is treated as non-retryable. Plain wrapped
+// errors continue to default retryable per the transient-failure
+// assumption (D2-13). Existing first-arm behavior (typed
+// ApplicationError) is preserved.
+func TestIsRetryable_HonorsExtensionErrNonRetryable(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "plain wrapped ErrNonRetryable",
+			err:  fmt.Errorf("HTTP 404 GET https://x/y: %w", extension.ErrNonRetryable),
+			want: false,
+		},
+		{
+			name: "double-wrapped ErrNonRetryable",
+			err: fmt.Errorf("outer: %w",
+				fmt.Errorf("HTTP 404 GET https://x/y: %w", extension.ErrNonRetryable)),
+			want: false,
+		},
+		{
+			name: "plain unrelated error → retryable default",
+			err:  errors.New("network down"),
+			want: true,
+		},
+		{
+			name: "NonRetryable temporal.ApplicationError → not retryable",
+			err:  temporal.NewNonRetryableApplicationError("nope", "TestNoRetry", nil),
+			want: false,
+		},
+		{
+			name: "Retryable temporal.ApplicationError → retryable",
+			err:  temporal.NewApplicationError("transient", "TestRetry"),
+			want: true,
+		},
+		{
+			name: "nil → not retryable",
+			err:  nil,
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, isRetryable(tc.err))
+		})
+	}
+}
+
+// TestExecuteBatch_HTTPNonRetryable_Integration — Quick 260502-onc Fix A:
+// end-to-end through ExecuteBatch. A fake OperationFunc returns a
+// fmt.Errorf wrap of extension.ErrNonRetryable. The activity must:
+//   - return (results, nil) per D2-14 (Temporal does NOT retry)
+//   - place dag.NonRetryableErrResult{Idx:0, Err: <wrapped err>} in results
+//   - the wrapped err must still satisfy errors.Is(..., ErrNonRetryable) so
+//     downstream consumers (interpreter walkStep extractFirstNonRetryable)
+//     and renderers (CLI ✗ markers) see the failure context.
+func TestExecuteBatch_HTTPNonRetryable_Integration(t *testing.T) {
+	op := func(_ context.Context, _ any, _ extension.Credential) (dag.OperationOutput, error) {
+		return nil, fmt.Errorf("HTTP 404 GET https://api.github.com/repos/x/y: %w",
+			extension.ErrNonRetryable)
+	}
+	creds := map[string]extension.Credential{
+		"admin": &extension.BearerCredential{ID_: "admin", Token: extension.NewSecret("x")},
+	}
+	env, impl, _ := newIntegrationActivity(t,
+		map[string]extension.OperationSpec{
+			"fake.fail": {Name: "fail", Idempotent: extension.Ptr(true), Func: op},
+		},
+		creds,
+	)
+	batch := []*dag.ActionRef{mkRef("fake.fail", "admin")}
+	encoded, err := env.ExecuteActivity(impl.ExecuteBatch, batch)
+	require.NoError(t, err,
+		"D2-14: Fix A non-retryable mid-batch must NOT bubble error to Temporal")
+
+	var results dag.ActionResults
+	require.NoError(t, encoded.Get(&results))
+	require.Len(t, results, 1)
+	nr, isNR := results[0].(dag.NonRetryableErrResult)
+	require.True(t, isNR, "expected NonRetryableErrResult; got %T", results[0])
+	require.Equal(t, 0, nr.Idx)
+	require.NotNil(t, nr.Err)
+	require.Contains(t, nr.Err.Error(), "HTTP 404",
+		"original wrapped error message must survive through ExecuteBatch result encoding")
+	// Note: errors.Is across the JSON round-trip is not generally guaranteed
+	// (sentinel identity is lost on the wire). The post-encoding test asserts
+	// the substring; the pre-encoding contract — that isRetryable saw
+	// errors.Is true and chose the NonRetryable path — is what surfaces here
+	// as the NonRetryableErrResult kind.
+}

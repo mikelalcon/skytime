@@ -1,6 +1,7 @@
 package http_test
 
 import (
+	"errors"
 	stdhttp "net/http"
 	"net/http/httptest"
 	"reflect"
@@ -214,6 +215,120 @@ func TestExtension_PostAcceptsNilCredential(t *testing.T) {
 	resp, ok := out.(skyhttp.HTTPResponse)
 	require.True(t, ok)
 	require.Equal(t, 202, resp.Status)
+}
+
+// TestExtension_Get_404_NonRetryable — Quick 260502-onc Fix A: non-2xx
+// responses become first-class workflow failures. 4xx wraps with
+// extension.ErrNonRetryable so the activity classifier surfaces a
+// NonRetryable temporal.ApplicationError; the wrapped error message
+// includes "HTTP 404" for renderer attribution.
+func TestExtension_Get_404_NonRetryable(t *testing.T) {
+	srv := httptest.NewServer(stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, _ *stdhttp.Request) {
+		w.WriteHeader(404)
+		_, _ = w.Write([]byte(`{"error":"not found"}`))
+	}))
+	defer srv.Close()
+
+	ext := skyhttp.New()
+	spec := ext.Operations()["get"]
+	require.NotNil(t, spec.Func)
+
+	args := reflect.New(spec.KwargsType).Interface()
+	v := reflect.ValueOf(args).Elem()
+	v.FieldByName("BaseURL").SetString(srv.URL)
+	v.FieldByName("Path").SetString("/nope")
+
+	out, err := spec.Func(t.Context(), args, nil)
+	require.Error(t, err, "404 must surface as error, not OkResult")
+	require.Nil(t, out, "404 must NOT return an HTTPResponse output (avoid silent-success failure mode)")
+	require.Contains(t, err.Error(), "HTTP 404",
+		"error message must include HTTP status for renderer attribution")
+	require.True(t, errors.Is(err, extension.ErrNonRetryable),
+		"4xx must wrap extension.ErrNonRetryable — activity classifier branches on errors.Is")
+}
+
+// TestExtension_Get_500_Retryable — Quick 260502-onc Fix A: 5xx wraps as
+// a plain error (no sentinel). The activity classifier's default-retryable
+// branch lets the Temporal RetryPolicy do its job. Confirms the 4xx vs
+// 5xx split is intentional, not accidental.
+func TestExtension_Get_500_Retryable(t *testing.T) {
+	srv := httptest.NewServer(stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, _ *stdhttp.Request) {
+		w.WriteHeader(500)
+		_, _ = w.Write([]byte(`internal server error`))
+	}))
+	defer srv.Close()
+
+	ext := skyhttp.New()
+	spec := ext.Operations()["get"]
+
+	args := reflect.New(spec.KwargsType).Interface()
+	v := reflect.ValueOf(args).Elem()
+	v.FieldByName("BaseURL").SetString(srv.URL)
+	v.FieldByName("Path").SetString("/oops")
+
+	out, err := spec.Func(t.Context(), args, nil)
+	require.Error(t, err, "5xx must surface as error")
+	require.Nil(t, out)
+	require.Contains(t, err.Error(), "HTTP 500", "error message must include HTTP status")
+	require.False(t, errors.Is(err, extension.ErrNonRetryable),
+		"5xx must NOT wrap ErrNonRetryable — Temporal must retry transient backend failures")
+}
+
+// TestExtension_Get_2xx_StillSuccess — Quick 260502-onc Fix A regression
+// guard: 200, 204, and 299 (the upper edge of 2xx) all continue to return
+// (HTTPResponse, nil) unchanged. Fix A must NOT widen what counts as
+// failure beyond non-2xx.
+func TestExtension_Get_2xx_StillSuccess(t *testing.T) {
+	for _, status := range []int{200, 204, 299} {
+		t.Run(stdhttp.StatusText(status), func(t *testing.T) {
+			srv := httptest.NewServer(stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, _ *stdhttp.Request) {
+				w.WriteHeader(status)
+			}))
+			defer srv.Close()
+
+			ext := skyhttp.New()
+			spec := ext.Operations()["get"]
+
+			args := reflect.New(spec.KwargsType).Interface()
+			v := reflect.ValueOf(args).Elem()
+			v.FieldByName("BaseURL").SetString(srv.URL)
+			v.FieldByName("Path").SetString("/")
+
+			out, err := spec.Func(t.Context(), args, nil)
+			require.NoError(t, err, "2xx must continue to succeed; got error: %v", err)
+			resp, ok := out.(skyhttp.HTTPResponse)
+			require.True(t, ok, "expected HTTPResponse; got %T", out)
+			require.Equal(t, status, resp.Status)
+		})
+	}
+}
+
+// TestExtension_Post_422_NonRetryable — Quick 260502-onc Fix A: confirms
+// the non-2xx classification applies to the body-bearing branch (post via
+// asBodyArgs) too, not only the asGetArgs path.
+func TestExtension_Post_422_NonRetryable(t *testing.T) {
+	srv := httptest.NewServer(stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, _ *stdhttp.Request) {
+		w.WriteHeader(422)
+		_, _ = w.Write([]byte(`validation failed`))
+	}))
+	defer srv.Close()
+
+	ext := skyhttp.New()
+	spec := ext.Operations()["post"]
+	require.NotNil(t, spec.Func)
+
+	args := reflect.New(spec.KwargsType).Interface()
+	v := reflect.ValueOf(args).Elem()
+	v.FieldByName("BaseURL").SetString(srv.URL)
+	v.FieldByName("Path").SetString("/issues")
+	v.FieldByName("Body").SetString(`{"title":"x"}`)
+
+	out, err := spec.Func(t.Context(), args, nil)
+	require.Error(t, err)
+	require.Nil(t, out)
+	require.Contains(t, err.Error(), "HTTP 422")
+	require.True(t, errors.Is(err, extension.ErrNonRetryable),
+		"4xx on body-bearing op (POST) must also wrap ErrNonRetryable")
 }
 
 // TestExtension_RegistersAndParsesAFlow (W-3 BEHAVIOR GATE) is the

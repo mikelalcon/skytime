@@ -9,6 +9,7 @@ import (
 	"go.temporal.io/sdk/temporal"
 
 	"github.com/mikelalcon/skytime/pkg/dag"
+	"github.com/mikelalcon/skytime/pkg/extension"
 )
 
 // ExecuteBatch is the single Temporal activity entry point. Phase 3's
@@ -134,6 +135,17 @@ func isRetryable(err error) bool {
 	if errors.As(err, &appErr) {
 		return !appErr.NonRetryable()
 	}
+
+	// Fix A (quick 260502-onc): extensions outside the temporal
+	// firewall (e.g., pkg/extension/builtin/http) cannot construct a
+	// *temporal.ApplicationError directly. The extension.ErrNonRetryable
+	// sentinel is the contract: any error wrapping it via fmt.Errorf
+	// %w is treated as non-retryable. Plain wrapped errors continue
+	// to default retryable per the transient-failure assumption.
+	if errors.Is(err, extension.ErrNonRetryable) {
+		return false
+	}
+
 	// Default: retryable.
 	return true
 }
