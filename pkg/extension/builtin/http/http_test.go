@@ -163,6 +163,59 @@ func TestExtension_BearerCredentialApplied(t *testing.T) {
 	require.Equal(t, "Bearer abc123", gotAuth)
 }
 
+// TestExtension_GetAcceptsNilCredential — Fix A nil-credential coverage
+// (quick 260502-guu): the get Func must accept a nil Credential without
+// dereferencing it. The served request must have NO Authorization header,
+// proving applyCredential's nil short-circuit is intact and the activity
+// can hand nil through when ActionRef.CredentialID == "".
+func TestExtension_GetAcceptsNilCredential(t *testing.T) {
+	srv := httptest.NewServer(stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+		require.Empty(t, r.Header.Get("Authorization"),
+			"NilCredential: Authorization header MUST be absent when cred is nil")
+		w.WriteHeader(204)
+	}))
+	defer srv.Close()
+
+	ext := skyhttp.New()
+	spec := ext.Operations()["get"]
+	args := reflect.New(spec.KwargsType).Interface()
+	v := reflect.ValueOf(args).Elem()
+	v.FieldByName("BaseURL").SetString(srv.URL)
+	v.FieldByName("Path").SetString("/")
+
+	out, err := spec.Func(t.Context(), args, nil)
+	require.NoError(t, err)
+	resp, ok := out.(skyhttp.HTTPResponse)
+	require.True(t, ok)
+	require.Equal(t, 204, resp.Status)
+}
+
+// TestExtension_PostAcceptsNilCredential — Fix A nil-credential coverage:
+// confirms the post Func + BodyArgs branch does not introduce a nil-deref
+// of cred when applyCredential is short-circuited.
+func TestExtension_PostAcceptsNilCredential(t *testing.T) {
+	srv := httptest.NewServer(stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+		require.Empty(t, r.Header.Get("Authorization"),
+			"NilCredential: Authorization header MUST be absent when cred is nil (post)")
+		w.WriteHeader(202)
+	}))
+	defer srv.Close()
+
+	ext := skyhttp.New()
+	spec := ext.Operations()["post"]
+	args := reflect.New(spec.KwargsType).Interface()
+	v := reflect.ValueOf(args).Elem()
+	v.FieldByName("BaseURL").SetString(srv.URL)
+	v.FieldByName("Path").SetString("/upload")
+	v.FieldByName("Body").SetString(`{"hello":"world"}`)
+
+	out, err := spec.Func(t.Context(), args, nil)
+	require.NoError(t, err)
+	resp, ok := out.(skyhttp.HTTPResponse)
+	require.True(t, ok)
+	require.Equal(t, 202, resp.Status)
+}
+
 // TestExtension_RegistersAndParsesAFlow (W-3 BEHAVIOR GATE) is the
 // load-bearing assertion that the chosen Initialize-return shape works
 // against the existing parser. Without this gate, the plan accepts

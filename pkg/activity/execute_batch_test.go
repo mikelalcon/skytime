@@ -563,6 +563,100 @@ func TestExecuteBatch_SingleNonIdempotentAction_Allowed(t *testing.T) {
 	require.IsType(t, dag.OkResult{}, results[0])
 }
 
+// TestExecuteBatch_BypassesResolverWhenCredentialIDEmpty — Fix A from quick
+// 260502-guu: when ActionRef.CredentialID == "", runAction MUST NOT invoke
+// the credential resolver and MUST pass nil to OperationSpec.Func. Without
+// this guard, the noopCredentialHandler-style (or even FakeCredentialHandler
+// with no entry for "") returns ErrUnknownCredential, the activity classifies
+// that as retryable, and Temporal retries the WHOLE batch every ~5 s.
+//
+// The test pins three properties:
+//
+//  1. ch.calls.Load() == 0 — resolver never touched across the batch.
+//  2. results length == 3 with every entry being OkResult — happy path.
+//  3. The op closure asserts cred == nil — the operation receives nil.
+func TestExecuteBatch_BypassesResolverWhenCredentialIDEmpty(t *testing.T) {
+	op := func(_ context.Context, _ any, cred extension.Credential) (dag.OperationOutput, error) {
+		require.Nil(t, cred, "Fix A: empty CredentialID must yield nil credential at op")
+		return fakeOutput{Got: "anon"}, nil
+	}
+	// FakeCredentialHandler has NO entries — any resolve attempt would
+	// return ErrUnknownCredential and surface as a retryable error.
+	creds := map[string]extension.Credential{}
+	env, impl, ch := newIntegrationActivity(t,
+		map[string]extension.OperationSpec{
+			"fake.echo": {Name: "echo", Idempotent: extension.Ptr(true), Func: op},
+		},
+		creds,
+	)
+	batch := []*dag.ActionRef{
+		mkRef("fake.echo", ""),
+		mkRef("fake.echo", ""),
+		mkRef("fake.echo", ""),
+	}
+	encoded, err := env.ExecuteActivity(impl.ExecuteBatch, batch)
+	require.NoError(t, err)
+	var results dag.ActionResults
+	require.NoError(t, encoded.Get(&results))
+	require.Len(t, results, 3)
+	require.IsType(t, dag.OkResult{}, results[0])
+	require.IsType(t, dag.OkResult{}, results[1])
+	require.IsType(t, dag.OkResult{}, results[2])
+	require.Equal(t, int32(0), ch.calls.Load(),
+		"Fix A: resolver MUST NOT be called when every ActionRef.CredentialID is empty")
+	_ = impl
+}
+
+// TestExecuteBatch_BypassesResolverPerAction_MixedIDs — Fix A: a mixed batch
+// where some refs carry a CredentialID and one carries the empty string. The
+// per-action guard must apply at the ref level — only the empty-id action
+// skips resolve; the populated-id actions still resolve.
+//
+// Loose count assertion (B-3 fix): newIntegrationActivity defaults to
+// the production TTL (5min) so resolves of the same id across actions
+// hit the cache; ch.calls is bounded between 1 (one cold resolve, one
+// cache hit for "admin") and 2 (cache TTL=0 path — both "admin" actions
+// resolve fresh). Either is acceptable. The strict assertion is on the
+// op closures: ref1 sees cred==nil, ref0/ref2 see non-nil.
+func TestExecuteBatch_BypassesResolverPerAction_MixedIDs(t *testing.T) {
+	opAdmin := func(_ context.Context, _ any, cred extension.Credential) (dag.OperationOutput, error) {
+		require.NotNil(t, cred, "Fix A: populated CredentialID must yield non-nil credential")
+		return fakeOutput{Got: "admin"}, nil
+	}
+	opAnon := func(_ context.Context, _ any, cred extension.Credential) (dag.OperationOutput, error) {
+		require.Nil(t, cred, "Fix A: empty CredentialID must yield nil credential")
+		return fakeOutput{Got: "anon"}, nil
+	}
+	creds := map[string]extension.Credential{
+		"admin": &extension.BearerCredential{ID_: "admin", Token: extension.NewSecret("x")},
+	}
+	env, impl, ch := newIntegrationActivity(t,
+		map[string]extension.OperationSpec{
+			"fake.admin": {Name: "admin", Idempotent: extension.Ptr(true), Func: opAdmin},
+			"fake.anon":  {Name: "anon", Idempotent: extension.Ptr(true), Func: opAnon},
+		},
+		creds,
+	)
+	batch := []*dag.ActionRef{
+		mkRef("fake.admin", "admin"),
+		mkRef("fake.anon", ""),
+		mkRef("fake.admin", "admin"),
+	}
+	encoded, err := env.ExecuteActivity(impl.ExecuteBatch, batch)
+	require.NoError(t, err)
+	var results dag.ActionResults
+	require.NoError(t, encoded.Get(&results))
+	require.Len(t, results, 3)
+	require.IsType(t, dag.OkResult{}, results[0])
+	require.IsType(t, dag.OkResult{}, results[1])
+	require.IsType(t, dag.OkResult{}, results[2])
+	calls := ch.calls.Load()
+	require.GreaterOrEqual(t, calls, int32(1),
+		"Fix A: at least one resolve for the populated 'admin' id")
+	require.LessOrEqual(t, calls, int32(2),
+		"Fix A: at most two resolves — empty-id ref MUST NOT contribute a resolve")
+}
+
 // TestActionExecutor_PerActionTimeout — pinning per-action timeout works
 // inside the integration test (not just unit-tested in action_executor_test.go).
 // Use a short DefaultTimeout (1ms) and an op that respects ctx.Done(); the
