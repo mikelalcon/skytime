@@ -24,6 +24,8 @@ files_modified:
   - pkg/interpreter/walk_callflow.go
   - pkg/worker/options.go
   - pkg/worker/worker.go
+  - pkg/worker/client.go
+  - pkg/cli/connect.go
   - .planning/PROJECT.md
 autonomous: true
 requirements:
@@ -301,8 +303,8 @@ For the existing TestSlogProgress_RendersStepEvents and TestSlogProgress_Passthr
       Call env.ExecuteActivity(impl.ExecuteBatch, batch). After completion: results length == 3, every result is OkResult, and `ch.calls.Load() == 0` — the resolver MUST NOT have been called at all.
     - TestExecuteBatch_BypassesResolverPerAction_MixedIDs (NEW, in execute_batch_test.go):
       Mixed batch: ref0 has CredentialID="admin", ref1 has CredentialID="", ref2 has CredentialID="admin".
-      Expectation: ch.calls.Load() reports exactly 1 (only the admin credential resolved once via cache hit on ref2 — not 0, not 2; this proves the bypass is per-action, not all-or-nothing).
-      The op closure for ref1 asserts `cred == nil`; the closure for ref0 + ref2 asserts `cred != nil` (`require.NotNil`).
+      Expectation: `ch.calls.Load() >= 1 && ch.calls.Load() <= 2` (loose count — exact value depends on whether the per-batch credential cache is active under newIntegrationActivity's defaults; the test's ACTUAL job is to prove ref1 with empty CredentialID never reaches the resolver). The strict assertion is on the OP closure for ref1: `require.Nil(t, cred)`. The closure for ref0 + ref2 asserts `cred != nil` (`require.NotNil`).
+      Rationale (B-3 fix): looser count avoids brittleness when newIntegrationActivity defaults to TTL=0 (would resolve admin twice → calls=2) vs TTL>0 (cache hit on ref2 → calls=1). Either is acceptable; what matters is ref1 contributes ZERO resolves.
     - TestExtension_GetAcceptsNilCredential (NEW, in http_test.go):
       Construct *GetArgs against an httptest.NewServer; call spec.Func(ctx, args, nil) — must not panic; must succeed; the served request must have NO Authorization header (`require.Empty(t, r.Header.Get("Authorization"))`).
     - TestExtension_PostAcceptsNilCredential (NEW, in http_test.go):
@@ -511,7 +513,36 @@ For the existing TestSlogProgress_RendersStepEvents and TestSlogProgress_Passthr
        ```
        Track ok_count / err_count via the err return of walkBody — for v1 simplicity, ok_count = len(parsed.Flow.Body) on success, err_count = 0; on error, ok_count = 0, err_count = 1 (the failing step). Document this v1 simplification in a comment.
 
-       3c. walk_step.go: emit step_dispatch + step_complete around the ExecuteActivity call. Build a label from `step.Actions` — for a single-action step the label is `step.Actions[0].Kind_ + "(" + truncated path/url + ")"`; for multi-action use `len(step.Actions) + " actions"`. Capture start time via `workflow.Now(ctx)`; on return, log step_complete with status="ok"|"err" and duration_ms. summary attr: HTTP status if the result is an OkResult containing an HTTPResponse-shaped output (best-effort; empty string when not parseable).
+       **REQUIRED PATTERN for steps 3c-3g (M-8 fix — applies to ALL FIVE walkers):**
+       Every walker MUST emit step_complete on BOTH success AND error paths. Use this exact shape (named return + defer):
+       ```go
+       func (i *interpreter) walkXxx(ctx workflow.Context, n *dag.Xxx) (err error) {
+           start := workflow.Now(ctx)
+           logger := workflow.GetLogger(ctx)
+           logger.Info("skytime",
+               "event", "step_dispatch",
+               "kind", "xxx",
+               "label", labelFor(n),
+               "idx", i.stepIdx, "total", i.stepTot, "path", i.currentPath(),
+           )
+           defer func() {
+               status := "ok"
+               if err != nil { status = "err" }
+               logger.Info("skytime",
+                   "event", "step_complete",
+                   "kind", "xxx",
+                   "status", status,
+                   "duration_ms", workflow.Now(ctx).Sub(start).Milliseconds(),
+                   "idx", i.stepIdx, "total", i.stepTot, "path", i.currentPath(),
+                   // optional: "summary", computeSummary(...) — empty string when none
+               )
+           }()
+           // ... existing walker body returns err normally ...
+       }
+       ```
+       The named return + defer guarantees step_complete fires on every return path including errors. Without this pattern the renderer never sees ✗ markers for failed steps. Apply verbatim to walk_step.go, walk_script.go, walk_ifcond.go, walk_foreach.go, walk_callflow.go.
+
+       3c. walk_step.go: emit step_dispatch + step_complete around the ExecuteActivity call PER THE PATTERN ABOVE. Build a label from `step.Actions` — for a single-action step the label is `step.Actions[0].Kind_ + "(" + truncated path/url + ")"`; for multi-action use `len(step.Actions) + " actions"`. summary attr: HTTP status if the result is an OkResult containing an HTTPResponse-shaped output (best-effort; empty string when not parseable).
 
        3d. walk_script.go: emit step_dispatch (kind="script", label=n.OutputAlias) before evalLambda; step_complete after.
 
@@ -524,6 +555,30 @@ For the existing TestSlogProgress_RendersStepEvents and TestSlogProgress_Passthr
        For each emit, attach `path` = i.stepPath + (top-level: fmt.Sprintf("%d", i.stepIdx); nested: see 3h), `idx` = i.stepIdx, `total` = i.stepTot.
 
        3h. Nested path convention: in walkIfCond, when entering the then/else branch, save i.stepPath, set i.stepPath = fmt.Sprintf("%d%s", parentIdx, "a") (then) or "b" (else), recurse, restore. In walkForEach, set i.stepPath = fmt.Sprintf("%d.%d", parentIdx, itemIdx) inside the per-item walkBody. In walkCallFlow, do NOT recurse — child flow is its own workflow with its own path.
+
+       3i. **CONCURRENCY CONTRACT for stepIdx/stepTot/stepPath (B-2 fix — MANDATORY):**
+       These fields are walker-local context, NOT shared state. The mutation pattern in walkBody (savedIdx, savedTot, defer-restore) is safe ONLY for SINGLE-THREADED recursion. In `walkForEach`, branches spawn via `workflow.Go` — concurrent goroutines MUST NOT mutate the SAME `*i`. Required pattern at every goroutine spawn site in walkForEach:
+       ```go
+       // For each parallel branch:
+       branchInterp := *i                                                  // shallow copy — gives the goroutine its own stepIdx/stepTot/stepPath
+       branchInterp.stepPath = fmt.Sprintf("%d.%d", parentIdx, itemIdx)    // mutate the COPY only
+       branchInterp.state = scopedState                                    // existing scoped-state copy
+       workflow.Go(ctx, func(branchCtx workflow.Context) {
+           branchInterp.walkBody(branchCtx, fe.Steps)                       // walkBody on the COPY
+       })
+       ```
+       Add this exact comment block above the field declarations in pkg/interpreter/workflow.go:
+       ```go
+       // stepIdx, stepTot, stepPath are WALKER-LOCAL context, not shared state.
+       // walkBody mutates them via save+restore, safe for single-threaded recursion.
+       // walkForEach MUST shallow-copy `i` per branch (`branchInterp := *i`) and
+       // mutate the COPY before spawning workflow.Go. Direct mutation of `*i` from
+       // multiple goroutines is a data race + non-deterministic step numbering
+       // under Temporal replay.
+       ```
+       The existing walkForEach already does `branchInterp := *i; branchInterp.state = scopedState` — extend this pattern to also set branchInterp.stepPath = "..." BEFORE spawning the goroutine. Never reference `i.stepPath = ...` inside a goroutine spawned from walkForEach.
+
+       VERIFY at executor time: run `go test ./pkg/interpreter/... -race -count=1` AFTER this task — race detector MUST report zero findings on for_each_parallel paths.
 
     4. Verify interpreter tests still pass: `go test ./pkg/interpreter/... -race -count=1`.
        The TestEvalLambda_PrintRoutesToWorkflowLogger test in lambda_eval_test.go uses log.NewStructuredLogger to capture workflow logs into a buffer; it WILL see the new event records, so adjust assertions if necessary (it currently checks for the `[skytime/print]` message — that should still appear; just additional records are present in the buffer).
@@ -694,7 +749,21 @@ For the existing TestSlogProgress_RendersStepEvents and TestSlogProgress_Passthr
        kill $DEV_PID 2>/dev/null
        wait $DEV_PID 2>/dev/null
        ```
-       Assertion: combined output contains charm-log-formatted SDK lines (e.g., look for "Started Worker" or "ExecuteActivity" — exact phrasing depends on SDK version; the test is "the verbose flag DID change visible output volume by adding SDK lines"). Document the actual observed line in the SUMMARY.
+       PROGRAMMATIC ASSERTIONS for --verbose (M-5 fix — all MUST pass, no prose):
+       ```bash
+       # 1. --verbose stderr is strictly LONGER than default stderr (verbose adds at least 3 SDK lines).
+       VERBOSE_LINES=$(wc -l < /tmp/skytime-run-v.err)
+       DEFAULT_LINES=$(wc -l < /tmp/skytime-run.err)
+       [ $VERBOSE_LINES -ge $((DEFAULT_LINES + 3)) ] || { echo "FAIL: --verbose did not add >=3 lines (default=$DEFAULT_LINES, verbose=$VERBOSE_LINES)"; exit 1; }
+
+       # 2. --verbose stderr contains charm-log-formatted level prefixes (one of: INFO, DEBUG, WARN at line start).
+       grep -E '^(INFO|DEBUG|WARN)' /tmp/skytime-run-v.err > /dev/null || { echo "FAIL: --verbose stderr lacks charm-log level prefix (INFO/DEBUG/WARN at line start)"; exit 1; }
+
+       # 3. Default stderr has NO charm-log SDK level prefixes (they're suppressed when --verbose=false).
+       ! grep -E '^(INFO|DEBUG)' /tmp/skytime-run.err > /dev/null || { echo "FAIL: default stderr leaked SDK INFO/DEBUG lines (should be suppressed)"; exit 1; }
+
+       echo "PASS: --verbose toggles SDK visibility correctly (default=$DEFAULT_LINES lines, verbose=$VERBOSE_LINES lines)"
+       ```
 
        If any assertion fails, debug — do not commit until smoke passes.
 
