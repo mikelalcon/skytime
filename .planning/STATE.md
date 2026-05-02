@@ -168,6 +168,10 @@ None yet.
 - **Phase 3 entry-gate decision:** Lambda serialization across Temporal history (custom `DataConverter` vs. re-parse-on-start) must be resolved before any interpreter code is written. Default fallback if spike is inconclusive: option (b) re-parse on workflow start with `workflow.SideEffect`, `LambdaID` keys in history, file-content-hash cache.
 - **Requirement count discrepancy:** REQUIREMENTS.md header states "51 total" but enumerated requirements sum to 55 (DSL:10 + EXT:6 + PARSE:6 + INTRP:7 + ACT:6 + WORK:3 + VAL:3 + TEST:5 + CLI:5 + EX:4). All 55 are mapped to phases; the header line should be reconciled at the next /gsd:transition.
 
+### Roadmap Evolution
+
+- Phase 04.1 inserted after Phase 4: Dynamic step kwargs — lambda-accepting `step(action_fn=...)` variant for runtime-built action kwargs (URGENT) — surfaced 2026-05-02 when Phase 4's `simple_check.star` corpus demonstrably ignored `--input` because step kwargs are static at parse time. Required before Phase 5 (E2E test harness) and Phase 6 (real example project) can land any flow that takes input.
+
 ## Session Continuity
 
 Last session: 2026-05-02T22:31:05.429Z

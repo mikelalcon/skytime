@@ -92,6 +92,16 @@ Decimal phases appear between their surrounding integers in numeric order.
   - [x] 04-07-PLAN.md — Wave 4: HTTP extension implementation (5 ops, D4-14 idempotence) + cmd/skytime binary + examples/skeleton/ corpus + docs/cli-binary.md + differential test wiring
 **UI hint**: no
 
+### Phase 04.1: Dynamic step kwargs — lambda-accepting step(action_fn=...) variant for runtime-built action kwargs (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 4
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 04.1 to break down)
+
 ### Phase 5: Tier-3 E2E Test Harness (`temporal_test`)
 **Goal**: Build `pkg/testing` so consultants can write E2E tests in `.star` files: `tester.workflow`, `tester.mock_action`, and `tester.run` mock the single generic activity inside `testsuite.TestWorkflowEnvironment`, route per-action calls back to Starlark mock lambdas evaluating in the same restricted predeclared environment as production lambdas, and a replay helper runs each test twice and diffs Temporal event histories. `skytime test <dir>` is the discovery and runner entry point.
 **Depends on**: Phase 3 (the production execution path must exist before mocks can mirror it)
