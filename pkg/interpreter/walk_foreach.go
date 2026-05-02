@@ -21,12 +21,68 @@ const defaultMaxConcurrency = 10
 // state.scoped(item_var, item) (D3-15). Results aggregate in input order
 // (D3-16); on a non-retryable error from any branch, sibling branches are
 // cancelled (D3-14) and the original error is bubbled.
-func (i *interpreter) walkForEach(ctx workflow.Context, fe *dag.ForEachParallel) error {
+//
+// Quick 260502-guu Fix B: emits step_dispatch + step_complete via
+// workflow.GetLogger(ctx). Named-return + defer guarantees the
+// completion event fires on every return path.
+//
+// CONCURRENCY CONTRACT (B-2): every branch goroutine MUST receive a
+// shallow-copy `branchInterp := *i` whose stepPath is mutated BEFORE
+// `workflow.Go` spawns the branch. Direct mutation of `*i` from
+// inside the goroutine would race siblings and produce
+// non-deterministic step numbering under Temporal replay.
+func (i *interpreter) walkForEach(ctx workflow.Context, fe *dag.ForEachParallel) (err error) {
+	logger := workflow.GetLogger(ctx)
+	start := workflow.Now(ctx)
+	parentIdx := i.stepIdx
+	parentTot := i.stepTot
+	parentPath := i.currentPath()
+
 	items, err := i.resolveForEachItems(ctx, fe)
 	if err != nil {
+		// Emit dispatch + complete around the resolution failure so the
+		// renderer still pairs them.
+		logger.Info("skytime",
+			"event", "step_dispatch",
+			"kind", "for_each_parallel",
+			"label", "items=?",
+			"idx", parentIdx, "total", parentTot, "path", parentPath,
+		)
+		logger.Info("skytime",
+			"event", "step_complete",
+			"kind", "for_each_parallel",
+			"status", "err",
+			"duration_ms", workflow.Now(ctx).Sub(start).Milliseconds(),
+			"idx", parentIdx, "total", parentTot, "path", parentPath,
+			"summary", err.Error(),
+		)
 		return err
 	}
 	n := len(items)
+
+	logger.Info("skytime",
+		"event", "step_dispatch",
+		"kind", "for_each_parallel",
+		"label", fmt.Sprintf("items=%d", n),
+		"idx", parentIdx, "total", parentTot, "path", parentPath,
+	)
+	defer func() {
+		status := "ok"
+		summary := ""
+		if err != nil {
+			status = "err"
+			summary = err.Error()
+		}
+		logger.Info("skytime",
+			"event", "step_complete",
+			"kind", "for_each_parallel",
+			"status", status,
+			"duration_ms", workflow.Now(ctx).Sub(start).Milliseconds(),
+			"idx", parentIdx, "total", parentTot, "path", parentPath,
+			"summary", summary,
+		)
+	}()
+
 	if n == 0 {
 		return nil
 	}
@@ -59,13 +115,18 @@ func (i *interpreter) walkForEach(ctx workflow.Context, fe *dag.ForEachParallel)
 		// Acquire semaphore (deterministic blocking on the workflow channel).
 		sem.Send(childCtx, struct{}{})
 
+		// B-2 fix: build the per-branch interpreter copy + mutate its
+		// stepPath BEFORE workflow.Go. Goroutine-local state only — the
+		// goroutine NEVER touches `*i` directly.
+		scopedState := i.state.scoped(fe.ItemVar, item)
+		branchInterp := *i // shallow copy
+		branchInterp.state = scopedState
+		branchInterp.stepPath = fmt.Sprintf("%s.%d", parentPath, idx)
+
 		workflow.Go(childCtx, func(branchCtx workflow.Context) {
 			defer sem.Receive(branchCtx, nil) // release
 			defer done.Send(branchCtx, idx)
 
-			scopedState := i.state.scoped(fe.ItemVar, item)
-			branchInterp := *i // shallow copy
-			branchInterp.state = scopedState
 			if berr := branchInterp.walkBody(branchCtx, fe.Steps); berr != nil {
 				branchErrs[idx] = berr
 				if isNonRetryable(berr) { // D3-14
@@ -83,7 +144,8 @@ func (i *interpreter) walkForEach(ctx workflow.Context, fe *dag.ForEachParallel)
 
 	// Aggregate: first non-retryable wins; otherwise first non-nil retryable.
 	if aerr := aggregateBranchErrors(branchErrs); aerr != nil {
-		return fmt.Errorf("for_each_parallel at %s: %w", fe.Pos, aerr)
+		err = fmt.Errorf("for_each_parallel at %s: %w", fe.Pos, aerr)
+		return err
 	}
 	return nil
 }

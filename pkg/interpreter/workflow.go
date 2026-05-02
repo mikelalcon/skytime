@@ -22,6 +22,10 @@ import (
 // FlowNotInRegistry application error whose message includes the
 // remediation path ("use Build IDs to drain old workflows") so operators
 // see the right next step in Temporal's failure detail UI.
+//
+// Quick 260502-guu Fix B: emits flow_start at entry and flow_complete at
+// exit through workflow.GetLogger(ctx); the cli's progressHandler routes
+// these to the Bazel renderer.
 func NewWorkflow(registry *FlowRegistry) func(workflow.Context, dag.WorkflowInput) (map[string]any, error) {
 	return func(ctx workflow.Context, input dag.WorkflowInput) (map[string]any, error) {
 		info := workflow.GetInfo(ctx)
@@ -43,9 +47,37 @@ func NewWorkflow(registry *FlowRegistry) func(workflow.Context, dag.WorkflowInpu
 			)
 		}
 
+		// Bazel renderer entry banner. workflow.Now is deterministic
+		// per Temporal docs (replay-safe).
+		startTime := workflow.Now(ctx)
+		logger.Info("skytime",
+			"event", "flow_start",
+			"flow_name", input.FlowName,
+			"step_count", len(parsed.Flow.Body),
+		)
+
 		i := newInterpreter(ctx, registry, parsed, input.ContentHash, input.InitState, logger)
-		if err := i.walkBody(ctx, parsed.Flow.Body); err != nil {
-			return nil, err
+		walkErr := i.walkBody(ctx, parsed.Flow.Body)
+
+		// Bazel renderer exit banner. v1 simplification: ok_count is
+		// the body length on success and zero on error; err_count is
+		// 1 on error (the failing step) and 0 on success. Per-step
+		// success/failure detail lives in step_complete events.
+		endTime := workflow.Now(ctx)
+		okCount := len(parsed.Flow.Body)
+		errCount := 0
+		if walkErr != nil {
+			okCount = 0
+			errCount = 1
+		}
+		logger.Info("skytime",
+			"event", "flow_complete",
+			"ok_count", okCount,
+			"err_count", errCount,
+			"total_ms", endTime.Sub(startTime).Milliseconds(),
+		)
+		if walkErr != nil {
+			return nil, walkErr
 		}
 		return i.state.snapshot(), nil
 	}
@@ -64,6 +96,16 @@ type interpreter struct {
 	contentHash string    // owning flow's content_hash; threaded for error messages and call_flow consistency (plan 03-03)
 	state       *state
 	logger      log.Logger
+
+	// stepIdx, stepTot, stepPath are WALKER-LOCAL context, not shared state.
+	// walkBody mutates them via save+restore, safe for single-threaded recursion.
+	// walkForEach MUST shallow-copy `i` per branch (`branchInterp := *i`) and
+	// mutate the COPY before spawning workflow.Go. Direct mutation of `*i` from
+	// multiple goroutines is a data race + non-deterministic step numbering
+	// under Temporal replay.
+	stepIdx  int    // 1-indexed counter for the current sibling at this nesting level
+	stepTot  int    // total siblings at this nesting level
+	stepPath string // current nesting prefix; "" for top-level (renderer falls back to %d of stepIdx)
 }
 
 // newInterpreter is the FINAL signature — plan 03-03 does NOT change it.
@@ -84,10 +126,17 @@ func newInterpreter(ctx workflow.Context, registry *FlowRegistry, parsed *Parsed
 // walkBody iterates a Node slice and dispatches each node to its walker.
 // Sequential iteration — order matters per DSL semantics.
 //
-// Plan 03-02 (this plan) returns "walker not implemented yet" errors for
-// every concrete node type. Plan 03-03 fills in the real walkers.
+// Quick 260502-guu Fix B: walkBody owns sibling-counter context. It saves
+// the parent's stepIdx/stepTot, sets stepTot to len(body) and stepIdx
+// to k+1 inside the loop so each walker reads the right counters, then
+// restores on exit. This is single-threaded mutation; concurrent fan-out
+// in walkForEach uses shallow copies of `i` to avoid race + non-determinism.
 func (i *interpreter) walkBody(ctx workflow.Context, body []dag.Node) error {
-	for _, node := range body {
+	savedIdx, savedTot := i.stepIdx, i.stepTot
+	i.stepTot = len(body)
+	defer func() { i.stepIdx, i.stepTot = savedIdx, savedTot }()
+	for k, node := range body {
+		i.stepIdx = k + 1
 		if err := i.walkNode(ctx, node); err != nil {
 			return err
 		}
@@ -122,6 +171,17 @@ func (i *interpreter) walkNode(ctx workflow.Context, node dag.Node) error {
 			nil,
 		)
 	}
+}
+
+// currentPath returns the path attribute value to attach to step events.
+// When stepPath has been set by an enclosing walker (if_cond branch,
+// for_each iteration), use it verbatim; otherwise fall back to the
+// numeric stepIdx so top-level events render as "[1/3]".
+func (i *interpreter) currentPath() string {
+	if i.stepPath != "" {
+		return i.stepPath
+	}
+	return fmt.Sprintf("%d", i.stepIdx)
 }
 
 // Plan 03-03: walker bodies live in their own walk_*.go files. The

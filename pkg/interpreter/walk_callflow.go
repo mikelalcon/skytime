@@ -29,16 +29,50 @@ import (
 // On registry miss (the called flow_name has 0 or >1 versions), returns
 // a non-retryable ChildFlowNotInRegistry application error so operators
 // see a clear error path rather than a non-deterministic pick.
-func (i *interpreter) walkCallFlow(ctx workflow.Context, cf *dag.CallFlow) error {
+//
+// Quick 260502-guu Fix B: emits step_dispatch + step_complete via
+// workflow.GetLogger(ctx). Named-return + defer guarantees the
+// completion event fires on every return path.
+func (i *interpreter) walkCallFlow(ctx workflow.Context, cf *dag.CallFlow) (err error) {
+	logger := workflow.GetLogger(ctx)
+	start := workflow.Now(ctx)
+	parentIdx := i.stepIdx
+	parentTot := i.stepTot
+	parentPath := i.currentPath()
+
+	logger.Info("skytime",
+		"event", "step_dispatch",
+		"kind", "call_flow",
+		"label", cf.Name,
+		"idx", parentIdx, "total", parentTot, "path", parentPath,
+	)
+	defer func() {
+		status := "ok"
+		summary := ""
+		if err != nil {
+			status = "err"
+			summary = err.Error()
+		}
+		logger.Info("skytime",
+			"event", "step_complete",
+			"kind", "call_flow",
+			"status", status,
+			"duration_ms", workflow.Now(ctx).Sub(start).Milliseconds(),
+			"idx", parentIdx, "total", parentTot, "path", parentPath,
+			"summary", summary,
+		)
+	}()
+
 	parentInfo := workflow.GetInfo(ctx)
 
 	// Resolve the child's content hash from the registry.
 	childHash, ok := i.registry.ContentHashFor(cf.Name)
 	if !ok {
-		return temporal.NewNonRetryableApplicationError(
+		err = temporal.NewNonRetryableApplicationError(
 			fmt.Sprintf("call_flow %q at %s: child flow not found in worker registry (or registered with multiple versions)", cf.Name, cf.Pos),
 			"ChildFlowNotInRegistry", nil,
 		)
+		return err
 	}
 
 	cwo := workflow.ChildWorkflowOptions{
@@ -66,8 +100,9 @@ func (i *interpreter) walkCallFlow(ctx workflow.Context, cf *dag.CallFlow) error
 	}
 
 	var result map[string]any
-	if err := workflow.ExecuteChildWorkflow(childCtx, "SkytimeWorkflow", subInput).Get(ctx, &result); err != nil {
-		return fmt.Errorf("call_flow %s at %s: %w", cf.Name, cf.Pos, err)
+	if cerr := workflow.ExecuteChildWorkflow(childCtx, "SkytimeWorkflow", subInput).Get(ctx, &result); cerr != nil {
+		err = fmt.Errorf("call_flow %s at %s: %w", cf.Name, cf.Pos, cerr)
+		return err
 	}
 	// Result is the child's final state. v1 doesn't propagate it back into
 	// parent state; Phase 6 may surface a need. The child's history is
