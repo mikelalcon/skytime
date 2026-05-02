@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed quick 260502-onc (Fix A non-2xx auto-fail + Fix B status=N summary + Fix C flow_failed renderer + Fix D corpus + e2e smokes)
-last_updated: "2026-05-02T22:24:56.779Z"
+stopped_at: Completed quick 260502-onc (HTTP non-2xx auto-fail + status summary + flow_failed renderer + corpus to octocat/Hello-World)
+last_updated: "2026-05-02T22:31:05.433Z"
 last_activity: 2026-05-01
 progress:
   total_phases: 6
@@ -170,6 +170,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-02T22:24:37.721Z
-Stopped at: Completed quick 260502-onc (Fix A non-2xx auto-fail + Fix B status=N summary + Fix C flow_failed renderer + Fix D corpus + e2e smokes)
+Last session: 2026-05-02T22:31:05.429Z
+Stopped at: Completed quick 260502-onc (HTTP non-2xx auto-fail + status summary + flow_failed renderer + corpus to octocat/Hello-World)
 Resume file: None
