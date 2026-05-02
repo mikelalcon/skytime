@@ -45,6 +45,22 @@ type progressHandler struct {
 	// per-handler.
 	ttyKnown bool
 	tty      bool
+
+	// lastErr captures the most recent step_complete-with-err record so
+	// renderFlowComplete can attribute the failure when err_count > 0.
+	// Reset to nil on every flow_start so a long-lived handler (one
+	// process, multiple workflow executions) does not leak failure
+	// state across runs. Quick 260502-onc Fix C.
+	lastErr *failureContext
+}
+
+// failureContext is the per-handler record of the most recent
+// step_complete-with-err event. Captured by renderStepComplete and
+// consumed by renderFlowComplete on the err_count > 0 branch.
+type failureContext struct {
+	idx     int64
+	total   int64
+	summary string
 }
 
 // newProgressHandler returns a handler that writes Bazel-style progress
@@ -82,15 +98,18 @@ func (p *progressHandler) Handle(ctx context.Context, r slog.Record) error {
 
 // WithAttrs returns a new progressHandler whose wrapped handler has the
 // attrs applied. The progress writer is unchanged — pre-applied attrs
-// are part of the wrapped handler's state.
+// are part of the wrapped handler's state. lastErr is shallow-copied
+// (both handlers share the same *failureContext pointer); for the v1
+// usage pattern (one workflow, serial events) this is correct.
 func (p *progressHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &progressHandler{wrapped: p.wrapped.WithAttrs(attrs), out: p.out}
+	return &progressHandler{wrapped: p.wrapped.WithAttrs(attrs), out: p.out, lastErr: p.lastErr}
 }
 
 // WithGroup returns a new progressHandler whose wrapped handler is
 // scoped under the named group. The progress writer is unchanged.
+// lastErr is shallow-copied per the WithAttrs note above.
 func (p *progressHandler) WithGroup(name string) slog.Handler {
-	return &progressHandler{wrapped: p.wrapped.WithGroup(name), out: p.out}
+	return &progressHandler{wrapped: p.wrapped.WithGroup(name), out: p.out, lastErr: p.lastErr}
 }
 
 // renderBazelLine inspects the `event` attribute value and dispatches
@@ -149,7 +168,11 @@ func collectAttrs(r slog.Record) attrMap {
 }
 
 // renderFlowStart: `[skytime] flow <flow_name>  <step_count> steps  starting`
+//
+// Quick 260502-onc Fix C: clears lastErr so a long-lived handler
+// doesn't carry the previous run's failure context into the next.
 func (p *progressHandler) renderFlowStart(a attrMap) error {
+	p.lastErr = nil
 	flow := a.str("flow_name")
 	count := a.int("step_count")
 	line := fmt.Sprintf("%s flow %s  %d steps  starting",
@@ -192,6 +215,20 @@ func (p *progressHandler) renderStepComplete(a attrMap) error {
 	path := a.str("path")
 	idx := a.int("idx")
 
+	// Quick 260502-onc Fix C: capture failure context for
+	// renderFlowComplete to attribute the failure when err_count > 0.
+	// step_complete carries idx but the renderer also wants total —
+	// best-effort fallback to a.int("total") which the dispatch event
+	// for the same step set; missing total falls back to 0 (renderer
+	// prints "step 2/0", uglier but never crashes).
+	if status == "err" {
+		p.lastErr = &failureContext{
+			idx:     idx,
+			total:   a.int("total"),
+			summary: summary,
+		}
+	}
+
 	// Nested rows already had their dispatch indented 2 spaces; their
 	// completion row indents an additional 2 (total 4) so the marker
 	// sits under the nested counter. Top-level rows indent 5 from col 0.
@@ -224,11 +261,39 @@ func (p *progressHandler) renderBranch(a attrMap) error {
 	return p.println(line)
 }
 
-// renderFlowComplete: `[skytime] flow complete  <ok>/<total> steps  total <ms>ms`
+// renderFlowComplete: success → `[skytime] flow complete  <ok>/<total> steps  total <ms>ms`
+//
+// Quick 260502-onc Fix C: when err_count > 0, render the failure line
+// instead, attributing the most recently captured step failure (or a
+// placeholder when the renderer never saw a step_complete-with-err —
+// defense against malformed event sequences):
+//
+//	[skytime] flow failed  step <I>/<M> (<reason>)  total <ms>ms
 func (p *progressHandler) renderFlowComplete(a attrMap) error {
 	ok := a.int("ok_count")
 	errc := a.int("err_count")
 	totalMs := a.int("total_ms")
+
+	if errc > 0 {
+		idx := int64(0)
+		total := ok + errc
+		summary := "(no per-step error captured)"
+		if p.lastErr != nil {
+			idx = p.lastErr.idx
+			if p.lastErr.total > 0 {
+				total = p.lastErr.total
+			}
+			if p.lastErr.summary != "" {
+				summary = p.lastErr.summary
+			}
+		}
+		line := fmt.Sprintf("%s flow %s  step %d/%d (%s)  total %dms",
+			p.colorBanner("[skytime]"),
+			p.colorErr("failed"),
+			idx, total, summary, totalMs)
+		return p.println(line)
+	}
+
 	line := fmt.Sprintf("%s flow complete  %d/%d steps  total %dms",
 		p.colorBanner("[skytime]"), ok, ok+errc, totalMs)
 	return p.println(line)
