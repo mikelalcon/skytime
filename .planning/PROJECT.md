@@ -41,6 +41,8 @@ A consultant team can take an extension catalog and a customer brief, write a `.
 - ✓ Cobra/charm-log firewall — `cobra`/`pflag`/`charm.land/log/v2` reachable only from `{cmd/skytime, pkg/cli}`, enforced by AST-walking `tests/firewall_cli_test.go` plus non-vacuous `TestPkgCli_ImportsCobra` — Phase 4
 - ✓ Baked-in HTTP extension (`pkg/extension/builtin/http`, Go stdlib `net/http` only) with D4-14 idempotence (get/head=true, post/put/delete=false; deliberately diverges from RFC-7231 PUT/DELETE for v1 simplicity) — Phase 4
 - ✓ `examples/skeleton/{simple_check,parallel_fanout}.star` — 2-flow corpus exercising every primitive (sequential step, block batch, `if_cond`, `script`, `for_each_parallel`, `call_flow`) — Phase 4
+- ✓ Empty-CredentialID bypass — `pkg/activity` per-action loop short-circuits the resolver call when `dag.ActionRef.CredentialID == ""`; operation receives `nil` credential. Closes the noopCredentialHandler retry-storm audit item from quick 260501-p7c — Phase 4
+- ✓ Bazel-style colored CLI output — `skytime run` default output renders interpreter slog events (`flow_start` / `step_dispatch` / `step_complete` / `branch` / `flow_complete`) as a Bazel-style step list with `[skytime]` banner, `[N/M]` counters, kind-aligned labels, ✓/✗ status markers; `--verbose` persistent flag toggles SDK INFO/DEBUG visibility through charm-log — Phase 4
 
 ### Active
 
