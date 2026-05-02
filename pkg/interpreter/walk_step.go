@@ -2,6 +2,7 @@ package interpreter
 
 import (
 	"fmt"
+	"reflect"
 	"time"
 
 	"go.starlark.net/starlark"
@@ -32,12 +33,24 @@ func (i *interpreter) walkStep(ctx workflow.Context, step *dag.Step) (err error)
 		"label", label,
 		"idx", idx, "total", total, "path", path,
 	)
+	// Use dag.ActionResults (typed slice) so the sealed-sum entries decode
+	// via its UnmarshalJSON discriminator. Decoding into []dag.ActionResult
+	// would fail because ActionResult is an interface; the typed slice
+	// dispatches per-entry. Declared at function scope so the defer below
+	// can read post-ExecuteActivity values via closure capture for the
+	// success-path summary.
+	var results dag.ActionResults
 	defer func() {
 		status := "ok"
 		summary := ""
 		if err != nil {
 			status = "err"
 			summary = err.Error()
+		} else {
+			// Quick 260502-onc Fix B-1: surface a per-step summary
+			// derived from the activity results (e.g. "status=200" for
+			// HTTP-shaped Output, "N ok" for multi-action batches).
+			summary = extractStatusSummary(results)
 		}
 		logger.Info("skytime",
 			"event", "step_complete",
@@ -50,22 +63,72 @@ func (i *interpreter) walkStep(ctx workflow.Context, step *dag.Step) (err error)
 	}()
 
 	actx := workflow.WithActivityOptions(ctx, i.activityOptionsForStep(step))
-	// Use dag.ActionResults (typed slice) so the sealed-sum entries decode
-	// via its UnmarshalJSON discriminator. Decoding into []dag.ActionResult
-	// would fail because ActionResult is an interface; the typed slice
-	// dispatches per-entry.
-	var results dag.ActionResults
 	if err = workflow.ExecuteActivity(actx, "ExecuteBatch", step.Actions).Get(ctx, &results); err != nil {
 		return err
 	}
-	// Plan 03-03 v1 simplification: per-action results are observable in
-	// history, but this walker does NOT thread them into state. Future
-	// plans can add output_alias-style aggregation if needed. For v1 the
-	// workflow semantics are: a Step succeeds → continue; an action that
-	// errored bubbles via the activity error path (D2-13 retryable
-	// short-circuit) or returns NonRetryableErrResult inside results
-	// (D2-14: walker continues; the activity returned nil error).
-	_ = results
+	// Quick 260502-onc Fix B-2: convert the activity layer's D2-14
+	// (results, nil) "soft failure" into a workflow-level failure so the
+	// renderer prints flow_failed. Pre-fix, walkStep ignored results
+	// (`_ = results`) and the workflow walked past NonRetryableErrResult
+	// silently. With Fix A wrapping non-2xx HTTP as NonRetryable, the
+	// renderer now sees a real failure event.
+	if perActionErr := extractFirstNonRetryable(results); perActionErr != nil {
+		err = perActionErr
+		return err
+	}
+	return nil
+}
+
+// extractStatusSummary computes the summary attr for a successful step.
+// Single-action steps with an Output struct exposing an `int` field
+// named "Status" render as "status=N" (the HTTP extension's HTTPResponse
+// shape). Multi-action steps render as "<N> ok" (block batches don't
+// have a single meaningful status). Steps whose Output type does not
+// have an int Status field render as "" (empty — best-effort, no
+// annotation).
+//
+// Reflection-based to preserve the firewall: pkg/interpreter cannot
+// import pkg/extension/builtin/http (interpreter is a foundation
+// package, builtin extensions are leaves). reflect.FieldByName is
+// O(struct-fields) per call — negligible at single-step granularity.
+func extractStatusSummary(results dag.ActionResults) string {
+	if len(results) == 0 {
+		return ""
+	}
+	if len(results) > 1 {
+		return fmt.Sprintf("%d ok", len(results))
+	}
+	ok, isOK := results[0].(dag.OkResult)
+	if !isOK || ok.Output == nil {
+		return ""
+	}
+	v := reflect.ValueOf(ok.Output)
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return ""
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return ""
+	}
+	f := v.FieldByName("Status")
+	if !f.IsValid() || !f.CanInterface() || f.Kind() != reflect.Int {
+		return ""
+	}
+	return fmt.Sprintf("status=%d", f.Int())
+}
+
+// extractFirstNonRetryable scans the per-action result slice and returns
+// the first NonRetryableErrResult's Err, or nil if none is present. Used
+// by walkStep to convert the activity layer's D2-14 (results, nil) "soft
+// failure" into a workflow-level failure so the renderer surfaces it.
+func extractFirstNonRetryable(results dag.ActionResults) error {
+	for _, r := range results {
+		if nr, ok := r.(dag.NonRetryableErrResult); ok {
+			return nr.Err
+		}
+	}
 	return nil
 }
 

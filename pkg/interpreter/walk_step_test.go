@@ -227,6 +227,174 @@ func TestComputeBatchTimeout_SumPlusHeadroom(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Quick 260502-onc Fix B: extractStatusSummary + extractFirstNonRetryable
+// helper-level coverage. The integration test below
+// (TestWalkStep_NonRetryableResult_FailsWorkflow) proves the helpers are
+// wired into walkStep.
+// ---------------------------------------------------------------------------
+
+// fakeStatusOutput is a value-receiver dag.OperationOutput exposing the
+// "Status int" shape extractStatusSummary reflects on. Mirrors the
+// HTTPResponse shape without importing pkg/extension/builtin/http
+// (firewall preserved).
+type fakeStatusOutput struct{ Status int }
+
+func (fakeStatusOutput) IsOperationOutput() {}
+
+// fakeStatusOutputPtr is a pointer-receiver variant — extractStatusSummary
+// must reflect.Elem when given a pointer.
+type fakeStatusOutputPtr struct{ Status int }
+
+func (*fakeStatusOutputPtr) IsOperationOutput() {}
+
+// fakeNoStatusOutput has NO Status field — extractStatusSummary returns "".
+type fakeNoStatusOutput struct{ Foo string }
+
+func (fakeNoStatusOutput) IsOperationOutput() {}
+
+// fakeStringStatusOutput has a Status field that is NOT an int —
+// extractStatusSummary returns "" (Kind != Int).
+type fakeStringStatusOutput struct{ Status string }
+
+func (fakeStringStatusOutput) IsOperationOutput() {}
+
+func TestExtractStatusSummary_HTTPResponseShape(t *testing.T) {
+	results := dag.ActionResults{dag.OkResult{Idx: 0, Output: fakeStatusOutput{Status: 200}}}
+	require.Equal(t, "status=200", extractStatusSummary(results))
+}
+
+func TestExtractStatusSummary_NoStatusField(t *testing.T) {
+	results := dag.ActionResults{dag.OkResult{Idx: 0, Output: fakeNoStatusOutput{Foo: "bar"}}}
+	require.Equal(t, "", extractStatusSummary(results))
+}
+
+func TestExtractStatusSummary_MultiAction(t *testing.T) {
+	results := dag.ActionResults{
+		dag.OkResult{Idx: 0, Output: fakeStatusOutput{Status: 200}},
+		dag.OkResult{Idx: 1, Output: fakeStatusOutput{Status: 200}},
+		dag.OkResult{Idx: 2, Output: fakeStatusOutput{Status: 200}},
+	}
+	require.Equal(t, "3 ok", extractStatusSummary(results))
+}
+
+func TestExtractStatusSummary_NilOutput(t *testing.T) {
+	results := dag.ActionResults{dag.OkResult{Idx: 0, Output: nil}}
+	require.Equal(t, "", extractStatusSummary(results))
+}
+
+func TestExtractStatusSummary_PointerOutput(t *testing.T) {
+	results := dag.ActionResults{dag.OkResult{Idx: 0, Output: &fakeStatusOutputPtr{Status: 404}}}
+	require.Equal(t, "status=404", extractStatusSummary(results))
+}
+
+func TestExtractStatusSummary_StatusNotInt(t *testing.T) {
+	results := dag.ActionResults{dag.OkResult{Idx: 0, Output: fakeStringStatusOutput{Status: "ok"}}}
+	require.Equal(t, "", extractStatusSummary(results))
+}
+
+func TestExtractStatusSummary_EmptyResults(t *testing.T) {
+	require.Equal(t, "", extractStatusSummary(dag.ActionResults{}))
+	require.Equal(t, "", extractStatusSummary(nil))
+}
+
+// TestExtractStatusSummary_NonOkSingleResult — a single-result slice
+// containing a NonRetryableErrResult or SkippedResult does not have a
+// reflectable Output; helper returns "" (caller's failure-path summary
+// kicks in via the defer's err.Error() branch instead).
+func TestExtractStatusSummary_NonOkSingleResult(t *testing.T) {
+	results := dag.ActionResults{dag.NonRetryableErrResult{Idx: 0, Err: errorsNew("x")}}
+	require.Equal(t, "", extractStatusSummary(results))
+}
+
+func TestExtractFirstNonRetryable_None(t *testing.T) {
+	results := dag.ActionResults{
+		dag.OkResult{Idx: 0, Output: nil},
+		dag.OkResult{Idx: 1, Output: nil},
+	}
+	require.Nil(t, extractFirstNonRetryable(results))
+}
+
+// TestExtractFirstNonRetryable_FirstWins — covers the "first NonRetryable
+// in a mixed slice wins" property from BEHAVIOR M-3 note. This is the
+// helper-level proxy for the originally-named
+// TestWalkStep_NonRetryableMidBlock_FailsWorkflow.
+func TestExtractFirstNonRetryable_FirstWins(t *testing.T) {
+	errA := errorsNew("first failure")
+	errB := errorsNew("second failure")
+	results := dag.ActionResults{
+		dag.OkResult{Idx: 0, Output: nil},
+		dag.NonRetryableErrResult{Idx: 1, Err: errA},
+		dag.NonRetryableErrResult{Idx: 2, Err: errB},
+		dag.SkippedResult{Idx: 3, Reason: "after first failure"},
+	}
+	got := extractFirstNonRetryable(results)
+	// Compare by Error() text — errImpl is a value type so require.Same
+	// (pointer identity) does not apply. The "first wins" property is what
+	// matters: got's message must be errA's, NOT errB's.
+	require.NotNil(t, got)
+	require.Equal(t, errA.Error(), got.Error(),
+		"first NonRetryableErrResult.Err must win, even when more follow")
+	require.NotEqual(t, errB.Error(), got.Error(),
+		"second NonRetryableErrResult.Err must NOT shadow the first")
+}
+
+func TestExtractFirstNonRetryable_SkippedIgnored(t *testing.T) {
+	results := dag.ActionResults{
+		dag.OkResult{Idx: 0, Output: nil},
+		dag.SkippedResult{Idx: 1, Reason: "x"},
+	}
+	require.Nil(t, extractFirstNonRetryable(results))
+}
+
+// TestWalkStep_NonRetryableResult_FailsWorkflow — Quick 260502-onc Fix B-2
+// integration gate: the activity returns (results, nil) per D2-14 with a
+// NonRetryableErrResult; walkStep MUST surface that as a workflow-level
+// error so downstream renderers print flow_failed. Without this, the
+// silent-success failure mode persists past Fix A.
+func TestWalkStep_NonRetryableResult_FailsWorkflow(t *testing.T) {
+	step := helperMakeStepWithActions("", nil, 1)
+	parsed := helperMakeStepFlow(t, "nrfail", "", step)
+
+	registry := NewRegistry()
+	require.NoError(t, registry.Register(parsed.Flow.Name, "h", parsed))
+	registry.Freeze()
+
+	var ts testsuite.WorkflowTestSuite
+	env := ts.NewTestWorkflowEnvironment()
+	helperRegisterFakeExecuteBatch(env)
+
+	env.OnActivity("ExecuteBatch", mock.Anything, mock.Anything).Return(
+		dag.ActionResults{dag.NonRetryableErrResult{Idx: 0, Err: errorsNew("HTTP 404 GET https://x/y: not found: non-retryable")}},
+		nil,
+	)
+
+	wf := NewWorkflow(registry)
+	env.RegisterWorkflowWithOptions(wf, workflow.RegisterOptions{Name: "SkytimeWorkflow"})
+
+	env.ExecuteWorkflow(wf, dag.WorkflowInput{
+		FlowName:    "nrfail",
+		ContentHash: "h",
+		InitState:   map[string]any{},
+	})
+
+	require.True(t, env.IsWorkflowCompleted())
+	wfErr := env.GetWorkflowError()
+	require.Error(t, wfErr,
+		"Fix B-2: NonRetryableErrResult in activity results MUST surface as workflow error")
+	require.Contains(t, wfErr.Error(), "HTTP 404",
+		"original wrapped error message must propagate to workflow level for renderer attribution")
+}
+
+// errorsNew is a 2-line helper that avoids importing "errors" at the top
+// of this file (which already has a heavy import block). Renamed so it
+// doesn't collide with the stdlib name in IDE auto-import.
+func errorsNew(msg string) error { return errImpl(msg) }
+
+type errImpl string
+
+func (e errImpl) Error() string { return string(e) }
+
 // TestToTemporalRetryPolicy: nil input returns nil; populated input
 // converts each field correctly.
 func TestToTemporalRetryPolicy(t *testing.T) {
