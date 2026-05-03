@@ -164,9 +164,11 @@ func (r *liveRenderer) applyEvent(ev progressEvent) {
 	case "flow_start":
 		// Clear current redraw region (none expected at flow start)
 		// and emit the header as a STATIC line above the future
-		// redraw region.
+		// redraw region. Color-wrapped per quick 260503-q9p — banner
+		// in dim cyan to mirror the static path's colorBanner choice.
 		r.clearRedrawRegion()
-		fmt.Fprintf(r.out, "[skytime] flow %s  %d steps  starting\n", ev.FlowName, ev.StepCount)
+		fmt.Fprintf(r.out, "%s[skytime]%s flow %s  %d steps  starting\n",
+			ansiDimCyan, ansiReset, ev.FlowName, ev.StepCount)
 	case "step_dispatch":
 		r.active = append(r.active, &activeStep{
 			Idx: ev.Idx, Total: ev.Total, Kind: ev.KindAttr, Label: ev.Label,
@@ -182,20 +184,33 @@ func (r *liveRenderer) applyEvent(ev progressEvent) {
 				break
 			}
 		}
-		marker := "✓"
+		// Quick 260503-q9p: wrap counter in bright cyan, kind word
+		// "step" in bright white, and marker in green/red — full
+		// parity with static-path colorCounter/colorKind/colorOk/colorErr.
+		marker := ansiGreen + "✓" + ansiReset
 		if ev.Status == "err" {
-			marker = "✗"
+			marker = ansiRed + "✗" + ansiReset
 		}
-		fmt.Fprintf(r.out, "[%d/%d] step  %s %dms  %s\n", ev.Idx, ev.Total, marker, ev.DurationMs, ev.Summary)
+		fmt.Fprintf(r.out, "%s[%d/%d]%s %sstep%s  %s %dms  %s\n",
+			ansiBrightCyan, ev.Idx, ev.Total, ansiReset,
+			ansiBrightWhite, ansiReset,
+			marker, ev.DurationMs, ev.Summary)
 	case "branch":
+		// Quick 260503-q9p: wrap → arrow in yellow, mirroring the
+		// static path's colorArrow choice.
 		r.clearRedrawRegion()
-		fmt.Fprintf(r.out, "     → %s\n", ev.Branch)
+		fmt.Fprintf(r.out, "     %s→%s %s\n", ansiYellow, ansiReset, ev.Branch)
 	case "flow_complete":
+		// Quick 260503-q9p: wrap [skytime] banner in dim cyan; on the
+		// failure path also wrap the word "failed" in red — mirrors
+		// the static path's colorBanner + colorErr choices.
 		r.clearRedrawRegion()
 		if ev.ErrCount > 0 {
-			fmt.Fprintf(r.out, "[skytime] flow failed  total %dms\n", ev.TotalMs)
+			fmt.Fprintf(r.out, "%s[skytime]%s flow %sfailed%s  total %dms\n",
+				ansiDimCyan, ansiReset, ansiRed, ansiReset, ev.TotalMs)
 		} else {
-			fmt.Fprintf(r.out, "[skytime] flow complete  %d/%d steps  total %dms\n", ev.OkCount, ev.OkCount+ev.ErrCount, ev.TotalMs)
+			fmt.Fprintf(r.out, "%s[skytime]%s flow complete  %d/%d steps  total %dms\n",
+				ansiDimCyan, ansiReset, ev.OkCount, ev.OkCount+ev.ErrCount, ev.TotalMs)
 		}
 	case "raw":
 		r.clearRedrawRegion()
