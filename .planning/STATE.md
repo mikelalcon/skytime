@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.1-05a-PLAN.md
-last_updated: "2026-05-03T04:39:10.723Z"
+stopped_at: Completed 04.1-05b-PLAN.md
+last_updated: "2026-05-03T13:12:19.951Z"
 last_activity: 2026-05-03
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 27
-  completed_plans: 25
+  completed_plans: 26
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04.1 (dynamic-step-kwargs-lambda-accepting-step-action-fn-variant-for-runtime-built-action-kwargs) — EXECUTING
-Plan: 7 of 8
+Plan: 8 of 8
 Status: Ready to execute
 Last activity: 2026-05-03
 
@@ -76,6 +76,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04.1 P03 | 10min | 4 tasks | 8 files |
 | Phase 04.1 P04 | 10min | 3 tasks | 4 files |
 | Phase 04.1 P05a | 2min | 1 tasks | 2 files |
+| Phase 04.1 P05b | 25m | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -179,6 +180,11 @@ Recent decisions affecting current work:
 - [Phase 04.1]: Outermost-CallExpr-only AST walk via return false — kwargs of recognized <ext>.<op>(...) calls NOT walked (D4.1-11 amendment)
 - [Phase 04.1]: Runtime block_fn fallback is tests-only — pkg/activity/validate_batch.go already enforces D2-05/06/07; Plan 04 pins the gate via TestValidateBatch_RuntimeBlockFnReachesGate
 - [Phase 04.1]: Plan 04.1-05a: pkg/interpreter/resolve_kwargs.go ships i.resolveKwargs(ctx, ref) — walks ref.Kwargs via *starlark.Dict.Items() (insertion-order, NOT randomized; workflowcheck-safe; comment block flags 'do not add a sort'); evaluates *StarlarkLambda values via existing evalLambda path (D-20/D-22/D3-21); allocation-free fast path returns original frozen dict when no lambdas present (Phase 1/2/3 static actions stay zero-cost); strict starlark.String type assertion on resolved values with kwarg-name + actual-type error; output dict frozen before return (Temporal replay determinism); D4.1-14 plumbing for Plan 05b's walkStep wiring.
+- [Phase 04.1]: fail() callsite preservation walks CallStack innermost-to-outermost skipping <builtin> frames (B6, D4.1-08)
+- [Phase 04.1]: ActionRef.UnmarshalJSON sorts kwarg keys before SetKey to keep Items() byte-stable across activity-boundary round-trips
+- [Phase 04.1]: Empty block_fn batch emits step_complete inline (summary='empty batch') and gates the deferred emit via deferEmit=false (D4.1-09)
+- [Phase 04.1]: Lambda-returned ActionRefs are explicitly Freeze()'d in walkStep before resolveKwargs (W8); static actions stay zero-cost via idempotent Freeze
+- [Phase 04.1]: resolveFlowName / stepDisplayLabel never fail the workflow on lambda eval errors — display-only attribute, fall back to literal Name (D4.1-15, D4.1-16)
 
 ### Pending Todos
 
@@ -195,6 +201,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-03T04:39:01.226Z
-Stopped at: Completed 04.1-05a-PLAN.md
+Last session: 2026-05-03T13:12:19.944Z
+Stopped at: Completed 04.1-05b-PLAN.md
 Resume file: None
