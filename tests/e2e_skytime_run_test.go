@@ -229,7 +229,11 @@ func TestE2E_SkytimeRun_Happy(t *testing.T) {
 		"run",
 		filepath.Join(root, "examples", "skeleton", "simple_check.star"),
 		"--flow", "simple_check",
-		"--input", `{"repo_path":"octocat/hello"}`,
+		// Phase 04.1 (D4.1-23): simple_check.star inputs={"repo": "string"},
+		// path is built via ${ctx.repo} interpolation. The pre-04.1 corpus
+		// declared "repo_path"; it was renamed when the demo was rewritten
+		// to actually use --input.
+		"--input", `{"repo":"octocat/Hello-World"}`,
 		"--address", "127.0.0.1:7233",
 	)
 	cmd.Stdout = &stdout
