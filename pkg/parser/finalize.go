@@ -19,6 +19,13 @@ import (
 //  2. lintMixedIdempotency (D2-05): each step(block=[...]) must be
 //     homogeneous — either all idempotent OR a single non-idempotent
 //     action. Mixed batches surface as *dag.ValidationError at parse time.
+//  2.5. lintBlockFnIdempotency (D4.1-11): each step(block_fn=...)
+//     lambda's body is walked via syntax.Walk; if all calls are
+//     typed-recognized <ext>.<op> with declared Idempotent, the
+//     batch's homogeneity is verified at parse time with the same
+//     fix-suggestion shape as D2-05. Opaque shapes (helper functions,
+//     indirect dispatch) defer to the runtime fallback (D4.1-12 in
+//     pkg/activity).
 //  3. lintBlockSize (D2-07): step(block=[...]) cannot exceed the parser's
 //     maxBlockSize cap (default 50; configurable via WithMaxBlockSize).
 //  4. lintEmptyTaskQueue (D3-19, defense in depth): documented stub for
@@ -48,6 +55,9 @@ func (p *Parser) finalize() error {
 		return err
 	}
 	if err := p.lintMixedIdempotency(); err != nil {
+		return err
+	}
+	if err := p.lintBlockFnIdempotency(); err != nil {
 		return err
 	}
 	if err := p.lintBlockSize(); err != nil {

@@ -187,3 +187,81 @@ func (p *Parser) lookupOpSpec(receiverName, opName string) (*extension.Operation
 	}
 	return nil, "", false
 }
+
+// lintBlockFnIdempotency walks every flow's body and asserts that each
+// step(block_fn=...) lambda's body produces a homogeneous batch when
+// statically analyzable (D4.1-11). Mixed-typed batches are rejected at
+// parse time with the same fix-suggestion shape as D2-05's
+// lintMixedIdempotency. Opaque shapes (helper functions, indirect
+// dispatch) defer to the runtime fallback (D4.1-12 in pkg/activity).
+//
+// Recursion mirrors walkLintMixedIdempotency so the two passes have
+// identical control-flow shape — easier to grep and reason about.
+func (p *Parser) lintBlockFnIdempotency() error {
+	for _, flow := range p.flows {
+		if err := p.walkLintBlockFnIdempotency(flow.Name, flow.Body); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// walkLintBlockFnIdempotency is the recursive helper for
+// lintBlockFnIdempotency. Mirrors walkLintMixedIdempotency's shape so
+// every Phase 2 / Phase 4.1 lint pass shares the same recursion idiom.
+func (p *Parser) walkLintBlockFnIdempotency(flowName string, body []dag.Node) error {
+	for _, node := range body {
+		switch n := node.(type) {
+		case *dag.Step:
+			if n.BlockFn == nil {
+				continue
+			}
+			c, err := p.classifyBlockFn(n.BlockFn)
+			if err != nil {
+				return err
+			}
+			if c.HasOpaque {
+				continue // defer to runtime (D4.1-12)
+			}
+			// All typed — assert homogeneity.
+			var (
+				anyIdem, anyNonIdem  extOp
+				hasIdem, hasNonIdem  bool
+			)
+			for _, t := range c.TypedCalls {
+				if t.Idempotent {
+					if !hasIdem {
+						anyIdem = t
+					}
+					hasIdem = true
+				} else {
+					if !hasNonIdem {
+						anyNonIdem = t
+					}
+					hasNonIdem = true
+				}
+			}
+			if hasIdem && hasNonIdem {
+				return &dag.ValidationError{
+					Pos:  n.Pos,
+					Flow: flowName,
+					Msg: fmt.Sprintf(
+						"block_fn cannot mix idempotent and non-idempotent operations:\n  - %s.%s (idempotent)\n  - %s.%s (NOT idempotent)\nSuggestion: split into separate steps with action_fn each.",
+						anyIdem.Ext, anyIdem.Op, anyNonIdem.Ext, anyNonIdem.Op),
+				}
+			}
+		case *dag.IfCond:
+			if err := p.walkLintBlockFnIdempotency(flowName, n.Then); err != nil {
+				return err
+			}
+			if err := p.walkLintBlockFnIdempotency(flowName, n.Else); err != nil {
+				return err
+			}
+		case *dag.ForEachParallel:
+			if err := p.walkLintBlockFnIdempotency(flowName, n.Steps); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}

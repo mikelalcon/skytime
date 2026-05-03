@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.starlark.net/starlark"
 
 	"github.com/mikelalcon/skytime/pkg/dag"
 )
@@ -30,15 +31,34 @@ import (
 // return the *dag.CapturedLambda hanging off the first Step's BlockFn.
 // The flow is named "f" by convention. Fails the test if the captured
 // lambda is missing.
+//
+// Parsing skips the finalize() chain so the classifier-level tests can
+// exercise mixed-typed shapes (which lintBlockFnIdempotency would
+// otherwise reject before classifyBlockFn ever runs). For end-to-end
+// finalize coverage see TestLintBlockFnIdempotency_*.
 func parseBlockFnSource(t *testing.T, src string) (*Parser, *dag.CapturedLambda) {
 	t.Helper()
 	p := newTestParser(t)
-	flows, err := p.ParseSource("test.star", []byte(src))
-	require.NoError(t, err, "parse must succeed before classifyBlockFn runs")
-	require.Contains(t, flows, "f", "expected a flow named 'f'")
-	require.Len(t, flows["f"].Body, 1, "expected exactly one body node (Step)")
-	step, ok := flows["f"].Body[0].(*dag.Step)
-	require.True(t, ok, "first body node must be *dag.Step, got %T", flows["f"].Body[0])
+	const filename = "test.star"
+
+	// Lazy-init parse-time globals (mirrors Parser.parse path).
+	if p.parseTimeGlobals == nil {
+		initThread := &starlark.Thread{Name: "init-extensions:" + filename}
+		gs, gerr := newParseTimeGlobals(p, initThread)
+		require.NoError(t, gerr)
+		p.parseTimeGlobals = gs
+	}
+	p.fileBytes[filename] = []byte(src)
+	thread := &starlark.Thread{Name: "parse:" + filename, Load: p.makeLoad()}
+	thread.SetMaxExecutionSteps(p.maxExecSteps)
+	opts := defaultFileOptions()
+	_, execErr := starlark.ExecFileOptions(opts, thread, filename, []byte(src), p.parseTimeGlobals)
+	require.NoError(t, execErr, "exec must succeed before classifyBlockFn runs")
+
+	require.Contains(t, p.flows, "f", "expected a flow named 'f'")
+	require.Len(t, p.flows["f"].Body, 1, "expected exactly one body node (Step)")
+	step, ok := p.flows["f"].Body[0].(*dag.Step)
+	require.True(t, ok, "first body node must be *dag.Step, got %T", p.flows["f"].Body[0])
 	require.NotNil(t, step.BlockFn, "step must have BlockFn populated for classifier tests")
 	return p, step.BlockFn
 }
@@ -151,21 +171,23 @@ flow(
 
 // TestClassifyBlockFn_ConditionalExtCalls: a CondExpr (`x if c else y`)
 // with two extension calls in either branch. Both are classified.
+// Uses two homogeneous-idempotent calls so lintBlockFnIdempotency does
+// not reject the parse before the classifier-level test can run; the
+// classifier itself is agnostic to idempotency mixing.
 func TestClassifyBlockFn_ConditionalExtCalls(t *testing.T) {
 	src := `flow(
     name = "f",
     inputs = {"flag": "bool"},
     steps = [
-        step(block_fn = lambda ctx: [fake_ext.echo(msg = "y") if ctx.flag else fake_ext.post(payload = "n")]),
+        step(block_fn = lambda ctx: [fake_ext.echo(msg = "y") if ctx.flag else fake_ext.echo(msg = "n")]),
     ],
 )`
 	p, captured := parseBlockFnSource(t, src)
 	got, err := p.classifyBlockFn(captured)
 	require.NoError(t, err)
 	require.Len(t, got.TypedCalls, 2, "both branches of the conditional are classified")
-	// echo and post — order is the AST visit order (true-branch first).
-	ops := []string{got.TypedCalls[0].Op, got.TypedCalls[1].Op}
-	assert.ElementsMatch(t, []string{"echo", "post"}, ops)
+	assert.Equal(t, "echo", got.TypedCalls[0].Op)
+	assert.Equal(t, "echo", got.TypedCalls[1].Op)
 	assert.False(t, got.HasOpaque)
 }
 
