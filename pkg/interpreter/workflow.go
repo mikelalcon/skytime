@@ -3,6 +3,7 @@ package interpreter
 import (
 	"fmt"
 
+	"go.starlark.net/starlark"
 	"go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -50,13 +51,22 @@ func NewWorkflow(registry *FlowRegistry) func(workflow.Context, dag.WorkflowInpu
 		// Bazel renderer entry banner. workflow.Now is deterministic
 		// per Temporal docs (replay-safe).
 		startTime := workflow.Now(ctx)
+
+		// D4.1-16: resolve flow.NameFn ONCE at flow_start so the
+		// rendered flow_name attr reflects the lambda's output. The
+		// resolution happens inside the workflow goroutine — replay-safe
+		// because evalLambda is pure CPU (INTRP-03) and the captured
+		// lambda body is deterministic by D-19 (frozen FreeVars).
+		// Construct the interpreter BEFORE flow_start so the helper has
+		// access to i.state for ctx access.
+		i := newInterpreter(ctx, registry, parsed, input.ContentHash, input.InitState, logger)
+		flowDisplayName := i.resolveFlowName(ctx)
 		logger.Info("skytime",
 			"event", "flow_start",
-			"flow_name", input.FlowName,
+			"flow_name", flowDisplayName,
 			"step_count", len(parsed.Flow.Body),
 		)
 
-		i := newInterpreter(ctx, registry, parsed, input.ContentHash, input.InitState, logger)
 		walkErr := i.walkBody(ctx, parsed.Flow.Body)
 
 		// Bazel renderer exit banner. v1 simplification: ok_count is
@@ -171,6 +181,50 @@ func (i *interpreter) walkNode(ctx workflow.Context, node dag.Node) error {
 			nil,
 		)
 	}
+}
+
+// resolveFlowName returns the display name for the flow. When
+// flow.NameFn is set (D4.1-16), evaluates it ONCE with the initial
+// state and returns the resolved string. Otherwise returns flow.Name
+// unchanged.
+//
+// Lambda evaluation goes through i.evalLambda → bridge.CallLambda; the
+// cancellation watchdog (D3-21) and step budget (D-22) apply normally.
+//
+// Defensive fallbacks (in order):
+//
+//  1. Lambda eval error: log a warn-level "flow_name_lambda_error" event
+//     and fall back to the literal flow.Name. The flow name is for
+//     display only — a typo would have surfaced at parse time via
+//     D4-02, so this branch should never fire in practice. We do NOT
+//     fail the workflow over a display-only attribute.
+//
+//  2. Lambda returned a non-string value: same fallback. The desugarer
+//     (D4.1-04) wraps inner expressions with str() so the lambda result
+//     is always starlark.String for synthesized lambdas; this branch
+//     defends against hand-built lambdas that smuggle non-strings.
+func (i *interpreter) resolveFlowName(ctx workflow.Context) string {
+	if i.flow.NameFn == nil {
+		return i.flow.Name
+	}
+	val, err := i.evalLambda(ctx, i.flow.NameFn.ID)
+	if err != nil {
+		workflow.GetLogger(ctx).Warn("skytime",
+			"event", "flow_name_lambda_error",
+			"flow_name_template", i.flow.Name,
+			"error", err.Error(),
+		)
+		return i.flow.Name
+	}
+	if s, ok := val.(starlark.String); ok {
+		return string(s)
+	}
+	workflow.GetLogger(ctx).Warn("skytime",
+		"event", "flow_name_lambda_type_error",
+		"flow_name_template", i.flow.Name,
+		"got_type", val.Type(),
+	)
+	return i.flow.Name
 }
 
 // currentPath returns the path attribute value to attach to step events.

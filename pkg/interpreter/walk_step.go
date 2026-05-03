@@ -25,7 +25,11 @@ import (
 func (i *interpreter) walkStep(ctx workflow.Context, step *dag.Step) (err error) {
 	logger := workflow.GetLogger(ctx)
 	start := workflow.Now(ctx)
-	label := stepActionLabel(step)
+	// D4.1-15: prefer the resolved NameFn / literal Name over the
+	// auto-derived stepActionLabel. stepDisplayLabel handles the three
+	// cases (NameFn set → resolved string; Name set → literal; both
+	// absent → existing stepActionLabel).
+	label := i.stepDisplayLabel(ctx, step)
 	path := i.currentPath()
 	idx, total := i.stepIdx, i.stepTot
 
@@ -286,6 +290,39 @@ func extractFirstNonRetryable(results dag.ActionResults) error {
 		}
 	}
 	return nil
+}
+
+// stepDisplayLabel returns the display label for the step_dispatch
+// event. Resolution order (D4.1-15):
+//
+//  1. step.NameFn set: evaluate the lambda once with the current state
+//     and use the resolved string. Fall through to step 2 on eval error
+//     or wrong-type return — display-only attribute, must not fail the
+//     workflow.
+//  2. step.Name set: literal name, used verbatim.
+//  3. both absent: fall back to the auto-derived stepActionLabel(step).
+//
+// Implementation note: this is a method (needs i.evalLambda) whereas
+// the legacy stepActionLabel remains a top-level helper so other call
+// sites (none today; reserved for future) can call it without an
+// interpreter.
+func (i *interpreter) stepDisplayLabel(ctx workflow.Context, step *dag.Step) string {
+	if step.NameFn != nil {
+		val, err := i.evalLambda(ctx, step.NameFn.ID)
+		if err == nil {
+			if s, ok := val.(starlark.String); ok {
+				return string(s)
+			}
+		}
+		// Eval error or wrong-type: silently fall through. The validator
+		// catches typos at parse time (D4-02) so a runtime failure here
+		// is implausible; if it happens we'd rather render the literal
+		// fallback than crash the workflow over a label.
+	}
+	if step.Name != "" {
+		return step.Name
+	}
+	return stepActionLabel(step)
 }
 
 // stepActionLabel computes a Bazel-style summary of the step's actions for
