@@ -344,3 +344,132 @@ func TestProgress_PassthroughOnNonSkytimeRecord(t *testing.T) {
 	require.Contains(t, passOut.String(), "plain SDK log message",
 		"non-event records must reach the wrapped handler")
 }
+
+// ---------------------------------------------------------------------------
+// Phase 04.1-06 Task 1: Mode selection — TTY + verbose plumbing for live block
+// ---------------------------------------------------------------------------
+//
+// These tests pin the refactor that splits progress.go into a static path
+// (the previous Phase 4 + quick-260502 renderer) and a forthcoming live-block
+// path (D4.1-17..21). useLiveBlock() is the discriminator — false on
+// non-TTY, false on --verbose, false on Windows (build-tag enforced
+// elsewhere), true otherwise.
+//
+// Tests 1, 2, 4 work after Task 1's mode-selection refactor.
+// Test 3 verifies live-path activation; it is t.Skip()'d here and
+// un-skipped in Task 3 once Handle() routes through the live renderer.
+
+// boolPtr returns a pointer to b. Local helper so tests can pass
+// progressHandlerOptions.ForceTTY.
+func boolPtr(b bool) *bool { return &b }
+
+// emitTestEvents drives a sequence of events covering every live-block
+// rendering path (flow_start → step_dispatch → step_complete → flow_complete).
+// Returns the rendered output as captured by the progressOut buffer.
+func emitTestEvents(t *testing.T, h *progressHandler) string {
+	t.Helper()
+	logger := slog.New(h)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "flow_start"),
+		slog.String("flow_name", "test_flow"),
+		slog.Int("step_count", 1),
+	)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "step_dispatch"),
+		slog.Int("idx", 1), slog.Int("total", 1),
+		slog.String("kind", "step"),
+		slog.String("label", "gh.get(/x)"),
+		slog.String("path", "1"),
+	)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "step_complete"),
+		slog.Int("idx", 1), slog.Int("total", 1),
+		slog.String("kind", "step"),
+		slog.String("path", "1"),
+		slog.String("status", "ok"),
+		slog.Int64("duration_ms", 50),
+		slog.String("summary", "status=200"),
+	)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "flow_complete"),
+		slog.Int("ok_count", 1),
+		slog.Int("err_count", 0),
+		slog.Int64("total_ms", 50),
+	)
+	// Drain any live-renderer goroutine so output is fully flushed.
+	h.Close()
+	return ""
+}
+
+// TestProgress_StaticPath_NonTTY: a non-TTY (bytes.Buffer) handler emits
+// plain ASCII Bazel-style lines. NO ANSI escape sequences appear.
+func TestProgress_StaticPath_NonTTY(t *testing.T) {
+	var progressOut, passOut bytes.Buffer
+	passthrough := slog.NewTextHandler(&passOut, &slog.HandlerOptions{Level: slog.LevelInfo})
+	// Default constructor — ForceTTY not set, so isTTY() returns false on a
+	// *bytes.Buffer (not a *os.File). Verbose=false default.
+	handler := newProgressHandler(passthrough, &progressOut)
+	emitTestEvents(t, handler)
+
+	got := progressOut.String()
+	require.NotContains(t, got, "\x1b[", "non-TTY output must contain NO ANSI escape sequences (got: %q)", got)
+	require.Contains(t, got, "[skytime] flow test_flow", "static-path flow_start banner")
+	require.Contains(t, got, "[1/1]", "static-path step_dispatch counter")
+	require.Contains(t, got, "✓", "static-path step_complete OK marker")
+	require.Contains(t, got, "50ms", "static-path duration")
+	require.Contains(t, got, "[skytime] flow complete", "static-path flow_complete summary")
+}
+
+// TestProgress_StaticPath_VerboseEvenOnTTY: when Verbose=true, the live
+// block is disabled (D4.1-20) — even a forced-TTY handler emits plain
+// static lines. NO ANSI cursor sequences.
+func TestProgress_StaticPath_VerboseEvenOnTTY(t *testing.T) {
+	var progressOut, passOut bytes.Buffer
+	passthrough := slog.NewTextHandler(&passOut, &slog.HandlerOptions{Level: slog.LevelInfo})
+	handler := newProgressHandlerWithOptions(passthrough, &progressOut, progressHandlerOptions{
+		Verbose:  true,
+		ForceTTY: boolPtr(true),
+	})
+	emitTestEvents(t, handler)
+
+	got := progressOut.String()
+	require.NotContains(t, got, "\x1b[1A", "verbose=true must NOT emit cursor-up sequences (live block disabled per D4.1-20)")
+	require.NotContains(t, got, "\x1b[2K", "verbose=true must NOT emit clear-line sequences")
+	require.Contains(t, got, "[skytime] flow test_flow", "verbose=true still renders Bazel-style static lines")
+}
+
+// TestProgress_LivePathChosen_TTYNonVerbose: with ForceTTY=true and
+// Verbose=false, useLiveBlock() returns true and Handle() routes to the
+// live renderer. Activated by 04.1-06 Task 3 (Handle dispatch).
+func TestProgress_LivePathChosen_TTYNonVerbose(t *testing.T) {
+	t.Skip("activated by 04.1-06 Task 3 (live renderer wired into Handle)")
+}
+
+// TestNewProgressHandler_AcceptsVerboseFlag: the new options-based
+// constructor wires Verbose + ForceTTY into the handler such that
+// useLiveBlock() returns false for verbose=true.
+func TestNewProgressHandler_AcceptsVerboseFlag(t *testing.T) {
+	var progressOut, passOut bytes.Buffer
+	passthrough := slog.NewTextHandler(&passOut, &slog.HandlerOptions{Level: slog.LevelInfo})
+
+	verboseTTY := newProgressHandlerWithOptions(passthrough, &progressOut, progressHandlerOptions{
+		Verbose:  true,
+		ForceTTY: boolPtr(true),
+	})
+	require.False(t, verboseTTY.useLiveBlock(),
+		"verbose=true must disable live block even on TTY (D4.1-20)")
+
+	nonVerboseTTY := newProgressHandlerWithOptions(passthrough, &progressOut, progressHandlerOptions{
+		Verbose:  false,
+		ForceTTY: boolPtr(true),
+	})
+	require.True(t, nonVerboseTTY.useLiveBlock(),
+		"verbose=false + TTY must enable live block (D4.1-17)")
+
+	nonTTY := newProgressHandlerWithOptions(passthrough, &progressOut, progressHandlerOptions{
+		Verbose:  false,
+		ForceTTY: boolPtr(false),
+	})
+	require.False(t, nonTTY.useLiveBlock(),
+		"non-TTY must disable live block (D4.1-21)")
+}
