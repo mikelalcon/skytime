@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 
 	"golang.org/x/term"
@@ -355,4 +356,36 @@ func hasAttr(r slog.Record, key string) bool {
 		return true
 	})
 	return found
+}
+
+// pathDepth returns the renderer indent depth implied by the given
+// step path. The path conventions emitted by pkg/interpreter/walk_*
+// are:
+//   - "<idx>"            top-level (depth 0)
+//   - "<idx>a"/"<idx>b"  inside an if_cond branch (depth +1)
+//   - "<P>.<I>"          inside a for_each_parallel iteration (depth +1)
+//   - combinations stack ("3a.0" = if_cond branch then for_each item → depth 2)
+//
+// Algorithm: count "." separators in path, then add 1 for each segment
+// whose final byte is a letter (the if_cond branch suffix). An empty
+// path (defensive — pre-init dispatch) returns 0.
+//
+// Quick 260503-rhy: shared by both static and live renderers to
+// determine 4-space-per-depth indentation for if_cond / for_each_parallel
+// scopes and their leaf children.
+func pathDepth(path string) int {
+	if path == "" {
+		return 0
+	}
+	depth := strings.Count(path, ".")
+	for _, seg := range strings.Split(path, ".") {
+		if seg == "" {
+			continue
+		}
+		last := seg[len(seg)-1]
+		if (last >= 'a' && last <= 'z') || (last >= 'A' && last <= 'Z') {
+			depth++
+		}
+	}
+	return depth
 }

@@ -193,19 +193,25 @@ func runBranchInlineSequence(t *testing.T, branchName string) string {
 	return progressOut.String()
 }
 
-// TestProgress_BranchAppendsToStepComplete: a branch event followed by
-// the matching step_complete emits a SINGLE completion line ending with
-// ` → <branch>`. The standalone "     → <branch>" line is NOT emitted.
+// TestProgress_BranchAppendsToStepComplete: quick 260503-rhy migration —
+// branch suffix moves from the if_cond step_complete LINE onto the if_cond
+// HEADER line emitted by renderBranch. The step_complete line is now a
+// scope FOOTER (counter + kind + label + ✓ + ms) with NO arrow. The
+// standalone "     → <branch>" line is still NOT emitted (qkk defense
+// retained verbatim).
 func TestProgress_BranchAppendsToStepComplete(t *testing.T) {
 	t.Run("then", func(t *testing.T) {
 		got := runBranchInlineSequence(t, "then")
 
+		// Header line emitted by renderBranch: contains [3/3] + if_cond +
+		// cond + ▶ then. The step_complete (footer) is a SEPARATE line
+		// containing [3/3] + if_cond + cond + ✓ 1ms with NO arrow.
 		require.Contains(t, got, "✓ 1ms",
-			"if_cond completion marker + duration must be present. Output: %q", got)
-		require.Contains(t, got, "→ then",
-			"inline branch suffix must be present. Output: %q", got)
+			"if_cond footer marker + duration must be present. Output: %q", got)
+		require.Contains(t, got, "▶ then",
+			"header line must carry the new ▶ branch suffix (qkk migration). Output: %q", got)
 		require.NotContains(t, got, "     → then",
-			"standalone-line shape (5-space indent + arrow + name) must NOT appear. Output: %q", got)
+			"old qkk standalone-line shape must NOT appear. Output: %q", got)
 
 		// Defensive: NO line equals exactly "     → then".
 		for _, line := range strings.Split(got, "\n") {
@@ -213,42 +219,53 @@ func TestProgress_BranchAppendsToStepComplete(t *testing.T) {
 				"no rendered line may match the old standalone shape exactly. Output: %q", got)
 		}
 
-		// Inline-attached: the line containing "✓ 1ms" must end with "→ then"
-		// (after trimming trailing whitespace).
-		var found bool
+		// New rhy contract: the line containing "✓ 1ms" (the FOOTER) must
+		// NOT contain "→" or "▶" — branch suffix moved to the header line.
+		var footerFound, headerFound bool
 		for _, line := range strings.Split(got, "\n") {
 			if strings.Contains(line, "✓ 1ms") {
-				trimmed := strings.TrimRight(line, " \t\r")
-				require.True(t, strings.HasSuffix(trimmed, "→ then"),
-					"step_complete line must end with branch suffix '→ then'. Got line: %q", line)
-				found = true
-				break
+				require.NotContains(t, line, "→",
+					"footer line must NOT contain '→' (branch suffix is on header now). Line: %q", line)
+				require.NotContains(t, line, "▶",
+					"footer line must NOT contain '▶' (header glyph). Line: %q", line)
+				footerFound = true
+			}
+			if strings.Contains(line, "▶ then") {
+				require.Contains(t, line, "[3/3]", "header line must carry counter")
+				require.Contains(t, line, "if_cond", "header line must carry kind")
+				require.Contains(t, line, "cond", "header line must carry the cond label")
+				headerFound = true
 			}
 		}
-		require.True(t, found, "expected at least one line containing '✓ 1ms'. Output: %q", got)
+		require.True(t, footerFound, "expected at least one line containing '✓ 1ms'. Output: %q", got)
+		require.True(t, headerFound, "expected header line containing '▶ then'. Output: %q", got)
 	})
 
 	t.Run("else", func(t *testing.T) {
 		got := runBranchInlineSequence(t, "else")
 
 		require.Contains(t, got, "✓ 1ms",
-			"if_cond completion marker + duration must be present. Output: %q", got)
-		require.Contains(t, got, "→ else",
-			"inline branch suffix must be present (else). Output: %q", got)
+			"if_cond footer marker + duration must be present. Output: %q", got)
+		require.Contains(t, got, "▶ else",
+			"header line must carry ▶ else (qkk migration). Output: %q", got)
 		require.NotContains(t, got, "     → else",
-			"standalone-line shape must NOT appear. Output: %q", got)
+			"old qkk standalone-line shape must NOT appear. Output: %q", got)
 
-		var found bool
+		var footerFound, headerFound bool
 		for _, line := range strings.Split(got, "\n") {
 			if strings.Contains(line, "✓ 1ms") {
-				trimmed := strings.TrimRight(line, " \t\r")
-				require.True(t, strings.HasSuffix(trimmed, "→ else"),
-					"step_complete line must end with branch suffix '→ else'. Got line: %q", line)
-				found = true
-				break
+				require.NotContains(t, line, "→",
+					"footer line must NOT contain '→'. Line: %q", line)
+				require.NotContains(t, line, "▶",
+					"footer line must NOT contain '▶'. Line: %q", line)
+				footerFound = true
+			}
+			if strings.Contains(line, "▶ else") {
+				headerFound = true
 			}
 		}
-		require.True(t, found, "expected at least one line containing '✓ 1ms'. Output: %q", got)
+		require.True(t, footerFound, "expected at least one line containing '✓ 1ms'. Output: %q", got)
+		require.True(t, headerFound, "expected header line containing '▶ else'. Output: %q", got)
 	})
 }
 
@@ -374,15 +391,23 @@ func TestProgress_StepCompleteIncludesKindAndLabel_Err(t *testing.T) {
 	require.Contains(t, out, "HTTP 404", "err summary must be present")
 }
 
-// TestProgress_StepCompleteIncludesLabelWithBranchSuffix: an if_cond
-// step_complete with kind="if_cond" + label="ctx.health" preceded by a
-// branch event for the same idx renders a single line containing the
-// counter, kind, label, marker, duration, AND inline branch suffix.
+// TestProgress_StepCompleteIncludesLabelWithBranchSuffix: quick 260503-rhy
+// migration — branch event now emits a HEADER line (counter + if_cond +
+// cond + ▶ then). The step_complete event emits a separate FOOTER line
+// (counter + if_cond + cond + ✓ + ms) with NO arrow. Both lines must
+// carry counter+kind+label so user-defined labels persist past dispatch.
 func TestProgress_StepCompleteIncludesLabelWithBranchSuffix(t *testing.T) {
 	out := emitProgress(t, []struct {
 		msg   string
 		attrs []slog.Attr
 	}{
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_dispatch"),
+			slog.Int("idx", 3), slog.Int("total", 3),
+			slog.String("kind", "if_cond"),
+			slog.String("label", "cond"),
+			slog.String("path", "3"),
+		}},
 		{"skytime", []slog.Attr{
 			slog.String("event", "branch"),
 			slog.Int("idx", 3),
@@ -393,7 +418,7 @@ func TestProgress_StepCompleteIncludesLabelWithBranchSuffix(t *testing.T) {
 			slog.String("event", "step_complete"),
 			slog.Int("idx", 3), slog.Int("total", 3),
 			slog.String("kind", "if_cond"),
-			slog.String("label", "ctx.health"),
+			slog.String("label", "cond"),
 			slog.String("path", "3"),
 			slog.String("status", "ok"),
 			slog.Int64("duration_ms", 1),
@@ -401,27 +426,36 @@ func TestProgress_StepCompleteIncludesLabelWithBranchSuffix(t *testing.T) {
 		}},
 	})
 
-	require.Contains(t, out, "if_cond", "completion line must carry the if_cond kind word")
-	require.Contains(t, out, "ctx.health",
-		"completion line must carry the cond label. Output: %q", out)
-	require.Contains(t, out, "✓ 1ms", "marker + duration must be present")
-	require.Contains(t, out, "→ then", "qkk branch suffix must still append after summary")
+	require.Contains(t, out, "if_cond", "header+footer must carry the if_cond kind word")
+	require.Contains(t, out, "cond",
+		"header+footer must carry the cond label. Output: %q", out)
+	require.Contains(t, out, "✓ 1ms", "footer marker + duration must be present")
+	require.Contains(t, out, "▶ then", "header carries ▶ branch (rhy: branch suffix moved off footer)")
 
-	// All five properties on the same line: counter, kind, label, marker, suffix.
-	var foundAll bool
+	// Header line: contains [3/3] + if_cond + cond + ▶ then.
+	// Footer line: contains [3/3] + if_cond + cond + ✓ + 1ms (NO arrow).
+	var foundHeader, foundFooter bool
 	for _, line := range strings.Split(out, "\n") {
 		if strings.Contains(line, "[3/3]") &&
 			strings.Contains(line, "if_cond") &&
-			strings.Contains(line, "ctx.health") &&
+			strings.Contains(line, "cond") &&
+			strings.Contains(line, "▶ then") {
+			foundHeader = true
+		}
+		if strings.Contains(line, "[3/3]") &&
+			strings.Contains(line, "if_cond") &&
+			strings.Contains(line, "cond") &&
 			strings.Contains(line, "✓") &&
 			strings.Contains(line, "1ms") &&
-			strings.Contains(line, "→ then") {
-			foundAll = true
-			break
+			!strings.Contains(line, "▶") &&
+			!strings.Contains(line, "→") {
+			foundFooter = true
 		}
 	}
-	require.True(t, foundAll,
-		"expected single line containing [3/3] + if_cond + ctx.health + ✓ + 1ms + → then. Output: %q", out)
+	require.True(t, foundHeader,
+		"expected header line with [3/3] + if_cond + cond + ▶ then. Output: %q", out)
+	require.True(t, foundFooter,
+		"expected footer line with [3/3] + if_cond + cond + ✓ + 1ms (no arrow). Output: %q", out)
 }
 
 // TestProgress_StepCompleteEmptyLabel_NoCrash: a step_complete with
@@ -926,4 +960,541 @@ func TestNewProgressHandler_AcceptsVerboseFlag(t *testing.T) {
 	})
 	require.False(t, nonTTY.useLiveBlock(),
 		"non-TTY must disable live block (D4.1-21)")
+}
+
+// ---------------------------------------------------------------------------
+// Quick 260503-rhy: render if_cond + for_each_parallel as scopes
+// ---------------------------------------------------------------------------
+//
+// if_cond and for_each_parallel are SCOPES, not steps. The renderer emits
+// a header (▶ branch / ▶ open), indented children (4 spaces per pathDepth),
+// and a footer (✓/✗ ms) for these kinds. Leaf kinds (step / script /
+// call_flow) keep the dispatch+complete row pair (qx1 shape) but inherit
+// the depth-based indent rule from path.
+
+// TestPathDepth: pin every D-RHY-06 case and a defensive multi-segment
+// case. pathDepth is a pure leaf function shared by both renderers.
+func TestPathDepth(t *testing.T) {
+	cases := []struct {
+		path string
+		want int
+	}{
+		{"", 0},
+		{"3", 0},
+		{"3a", 1},
+		{"3b", 1},
+		{"3.0", 1},
+		{"3.1", 1},
+		{"3a.0", 2},
+		{"3.0.0", 2},
+		{"3.0a", 2},
+		{"3a.0.1b", 4}, // defensive — 2 dots + 2 letter-suffix segments = 4
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			require.Equal(t, tc.want, pathDepth(tc.path),
+				"pathDepth(%q) = %d, want %d", tc.path, pathDepth(tc.path), tc.want)
+		})
+	}
+}
+
+// TestProgress_IfCond_RendersAsScope: drives a full if_cond sequence and
+// asserts the new SCOPE rendering shape (header + indented children +
+// footer with no arrow).
+func TestProgress_IfCond_RendersAsScope(t *testing.T) {
+	out := emitProgress(t, []struct {
+		msg   string
+		attrs []slog.Attr
+	}{
+		// step_dispatch idx=3 kind=if_cond — should emit NOTHING (D-RHY-01).
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_dispatch"),
+			slog.Int("idx", 3), slog.Int("total", 3),
+			slog.String("kind", "if_cond"),
+			slog.String("label", "cond"),
+			slog.String("path", "3"),
+		}},
+		// branch idx=3 path=3 branch=then — emits HEADER (D-RHY-03/10).
+		{"skytime", []slog.Attr{
+			slog.String("event", "branch"),
+			slog.Int("idx", 3),
+			slog.String("path", "3"),
+			slog.String("branch", "then"),
+		}},
+		// child step inside the then branch (path=3a → depth 1 → 4-space indent).
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_dispatch"),
+			slog.Int("idx", 1), slog.Int("total", 1),
+			slog.String("kind", "step"),
+			slog.String("label", "Get branches"),
+			slog.String("path", "3a"),
+		}},
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_complete"),
+			slog.Int("idx", 1), slog.Int("total", 1),
+			slog.String("kind", "step"),
+			slog.String("label", "Get branches"),
+			slog.String("path", "3a"),
+			slog.String("status", "ok"),
+			slog.Int64("duration_ms", 445),
+			slog.String("summary", "status=200"),
+		}},
+		// step_complete idx=3 kind=if_cond — emits FOOTER (D-RHY-04).
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_complete"),
+			slog.Int("idx", 3), slog.Int("total", 3),
+			slog.String("kind", "if_cond"),
+			slog.String("label", "cond"),
+			slog.String("path", "3"),
+			slog.String("status", "ok"),
+			slog.Int64("duration_ms", 446),
+			slog.String("summary", ""),
+		}},
+	})
+
+	// (a) NO bare dispatch row for if_cond — no line should contain
+	// "[3/3]" + "if_cond" WITHOUT either "▶" or "✓"/"✗".
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "[3/3]") && strings.Contains(line, "if_cond") {
+			hasArrow := strings.Contains(line, "▶")
+			hasMarker := strings.Contains(line, "✓") || strings.Contains(line, "✗")
+			require.True(t, hasArrow || hasMarker,
+				"any [3/3] if_cond line must be either header (▶) or footer (✓/✗); bare dispatch is forbidden. Line: %q", line)
+		}
+	}
+
+	// (b) EXACTLY one header line: [3/3] + if_cond + cond + ▶ then.
+	headerCount := 0
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "[3/3]") &&
+			strings.Contains(line, "if_cond") &&
+			strings.Contains(line, "cond") &&
+			strings.Contains(line, "▶ then") {
+			headerCount++
+		}
+	}
+	require.Equal(t, 1, headerCount,
+		"expected exactly 1 if_cond header line (▶ then). Output: %q", out)
+
+	// (c) EXACTLY one footer line: [3/3] + if_cond + cond + ✓ 446ms;
+	// MUST NOT contain "▶" or "→".
+	footerCount := 0
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "[3/3]") &&
+			strings.Contains(line, "if_cond") &&
+			strings.Contains(line, "cond") &&
+			strings.Contains(line, "✓ 446ms") {
+			require.NotContains(t, line, "▶",
+				"footer line must NOT contain '▶'. Line: %q", line)
+			require.NotContains(t, line, "→",
+				"footer line must NOT contain '→'. Line: %q", line)
+			footerCount++
+		}
+	}
+	require.Equal(t, 1, footerCount,
+		"expected exactly 1 if_cond footer line (✓ 446ms, no arrow). Output: %q", out)
+
+	// (d) child step row: starts with FOUR spaces of indent, contains
+	// step + Get branches + ✓ 445ms + status=200.
+	childCount := 0
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "Get branches") &&
+			strings.Contains(line, "✓ 445ms") &&
+			strings.Contains(line, "status=200") {
+			require.True(t, strings.HasPrefix(line, "    "),
+				"child step row must start with FOUR spaces of indent (path 3a → depth 1). Line: %q", line)
+			require.False(t, strings.HasPrefix(line, "        "),
+				"child step row must NOT start with EIGHT spaces (depth 1, not 2). Line: %q", line)
+			childCount++
+		}
+	}
+	require.GreaterOrEqual(t, childCount, 1,
+		"expected child step completion line. Output: %q", out)
+
+	// (e) header + footer must NOT be indented (parent path "3" → depth 0).
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "[3/3]") &&
+			strings.Contains(line, "if_cond") &&
+			(strings.Contains(line, "▶ then") || strings.Contains(line, "✓ 446ms")) {
+			require.False(t, strings.HasPrefix(line, " "),
+				"top-level if_cond header/footer must NOT be indented. Line: %q", line)
+		}
+	}
+}
+
+// TestProgress_IfCond_HeaderHasYellowArrow_OnTTY: same sequence with
+// ForceTTY=true; assert raw output contains ansiYellow + "▶" + ansiReset
+// on the header line; footer line must NOT contain ansiYellow.
+func TestProgress_IfCond_HeaderHasYellowArrow_OnTTY(t *testing.T) {
+	var progressOut, passOut bytes.Buffer
+	passthrough := slog.NewTextHandler(&passOut, &slog.HandlerOptions{Level: slog.LevelInfo})
+	handler := newProgressHandlerWithOptions(passthrough, &progressOut, progressHandlerOptions{
+		Verbose:  true, // verbose=true keeps us on the static path on a TTY
+		ForceTTY: boolPtr(true),
+	})
+	logger := slog.New(handler)
+
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "step_dispatch"),
+		slog.Int("idx", 3), slog.Int("total", 3),
+		slog.String("kind", "if_cond"),
+		slog.String("label", "cond"),
+		slog.String("path", "3"),
+	)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "branch"),
+		slog.Int("idx", 3),
+		slog.String("path", "3"),
+		slog.String("branch", "then"),
+	)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "step_complete"),
+		slog.Int("idx", 3), slog.Int("total", 3),
+		slog.String("kind", "if_cond"),
+		slog.String("label", "cond"),
+		slog.String("path", "3"),
+		slog.String("status", "ok"),
+		slog.Int64("duration_ms", 1),
+		slog.String("summary", ""),
+	)
+
+	raw := progressOut.String()
+	require.Contains(t, raw, ansiYellow+"▶"+ansiReset,
+		"header arrow ▶ must be wrapped in ansiYellow + ansiReset. Output: %q", raw)
+
+	// Footer line must NOT carry ansiYellow.
+	stripped := stripAnsiTest(raw)
+	for i, sLine := range strings.Split(stripped, "\n") {
+		if strings.Contains(sLine, "✓ 1ms") {
+			// Find the same line in the raw output by index.
+			rawLines := strings.Split(raw, "\n")
+			if i < len(rawLines) {
+				require.NotContains(t, rawLines[i], ansiYellow,
+					"footer line must NOT carry ansiYellow. Raw line: %q", rawLines[i])
+			}
+		}
+	}
+}
+
+// TestProgress_ForEachParallel_RendersAsScope: drives a for_each_parallel
+// sequence over 3 items; pins header + indented children + footer.
+func TestProgress_ForEachParallel_RendersAsScope(t *testing.T) {
+	out := emitProgress(t, []struct {
+		msg   string
+		attrs []slog.Attr
+	}{
+		// HEADER: step_dispatch idx=2 kind=for_each_parallel — emits "▶ open".
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_dispatch"),
+			slog.Int("idx", 2), slog.Int("total", 3),
+			slog.String("kind", "for_each_parallel"),
+			slog.String("label", "items=3"),
+			slog.String("path", "2"),
+		}},
+		// 3 child step iterations — paths 2.0, 2.1, 2.2 (depth 1 → 4-space indent).
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_dispatch"),
+			slog.Int("idx", 0), slog.Int("total", 3),
+			slog.String("kind", "step"),
+			slog.String("label", "Read x"),
+			slog.String("path", "2.0"),
+		}},
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_complete"),
+			slog.Int("idx", 0), slog.Int("total", 3),
+			slog.String("kind", "step"),
+			slog.String("label", "Read x"),
+			slog.String("path", "2.0"),
+			slog.String("status", "ok"),
+			slog.Int64("duration_ms", 234),
+			slog.String("summary", "status=200"),
+		}},
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_dispatch"),
+			slog.Int("idx", 1), slog.Int("total", 3),
+			slog.String("kind", "step"),
+			slog.String("label", "Read y"),
+			slog.String("path", "2.1"),
+		}},
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_complete"),
+			slog.Int("idx", 1), slog.Int("total", 3),
+			slog.String("kind", "step"),
+			slog.String("label", "Read y"),
+			slog.String("path", "2.1"),
+			slog.String("status", "ok"),
+			slog.Int64("duration_ms", 250),
+			slog.String("summary", "status=200"),
+		}},
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_dispatch"),
+			slog.Int("idx", 2), slog.Int("total", 3),
+			slog.String("kind", "step"),
+			slog.String("label", "Read z"),
+			slog.String("path", "2.2"),
+		}},
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_complete"),
+			slog.Int("idx", 2), slog.Int("total", 3),
+			slog.String("kind", "step"),
+			slog.String("label", "Read z"),
+			slog.String("path", "2.2"),
+			slog.String("status", "ok"),
+			slog.Int64("duration_ms", 246),
+			slog.String("summary", "status=200"),
+		}},
+		// FOOTER: step_complete kind=for_each_parallel.
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_complete"),
+			slog.Int("idx", 2), slog.Int("total", 3),
+			slog.String("kind", "for_each_parallel"),
+			slog.String("label", "items=3"),
+			slog.String("path", "2"),
+			slog.String("status", "ok"),
+			slog.Int64("duration_ms", 730),
+			slog.String("summary", ""),
+		}},
+	})
+
+	// (a) header line: [2/ + for_each_parallel + items=3 + ▶ open.
+	headerCount := 0
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "[2/") &&
+			strings.Contains(line, "for_each_parallel") &&
+			strings.Contains(line, "items=3") &&
+			strings.Contains(line, "▶ open") {
+			headerCount++
+			require.False(t, strings.HasPrefix(line, " "),
+				"top-level for_each header must NOT be indented. Line: %q", line)
+		}
+	}
+	require.Equal(t, 1, headerCount,
+		"expected exactly 1 for_each_parallel header. Output: %q", out)
+
+	// (b) footer line: ✓ 730ms; NO arrow.
+	footerCount := 0
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "[2/") &&
+			strings.Contains(line, "for_each_parallel") &&
+			strings.Contains(line, "items=3") &&
+			strings.Contains(line, "✓ 730ms") {
+			require.NotContains(t, line, "▶",
+				"footer must NOT contain '▶'. Line: %q", line)
+			require.NotContains(t, line, "→",
+				"footer must NOT contain '→'. Line: %q", line)
+			footerCount++
+			require.False(t, strings.HasPrefix(line, " "),
+				"top-level for_each footer must NOT be indented. Line: %q", line)
+		}
+	}
+	require.Equal(t, 1, footerCount,
+		"expected exactly 1 for_each_parallel footer. Output: %q", out)
+
+	// (c) THREE child step lines, each indented 4 spaces.
+	indentedChildCount := 0
+	labels := []string{"Read x", "Read y", "Read z"}
+	for _, lbl := range labels {
+		found := false
+		for _, line := range strings.Split(out, "\n") {
+			if strings.Contains(line, lbl) &&
+				strings.Contains(line, "✓") &&
+				strings.HasPrefix(line, "    ") {
+				require.False(t, strings.HasPrefix(line, "        "),
+					"child must be indented 4 (not 8) spaces for path 2.N. Line: %q", line)
+				found = true
+				break
+			}
+		}
+		if found {
+			indentedChildCount++
+		}
+	}
+	require.Equal(t, 3, indentedChildCount,
+		"expected 3 indented child step completion lines (Read x, y, z). Output: %q", out)
+}
+
+// TestProgress_NestedScope_DoubleIndent: nested case — for_each at path "3",
+// inner if_cond at path "3.0", inner step at "3.0a". The inner step row
+// MUST start with EIGHT spaces of indent (depth 2).
+func TestProgress_NestedScope_DoubleIndent(t *testing.T) {
+	out := emitProgress(t, []struct {
+		msg   string
+		attrs []slog.Attr
+	}{
+		// outer for_each header
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_dispatch"),
+			slog.Int("idx", 3), slog.Int("total", 3),
+			slog.String("kind", "for_each_parallel"),
+			slog.String("label", "items=1"),
+			slog.String("path", "3"),
+		}},
+		// inner if_cond at path 3.0 — branch then (depth 1: 4-space indent on header)
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_dispatch"),
+			slog.Int("idx", 0), slog.Int("total", 1),
+			slog.String("kind", "if_cond"),
+			slog.String("label", "cond"),
+			slog.String("path", "3.0"),
+		}},
+		{"skytime", []slog.Attr{
+			slog.String("event", "branch"),
+			slog.Int("idx", 0),
+			slog.String("path", "3.0"),
+			slog.String("branch", "then"),
+		}},
+		// innermost step at path 3.0a — depth 2 → 8-space indent
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_dispatch"),
+			slog.Int("idx", 1), slog.Int("total", 1),
+			slog.String("kind", "step"),
+			slog.String("label", "deep step"),
+			slog.String("path", "3.0a"),
+		}},
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_complete"),
+			slog.Int("idx", 1), slog.Int("total", 1),
+			slog.String("kind", "step"),
+			slog.String("label", "deep step"),
+			slog.String("path", "3.0a"),
+			slog.String("status", "ok"),
+			slog.Int64("duration_ms", 12),
+			slog.String("summary", "status=200"),
+		}},
+	})
+
+	// inner step row at path "3.0a" must start with 8 spaces (depth 2).
+	found := false
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "deep step") &&
+			strings.Contains(line, "✓ 12ms") {
+			require.True(t, strings.HasPrefix(line, "        "),
+				"path 3.0a (depth 2) must indent 8 spaces. Line: %q", line)
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "expected innermost step completion line. Output: %q", out)
+}
+
+// TestProgress_LeafKinds_KeepExistingShape: top-level step dispatch +
+// complete still emit BOTH events (qx1 shape preserved), neither indented.
+func TestProgress_LeafKinds_KeepExistingShape(t *testing.T) {
+	out := emitProgress(t, []struct {
+		msg   string
+		attrs []slog.Attr
+	}{
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_dispatch"),
+			slog.Int("idx", 1), slog.Int("total", 3),
+			slog.String("kind", "step"),
+			slog.String("label", "leaf"),
+			slog.String("path", "1"),
+		}},
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_complete"),
+			slog.Int("idx", 1), slog.Int("total", 3),
+			slog.String("kind", "step"),
+			slog.String("label", "leaf"),
+			slog.String("path", "1"),
+			slog.String("status", "ok"),
+			slog.Int64("duration_ms", 50),
+			slog.String("summary", "status=200"),
+		}},
+	})
+
+	// Both events render. Dispatch row: contains [1/3] + step + leaf.
+	dispatchFound, completeFound := false, false
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "[1/3]") &&
+			strings.Contains(line, "step") &&
+			strings.Contains(line, "leaf") {
+			require.False(t, strings.HasPrefix(line, " "),
+				"top-level leaf row must not be indented. Line: %q", line)
+			if strings.Contains(line, "✓") {
+				completeFound = true
+			} else {
+				dispatchFound = true
+			}
+		}
+	}
+	require.True(t, dispatchFound, "leaf dispatch row must render. Output: %q", out)
+	require.True(t, completeFound, "leaf completion row must render. Output: %q", out)
+}
+
+// TestProgress_StepDispatch_IfCond_Suppressed: a SOLO step_dispatch
+// idx=3 kind=if_cond with no branch/complete must produce ZERO output
+// on the renderer (D-RHY-01 — header delegated to branch event).
+func TestProgress_StepDispatch_IfCond_Suppressed(t *testing.T) {
+	out := emitProgress(t, []struct {
+		msg   string
+		attrs []slog.Attr
+	}{
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_dispatch"),
+			slog.Int("idx", 3), slog.Int("total", 3),
+			slog.String("kind", "if_cond"),
+			slog.String("label", "cond"),
+			slog.String("path", "3"),
+		}},
+	})
+
+	require.Equal(t, "", out,
+		"solo if_cond step_dispatch must produce zero output (D-RHY-01). Output: %q", out)
+}
+
+// TestProgress_StepComplete_IfCond_NoBranchSuffix: a branch event followed
+// by step_complete kind=if_cond emits a HEADER (▶ then) and a separate
+// FOOTER (✓ 1ms, no arrow). The footer must NOT contain "→ then".
+func TestProgress_StepComplete_IfCond_NoBranchSuffix(t *testing.T) {
+	out := emitProgress(t, []struct {
+		msg   string
+		attrs []slog.Attr
+	}{
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_dispatch"),
+			slog.Int("idx", 3), slog.Int("total", 3),
+			slog.String("kind", "if_cond"),
+			slog.String("label", "cond"),
+			slog.String("path", "3"),
+		}},
+		{"skytime", []slog.Attr{
+			slog.String("event", "branch"),
+			slog.Int("idx", 3),
+			slog.String("path", "3"),
+			slog.String("branch", "then"),
+		}},
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_complete"),
+			slog.Int("idx", 3), slog.Int("total", 3),
+			slog.String("kind", "if_cond"),
+			slog.String("label", "cond"),
+			slog.String("path", "3"),
+			slog.String("status", "ok"),
+			slog.Int64("duration_ms", 1),
+			slog.String("summary", ""),
+		}},
+	})
+
+	// Footer line carries ✓ 1ms, NOT "→ then".
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "✓ 1ms") {
+			require.NotContains(t, line, "→ then",
+				"footer line must NOT contain branch suffix '→ then'. Line: %q", line)
+			require.NotContains(t, line, "▶",
+				"footer line must NOT contain '▶'. Line: %q", line)
+		}
+	}
+
+	// Header line carries ▶ then (emitted by renderBranch).
+	headerFound := false
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "▶ then") {
+			require.Contains(t, line, "if_cond", "header line must carry kind word")
+			require.Contains(t, line, "cond", "header line must carry label")
+			headerFound = true
+		}
+	}
+	require.True(t, headerFound,
+		"header line containing '▶ then' must be present. Output: %q", out)
 }

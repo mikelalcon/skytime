@@ -322,66 +322,82 @@ func TestLiveBlock_CompletedRowMarkerColor_Err(t *testing.T) {
 	require.Contains(t, stripped, "HTTP 404", "summary must survive color wrapping")
 }
 
-// TestLiveBlock_BranchArrowColor: a branch event followed by step_complete
-// for the same idx emits an inline ` → then` suffix on the completion
-// line. The → glyph is wrapped in yellow ANSI; the completion line
-// contains both ✓ and 1ms (proving "inline" rather than "standalone
-// adjacent line"). Quick 260503-qkk: branch is now buffer-only; the
-// suffix is the only place the arrow appears.
+// TestLiveBlock_BranchArrowColor: quick 260503-rhy migration — branch
+// event now emits a HEADER line carrying ▶ wrapped in ansiYellow. The
+// step_complete line is now a footer (✓ 1ms, no arrow).
 func TestLiveBlock_BranchArrowColor(t *testing.T) {
 	out := &safeBuffer{}
 	r := newLiveRenderer(out)
 
-	r.submit(progressEvent{Kind: "branch", Idx: 3, Branch: "then"})
+	// step_dispatch for if_cond — captures total for branch-header rendering.
+	r.submit(progressEvent{
+		Kind: "step_dispatch", Idx: 3, Total: 3, KindAttr: "if_cond", Label: "cond", Path: "3",
+	})
+	time.Sleep(120 * time.Millisecond)
+	r.submit(progressEvent{Kind: "branch", Idx: 3, Path: "3", Branch: "then"})
 	time.Sleep(150 * time.Millisecond)
 	r.submit(progressEvent{
-		Kind: "step_complete", Idx: 3, Total: 3, KindAttr: "if_cond", Label: "ctx.health",
+		Kind: "step_complete", Idx: 3, Total: 3, KindAttr: "if_cond", Label: "cond", Path: "3",
 		Status: "ok", DurationMs: 1, Summary: "",
 	})
 	time.Sleep(150 * time.Millisecond)
 	r.Close()
 
 	raw := out.String()
-	require.Contains(t, raw, ansiYellow, "inline branch arrow (→) must be wrapped in ansiYellow")
+	require.Contains(t, raw, ansiYellow, "header arrow ▶ must be wrapped in ansiYellow")
 	require.Contains(t, raw, ansiReset, "every color wrap must be closed by ansiReset")
 	stripped := stripAnsiTest(raw)
-	require.Contains(t, stripped, "→ then", "branch arrow + name must survive color wrapping")
+	require.Contains(t, stripped, "▶ then", "header arrow + branch name must survive color wrapping")
 
-	// Inline assertion: the line containing "→ then" must ALSO contain
-	// "✓" and "1ms" (proves the suffix is appended to the step_complete
-	// line, not emitted on a standalone adjacent line).
-	var found bool
+	// Header line: contains ▶ then AND if_cond AND counter [3/3].
+	var headerFound bool
 	for _, line := range strings.Split(stripped, "\n") {
-		if strings.Contains(line, "→ then") {
-			require.Contains(t, line, "✓",
-				"line containing branch suffix must also contain ✓ (inline). Line: %q", line)
-			require.Contains(t, line, "1ms",
-				"line containing branch suffix must also contain 1ms (inline). Line: %q", line)
-			found = true
+		if strings.Contains(line, "▶ then") {
+			require.Contains(t, line, "if_cond", "header line must carry kind. Line: %q", line)
+			require.Contains(t, line, "[3/3]", "header line must carry counter. Line: %q", line)
+			headerFound = true
 			break
 		}
 	}
-	require.True(t, found, "expected a line containing '→ then'. Stripped output: %q", stripped)
+	require.True(t, headerFound, "expected a line containing '▶ then'. Stripped: %q", stripped)
 
-	// Defense: NO line equals the old standalone shape "     → then" exactly.
+	// Footer line: contains ✓ 1ms but NO arrow.
+	var footerFound bool
+	for _, line := range strings.Split(stripped, "\n") {
+		if strings.Contains(line, "✓") && strings.Contains(line, "1ms") {
+			require.NotContains(t, line, "▶",
+				"footer line must NOT contain '▶'. Line: %q", line)
+			require.NotContains(t, line, "→",
+				"footer line must NOT contain '→'. Line: %q", line)
+			footerFound = true
+			break
+		}
+	}
+	require.True(t, footerFound, "expected footer line ✓ 1ms (no arrow). Stripped: %q", stripped)
+
+	// Defense: NO line equals the old standalone shape.
 	for _, line := range strings.Split(stripped, "\n") {
 		require.NotEqual(t, "     → then", line,
 			"no stripped line may match the old standalone shape. Stripped: %q", stripped)
 	}
 }
 
-// TestLiveBlock_BranchAppendsToStepComplete: a branch event followed by
-// step_complete for the same idx emits a single line containing the
-// counter [3/3], the kind word "step", the ✓ marker, the duration "1ms",
-// AND the inline branch suffix "→ then" — all on the same rendered line.
+// TestLiveBlock_BranchAppendsToStepComplete: quick 260503-rhy migration —
+// branch event emits a HEADER line ([3/3] + if_cond + cond + ▶ then),
+// step_complete emits a separate FOOTER line ([3/3] + if_cond + cond +
+// ✓ + 1ms, no arrow). Both lines are present in the stripped output.
 func TestLiveBlock_BranchAppendsToStepComplete(t *testing.T) {
 	out := &safeBuffer{}
 	r := newLiveRenderer(out)
 
-	r.submit(progressEvent{Kind: "branch", Idx: 3, Branch: "then"})
+	r.submit(progressEvent{
+		Kind: "step_dispatch", Idx: 3, Total: 3, KindAttr: "if_cond", Label: "cond", Path: "3",
+	})
+	time.Sleep(120 * time.Millisecond)
+	r.submit(progressEvent{Kind: "branch", Idx: 3, Path: "3", Branch: "then"})
 	time.Sleep(150 * time.Millisecond)
 	r.submit(progressEvent{
-		Kind: "step_complete", Idx: 3, Total: 3, KindAttr: "if_cond", Label: "ctx.health",
+		Kind: "step_complete", Idx: 3, Total: 3, KindAttr: "if_cond", Label: "cond", Path: "3",
 		Status: "ok", DurationMs: 1, Summary: "",
 	})
 	time.Sleep(150 * time.Millisecond)
@@ -390,28 +406,36 @@ func TestLiveBlock_BranchAppendsToStepComplete(t *testing.T) {
 	stripped := stripAnsiTest(out.String())
 	require.Contains(t, stripped, "[3/3]", "counter must be present")
 	require.Contains(t, stripped, "if_cond",
-		"completion row must carry the if_cond kind word (qx1). Stripped: %q", stripped)
-	require.Contains(t, stripped, "ctx.health",
-		"completion row must carry the cond label (qx1). Stripped: %q", stripped)
+		"header+footer rows must carry the if_cond kind. Stripped: %q", stripped)
+	require.Contains(t, stripped, "cond",
+		"header+footer rows must carry the cond label. Stripped: %q", stripped)
 	require.Contains(t, stripped, "✓ 1ms",
-		"completion row must include marker + duration. Stripped: %q", stripped)
-	require.Contains(t, stripped, "→ then", "inline branch suffix must be present")
+		"footer row must include marker + duration. Stripped: %q", stripped)
+	require.Contains(t, stripped, "▶ then", "header line must carry ▶ branch suffix")
 
-	// All five properties on the same rendered line.
-	var foundAll bool
+	// Header line.
+	var foundHeader, foundFooter bool
 	for _, line := range strings.Split(stripped, "\n") {
 		if strings.Contains(line, "[3/3]") &&
 			strings.Contains(line, "if_cond") &&
-			strings.Contains(line, "ctx.health") &&
+			strings.Contains(line, "cond") &&
+			strings.Contains(line, "▶ then") {
+			foundHeader = true
+		}
+		if strings.Contains(line, "[3/3]") &&
+			strings.Contains(line, "if_cond") &&
+			strings.Contains(line, "cond") &&
 			strings.Contains(line, "✓") &&
 			strings.Contains(line, "1ms") &&
-			strings.Contains(line, "→ then") {
-			foundAll = true
-			break
+			!strings.Contains(line, "▶") &&
+			!strings.Contains(line, "→") {
+			foundFooter = true
 		}
 	}
-	require.True(t, foundAll,
-		"expected a single line with [3/3], if_cond, ctx.health, ✓, 1ms, AND → then. Stripped: %q", stripped)
+	require.True(t, foundHeader,
+		"expected header line with [3/3] + if_cond + cond + ▶ then. Stripped: %q", stripped)
+	require.True(t, foundFooter,
+		"expected footer line with [3/3] + if_cond + cond + ✓ + 1ms (no arrow). Stripped: %q", stripped)
 }
 
 // TestLiveBlock_OrphanBranchEvent_NoOutput: a lone branch event (no
@@ -559,39 +583,52 @@ func TestLiveBlock_StepCompleteIncludesKindAndLabel_Err(t *testing.T) {
 	require.Contains(t, stripped, "boom", "summary must be present")
 }
 
-// TestLiveBlock_StepCompleteIncludesLabelWithBranchSuffix: a branch event
-// followed by step_complete (KindAttr="if_cond", Label="ctx.health") emits
-// a single line containing counter [3/3], if_cond, ctx.health, ✓, 1ms, and
-// → then. Pins branch+kind+label coexistence on the live path.
+// TestLiveBlock_StepCompleteIncludesLabelWithBranchSuffix: quick 260503-rhy
+// migration — branch event emits a HEADER line ([3/3] + if_cond + cond +
+// ▶ then), step_complete emits a FOOTER line ([3/3] + if_cond + cond + ✓ +
+// 1ms with NO arrow). Pins header/footer separation on the live path.
 func TestLiveBlock_StepCompleteIncludesLabelWithBranchSuffix(t *testing.T) {
 	out := &safeBuffer{}
 	r := newLiveRenderer(out)
 
-	r.submit(progressEvent{Kind: "branch", Idx: 3, Branch: "then"})
+	r.submit(progressEvent{
+		Kind: "step_dispatch", Idx: 3, Total: 3,
+		KindAttr: "if_cond", Label: "cond", Path: "3",
+	})
+	time.Sleep(120 * time.Millisecond)
+	r.submit(progressEvent{Kind: "branch", Idx: 3, Path: "3", Branch: "then"})
 	time.Sleep(120 * time.Millisecond)
 	r.submit(progressEvent{
 		Kind: "step_complete", Idx: 3, Total: 3,
-		KindAttr: "if_cond", Label: "ctx.health",
+		KindAttr: "if_cond", Label: "cond", Path: "3",
 		Status: "ok", DurationMs: 1, Summary: "",
 	})
 	time.Sleep(150 * time.Millisecond)
 	r.Close()
 
 	stripped := stripAnsiTest(out.String())
-	var foundAll bool
+	var foundHeader, foundFooter bool
 	for _, line := range strings.Split(stripped, "\n") {
 		if strings.Contains(line, "[3/3]") &&
 			strings.Contains(line, "if_cond") &&
-			strings.Contains(line, "ctx.health") &&
+			strings.Contains(line, "cond") &&
+			strings.Contains(line, "▶ then") {
+			foundHeader = true
+		}
+		if strings.Contains(line, "[3/3]") &&
+			strings.Contains(line, "if_cond") &&
+			strings.Contains(line, "cond") &&
 			strings.Contains(line, "✓") &&
 			strings.Contains(line, "1ms") &&
-			strings.Contains(line, "→ then") {
-			foundAll = true
-			break
+			!strings.Contains(line, "▶") &&
+			!strings.Contains(line, "→") {
+			foundFooter = true
 		}
 	}
-	require.True(t, foundAll,
-		"expected single line with [3/3] + if_cond + ctx.health + ✓ + 1ms + → then. Stripped: %q", stripped)
+	require.True(t, foundHeader,
+		"expected header line with [3/3] + if_cond + cond + ▶ then. Stripped: %q", stripped)
+	require.True(t, foundFooter,
+		"expected footer line with [3/3] + if_cond + cond + ✓ + 1ms (no arrow). Stripped: %q", stripped)
 }
 
 // TestLiveBlock_StepCompleteEmptyLabel_NoCrash: KindAttr="step" + Label="".
@@ -615,4 +652,258 @@ func TestLiveBlock_StepCompleteEmptyLabel_NoCrash(t *testing.T) {
 		require.Contains(t, stripped, "✓", "marker must still render")
 		require.Contains(t, stripped, "50ms", "duration must still render")
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Quick 260503-rhy: live-path scope rendering (header + indented children + footer)
+// ---------------------------------------------------------------------------
+
+// TestLiveBlock_IfCond_RendersAsScope: parallel of static path —
+// step_dispatch suppressed for if_cond, branch emits header (▶ then),
+// step_complete emits footer (✓ ms, no arrow); child indented 4 spaces.
+func TestLiveBlock_IfCond_RendersAsScope(t *testing.T) {
+	out := &safeBuffer{}
+	r := newLiveRenderer(out)
+
+	r.submit(progressEvent{
+		Kind: "step_dispatch", Idx: 3, Total: 3, KindAttr: "if_cond", Label: "cond", Path: "3",
+	})
+	time.Sleep(120 * time.Millisecond)
+	r.submit(progressEvent{Kind: "branch", Idx: 3, Path: "3", Branch: "then"})
+	time.Sleep(120 * time.Millisecond)
+	r.submit(progressEvent{
+		Kind: "step_dispatch", Idx: 1, Total: 1, KindAttr: "step", Label: "Get branches", Path: "3a",
+	})
+	time.Sleep(120 * time.Millisecond)
+	r.submit(progressEvent{
+		Kind: "step_complete", Idx: 1, Total: 1, KindAttr: "step", Label: "Get branches", Path: "3a",
+		Status: "ok", DurationMs: 445, Summary: "status=200",
+	})
+	time.Sleep(120 * time.Millisecond)
+	r.submit(progressEvent{
+		Kind: "step_complete", Idx: 3, Total: 3, KindAttr: "if_cond", Label: "cond", Path: "3",
+		Status: "ok", DurationMs: 446, Summary: "",
+	})
+	time.Sleep(150 * time.Millisecond)
+	r.Close()
+
+	stripped := stripAnsiTest(out.String())
+
+	// Header: [3/3] + if_cond + cond + ▶ then; not indented.
+	headerFound := false
+	for _, line := range strings.Split(stripped, "\n") {
+		if strings.Contains(line, "[3/3]") &&
+			strings.Contains(line, "if_cond") &&
+			strings.Contains(line, "cond") &&
+			strings.Contains(line, "▶ then") {
+			require.False(t, strings.HasPrefix(line, " "),
+				"header must not be indented (path 3 → depth 0). Line: %q", line)
+			headerFound = true
+		}
+	}
+	require.True(t, headerFound, "expected if_cond header line. Stripped: %q", stripped)
+
+	// Footer: ✓ 446ms; no arrow; not indented.
+	footerFound := false
+	for _, line := range strings.Split(stripped, "\n") {
+		if strings.Contains(line, "[3/3]") &&
+			strings.Contains(line, "if_cond") &&
+			strings.Contains(line, "cond") &&
+			strings.Contains(line, "✓ 446ms") {
+			require.NotContains(t, line, "▶", "footer must NOT contain '▶'. Line: %q", line)
+			require.NotContains(t, line, "→", "footer must NOT contain '→'. Line: %q", line)
+			require.False(t, strings.HasPrefix(line, " "),
+				"footer must not be indented. Line: %q", line)
+			footerFound = true
+		}
+	}
+	require.True(t, footerFound, "expected if_cond footer line. Stripped: %q", stripped)
+
+	// Child step row: indented 4 spaces, contains "Get branches" + ✓ 445ms.
+	childFound := false
+	for _, line := range strings.Split(stripped, "\n") {
+		if strings.Contains(line, "Get branches") &&
+			strings.Contains(line, "✓ 445ms") {
+			require.True(t, strings.HasPrefix(line, "    "),
+				"child step (path 3a → depth 1) must be indented 4 spaces. Line: %q", line)
+			childFound = true
+		}
+	}
+	require.True(t, childFound, "expected child step completion line. Stripped: %q", stripped)
+}
+
+// TestLiveBlock_IfCond_NoActiveStepEntry: an if_cond step_dispatch must
+// NOT count toward the "[skytime] in-progress N active" header. Only the
+// leaf-kind dispatch counts (D-RHY-08).
+func TestLiveBlock_IfCond_NoActiveStepEntry(t *testing.T) {
+	out := &safeBuffer{}
+	r := newLiveRenderer(out)
+	defer r.Close()
+
+	// Submit if_cond dispatch first (must NOT appear in active list).
+	r.submit(progressEvent{
+		Kind: "step_dispatch", Idx: 3, Total: 3, KindAttr: "if_cond", Label: "cond", Path: "3",
+	})
+	// Then a leaf step inside the branch.
+	r.submit(progressEvent{
+		Kind: "step_dispatch", Idx: 1, Total: 1, KindAttr: "step", Label: "Inner", Path: "3a",
+	})
+	time.Sleep(200 * time.Millisecond)
+
+	stripped := stripAnsiTest(out.String())
+	// Find the most recent "in-progress N active" line; N MUST be 1, not 2.
+	require.Contains(t, stripped, "in-progress  1 active",
+		"only leaf-kind dispatches count toward the active list. Stripped: %q", stripped)
+	require.NotContains(t, stripped, "in-progress  2 active",
+		"if_cond must NOT count as an active row (D-RHY-08). Stripped: %q", stripped)
+}
+
+// TestLiveBlock_ForEachParallel_RendersAsScope: parallel of static
+// for_each test; same header + indented children + footer assertions.
+func TestLiveBlock_ForEachParallel_RendersAsScope(t *testing.T) {
+	out := &safeBuffer{}
+	r := newLiveRenderer(out)
+
+	// HEADER: step_dispatch idx=2 kind=for_each_parallel.
+	r.submit(progressEvent{
+		Kind: "step_dispatch", Idx: 2, Total: 3,
+		KindAttr: "for_each_parallel", Label: "items=3", Path: "2",
+	})
+	time.Sleep(120 * time.Millisecond)
+
+	// Three children at depth 1 (paths 2.0, 2.1, 2.2).
+	for i := int64(0); i < 3; i++ {
+		label := []string{"Read x", "Read y", "Read z"}[i]
+		path := []string{"2.0", "2.1", "2.2"}[i]
+		dur := []int64{234, 250, 246}[i]
+
+		r.submit(progressEvent{
+			Kind: "step_dispatch", Idx: i, Total: 3, KindAttr: "step", Label: label, Path: path,
+		})
+		time.Sleep(60 * time.Millisecond)
+		r.submit(progressEvent{
+			Kind: "step_complete", Idx: i, Total: 3, KindAttr: "step", Label: label, Path: path,
+			Status: "ok", DurationMs: dur, Summary: "status=200",
+		})
+		time.Sleep(60 * time.Millisecond)
+	}
+
+	// FOOTER.
+	r.submit(progressEvent{
+		Kind: "step_complete", Idx: 2, Total: 3,
+		KindAttr: "for_each_parallel", Label: "items=3", Path: "2",
+		Status: "ok", DurationMs: 730, Summary: "",
+	})
+	time.Sleep(150 * time.Millisecond)
+	r.Close()
+
+	stripped := stripAnsiTest(out.String())
+
+	// Header: [2/ + for_each_parallel + items=3 + ▶ open.
+	headerFound := false
+	for _, line := range strings.Split(stripped, "\n") {
+		if strings.Contains(line, "[2/") &&
+			strings.Contains(line, "for_each_parallel") &&
+			strings.Contains(line, "items=3") &&
+			strings.Contains(line, "▶ open") {
+			require.False(t, strings.HasPrefix(line, " "),
+				"top-level for_each header must NOT be indented. Line: %q", line)
+			headerFound = true
+		}
+	}
+	require.True(t, headerFound, "expected for_each header. Stripped: %q", stripped)
+
+	// Footer: ✓ 730ms; no arrow; not indented.
+	footerFound := false
+	for _, line := range strings.Split(stripped, "\n") {
+		if strings.Contains(line, "for_each_parallel") &&
+			strings.Contains(line, "items=3") &&
+			strings.Contains(line, "✓ 730ms") {
+			require.NotContains(t, line, "▶", "footer must NOT contain '▶'. Line: %q", line)
+			require.NotContains(t, line, "→", "footer must NOT contain '→'. Line: %q", line)
+			require.False(t, strings.HasPrefix(line, " "),
+				"top-level for_each footer must NOT be indented. Line: %q", line)
+			footerFound = true
+		}
+	}
+	require.True(t, footerFound, "expected for_each footer. Stripped: %q", stripped)
+
+	// 3 indented child step rows (4-space indent each).
+	childCount := 0
+	for _, lbl := range []string{"Read x", "Read y", "Read z"} {
+		for _, line := range strings.Split(stripped, "\n") {
+			if strings.Contains(line, lbl) &&
+				strings.Contains(line, "✓") &&
+				strings.HasPrefix(line, "    ") &&
+				!strings.HasPrefix(line, "        ") {
+				childCount++
+				break
+			}
+		}
+	}
+	require.Equal(t, 3, childCount,
+		"expected 3 child step completion lines indented 4 spaces. Stripped: %q", stripped)
+}
+
+// TestLiveBlock_HeaderArrowYellow: branch event header carries
+// ansiYellow + ▶ + ansiReset on the raw output.
+func TestLiveBlock_HeaderArrowYellow(t *testing.T) {
+	out := &safeBuffer{}
+	r := newLiveRenderer(out)
+
+	r.submit(progressEvent{
+		Kind: "step_dispatch", Idx: 3, Total: 3, KindAttr: "if_cond", Label: "cond", Path: "3",
+	})
+	time.Sleep(120 * time.Millisecond)
+	r.submit(progressEvent{Kind: "branch", Idx: 3, Path: "3", Branch: "then"})
+	time.Sleep(150 * time.Millisecond)
+	r.Close()
+
+	raw := out.String()
+	require.Contains(t, raw, ansiYellow+"▶"+ansiReset,
+		"header arrow ▶ must be wrapped in ansiYellow + ansiReset. Raw: %q", raw)
+}
+
+// TestLiveBlock_StepCompleteIfCond_NoBranchSuffix: step_complete kind=if_cond
+// FOOTER must NOT contain "→ then" (it's on the header now). The HEADER line
+// emitted by case "branch" DOES contain "▶ then".
+func TestLiveBlock_StepCompleteIfCond_NoBranchSuffix(t *testing.T) {
+	out := &safeBuffer{}
+	r := newLiveRenderer(out)
+
+	r.submit(progressEvent{
+		Kind: "step_dispatch", Idx: 3, Total: 3, KindAttr: "if_cond", Label: "cond", Path: "3",
+	})
+	time.Sleep(120 * time.Millisecond)
+	r.submit(progressEvent{Kind: "branch", Idx: 3, Path: "3", Branch: "then"})
+	time.Sleep(120 * time.Millisecond)
+	r.submit(progressEvent{
+		Kind: "step_complete", Idx: 3, Total: 3, KindAttr: "if_cond", Label: "cond", Path: "3",
+		Status: "ok", DurationMs: 1, Summary: "",
+	})
+	time.Sleep(150 * time.Millisecond)
+	r.Close()
+
+	stripped := stripAnsiTest(out.String())
+
+	// Footer line ✓ 1ms must not contain "→ then" or "▶".
+	for _, line := range strings.Split(stripped, "\n") {
+		if strings.Contains(line, "✓ 1ms") {
+			require.NotContains(t, line, "→ then",
+				"footer must NOT contain branch suffix. Line: %q", line)
+			require.NotContains(t, line, "▶",
+				"footer must NOT contain '▶'. Line: %q", line)
+		}
+	}
+
+	// Header line ▶ then must be present.
+	headerFound := false
+	for _, line := range strings.Split(stripped, "\n") {
+		if strings.Contains(line, "▶ then") {
+			headerFound = true
+			break
+		}
+	}
+	require.True(t, headerFound,
+		"header line containing '▶ then' must be present. Stripped: %q", stripped)
 }
