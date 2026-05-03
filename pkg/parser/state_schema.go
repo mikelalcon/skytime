@@ -123,9 +123,46 @@ func (p *Parser) walkBodyForCtxValidation(flow *dag.Flow, body []dag.Node, state
 			if err := p.walkBodyForCtxValidation(flow, n.Steps, inner); err != nil {
 				return err
 			}
-		case *dag.Step, *dag.CallFlow:
-			// No lambda evaluation: Step kwargs are pure data; CallFlow
-			// inputs forbid lambdas (D-19). Nothing to validate here.
+		case *dag.Step:
+			// D4.1-09: action_fn / block_fn lambdas (D4.1-06) flow through
+			// the same D4-02 ctx.<name> walker as if_cond/script lambdas
+			// so a typo in `lambda ctx: gh.get(path=ctx.tyop)` surfaces as
+			// *dag.ValidationError at parse time. Step.NameFn (D4.1-15) is
+			// a synthesized lambda from interpolation; the walker honors
+			// its BodyPos so the desugared body is the source of truth.
+			// Step.Actions kwargs may also carry interpolation lambdas
+			// (D4.1-05) — validate each.
+			if n.ActionFn != nil {
+				if err := p.checkLambdaCtx(flow, n.ActionFn.ID, state); err != nil {
+					return err
+				}
+			}
+			if n.BlockFn != nil {
+				if err := p.checkLambdaCtx(flow, n.BlockFn.ID, state); err != nil {
+					return err
+				}
+			}
+			if n.NameFn != nil {
+				if err := p.checkLambdaCtx(flow, n.NameFn.ID, state); err != nil {
+					return err
+				}
+			}
+			for _, ar := range n.Actions {
+				if ar == nil || ar.Kwargs == nil {
+					continue
+				}
+				for _, item := range ar.Kwargs.Items() {
+					captured, isLambda := dag.UnwrapStarlarkLambda(item[1])
+					if !isLambda {
+						continue
+					}
+					if err := p.checkLambdaCtx(flow, captured.ID, state); err != nil {
+						return err
+					}
+				}
+			}
+		case *dag.CallFlow:
+			// CallFlow inputs forbid lambdas (D-19). Nothing to validate.
 			_ = n
 		}
 	}

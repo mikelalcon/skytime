@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -167,7 +168,9 @@ func TestStep_MutuallyExclusive(t *testing.T) {
 	src := []byte(`flow(name="x", inputs={}, steps=[step(action=fake_ext.echo(msg="a"), block=[fake_ext.echo(msg="b")])])`)
 	_, err := p.ParseSource("test.star", src)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "exactly one of action or block")
+	// D4.1-06 unified the error to the 4-way message — Phase 1 callers see
+	// the new canonical wording.
+	assert.Contains(t, err.Error(), "must provide exactly one of action, block, action_fn, or block_fn")
 }
 
 func TestStep_NeitherActionNorBlock(t *testing.T) {
@@ -175,7 +178,8 @@ func TestStep_NeitherActionNorBlock(t *testing.T) {
 	src := []byte(`flow(name="x", inputs={}, steps=[step()])`)
 	_, err := p.ParseSource("test.star", src)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must provide action or block")
+	// D4.1-06: canonical 4-way at-least-one message.
+	assert.Contains(t, err.Error(), "must provide action, block, action_fn, or block_fn")
 }
 
 // =============================================================================
@@ -534,4 +538,193 @@ func TestFlow_StepsListMustContainNodesNotActionRefs(t *testing.T) {
 	assert.True(t,
 		strings.Contains(msg, "flow node") || strings.Contains(msg, "ActionRef"),
 		"expected error to flag the unwrapped ActionRef in steps list, got: %s", msg)
+}
+
+// =============================================================================
+// Plan 04.1-03 Task 2 — builtinStep accepts name= / action_fn= / block_fn=
+// kwargs and enforces 4-way mutual exclusion (D4.1-06, D4.1-15)
+// =============================================================================
+
+// TestBuiltinStep_AcceptsName: a literal name kwarg lands on Step.Name and
+// leaves Step.NameFn nil.
+func TestBuiltinStep_AcceptsName(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={}, steps=[
+    step(name="my step", action=fake_ext.echo(msg="hi")),
+])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	step, ok := flows["x"].Body[0].(*dag.Step)
+	require.True(t, ok)
+	assert.Equal(t, "my step", step.Name)
+	assert.Nil(t, step.NameFn, "literal name (no ${) must leave NameFn nil")
+}
+
+// TestBuiltinStep_AcceptsActionFn: parse step(action_fn=lambda ctx: ...) —
+// resulting *dag.Step has ActionFn != nil and Actions == nil. ActionFn.ID
+// matches D-18 format.
+func TestBuiltinStep_AcceptsActionFn(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={"repo":"string"}, steps=[
+    step(action_fn = lambda ctx: fake_ext.echo(msg="hi")),
+])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err, "action_fn must parse cleanly")
+	step, ok := flows["x"].Body[0].(*dag.Step)
+	require.True(t, ok)
+	require.NotNil(t, step.ActionFn, "ActionFn must be populated when action_fn= is supplied")
+	assert.Empty(t, step.Actions, "Actions must be empty when action_fn= is supplied")
+	matched, mErr := regexp.MatchString(`^[0-9a-f]{8}:\d+:\d+$`, step.ActionFn.ID)
+	require.NoError(t, mErr)
+	assert.True(t, matched, "ActionFn.ID %q must match D-18 format", step.ActionFn.ID)
+}
+
+// TestBuiltinStep_AcceptsBlockFn: parse step(block_fn=lambda ctx: [...]) —
+// resulting *dag.Step has BlockFn != nil, Actions == nil.
+func TestBuiltinStep_AcceptsBlockFn(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={}, steps=[
+    step(block_fn = lambda ctx: [fake_ext.echo(msg="a"), fake_ext.echo(msg="b")]),
+])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err, "block_fn must parse cleanly")
+	step, ok := flows["x"].Body[0].(*dag.Step)
+	require.True(t, ok)
+	require.NotNil(t, step.BlockFn, "BlockFn must be populated when block_fn= is supplied")
+	assert.Empty(t, step.Actions, "Actions must be empty when block_fn= is supplied")
+}
+
+// TestBuiltinStep_RejectsActionPlusActionFn: action= and action_fn=
+// together MUST surface a *dag.ParseError with the canonical 4-way
+// message.
+func TestBuiltinStep_RejectsActionPlusActionFn(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={}, steps=[
+    step(
+        action = fake_ext.echo(msg="a"),
+        action_fn = lambda ctx: fake_ext.echo(msg="b"),
+    ),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	var pe *dag.ParseError
+	require.True(t, errors.As(err, &pe), "expected *dag.ParseError, got %T: %v", err, err)
+	assert.Contains(t, pe.Msg, "must provide exactly one of action, block, action_fn, or block_fn")
+}
+
+// TestBuiltinStep_RejectsBlockPlusBlockFn: block= and block_fn= together
+// trigger the same canonical 4-way mutual-exclusion error.
+func TestBuiltinStep_RejectsBlockPlusBlockFn(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={}, steps=[
+    step(
+        block = [fake_ext.echo(msg="a")],
+        block_fn = lambda ctx: [fake_ext.echo(msg="b")],
+    ),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	var pe *dag.ParseError
+	require.True(t, errors.As(err, &pe))
+	assert.Contains(t, pe.Msg, "must provide exactly one of action, block, action_fn, or block_fn")
+}
+
+// TestBuiltinStep_RejectsActionPlusBlock_UnchangedFromPhase1: the original
+// "action and block together" rejection still fires — now via the new
+// canonical 4-way message (D4.1-06 unification).
+func TestBuiltinStep_RejectsActionPlusBlock_UnchangedFromPhase1(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={}, steps=[step(action=fake_ext.echo(msg="a"), block=[fake_ext.echo(msg="b")])])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	var pe *dag.ParseError
+	require.True(t, errors.As(err, &pe))
+	assert.Contains(t, pe.Msg, "must provide exactly one of action, block, action_fn, or block_fn")
+}
+
+// TestBuiltinStep_NameInterpolation: a name kwarg containing ${...} routes
+// through desugarInterpolation. Step.Name MUST be empty (the lambda
+// carries the value) and Step.NameFn MUST be populated. NameFn.Pos points
+// at the user's source.
+func TestBuiltinStep_NameInterpolation(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={"repo":"string"}, steps=[
+    step(name = "Get repo ${ctx.repo}", action = fake_ext.echo(msg="hi")),
+])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	step, ok := flows["x"].Body[0].(*dag.Step)
+	require.True(t, ok)
+	assert.Empty(t, step.Name, "interpolated name: literal Name must be empty")
+	require.NotNil(t, step.NameFn, "interpolated name: NameFn must be populated")
+	assert.Equal(t, "test.star", step.NameFn.Pos.Filename(),
+		"NameFn.Pos must point at the user's source")
+}
+
+// TestBuiltinStep_NameLiteralNoInterp: a plain literal name (no ${)
+// populates Step.Name and leaves Step.NameFn nil.
+func TestBuiltinStep_NameLiteralNoInterp(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={}, steps=[
+    step(name = "literal", action = fake_ext.echo(msg="hi")),
+])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	step, ok := flows["x"].Body[0].(*dag.Step)
+	require.True(t, ok)
+	assert.Equal(t, "literal", step.Name)
+	assert.Nil(t, step.NameFn)
+}
+
+// TestBuiltinStep_RequiresAtLeastOneActionForm: step() with no kwargs
+// surfaces an error mentioning the new 4-form requirement.
+func TestBuiltinStep_RequiresAtLeastOneActionForm(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={}, steps=[step()])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	var pe *dag.ParseError
+	require.True(t, errors.As(err, &pe))
+	assert.Contains(t, pe.Msg, "must provide action, block, action_fn, or block_fn")
+}
+
+// TestBuiltinStep_ActionKwargInterpolation: a string action kwarg
+// containing ${...} desugars into a *StarlarkLambda inside the
+// ActionRef.Kwargs *Dict. The lambda's Captured.Pos points at the user's
+// source.
+func TestBuiltinStep_ActionKwargInterpolation(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={"repo":"string"}, steps=[
+    step(action = fake_ext.echo(msg = "/repos/${ctx.repo}")),
+])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	step, ok := flows["x"].Body[0].(*dag.Step)
+	require.True(t, ok)
+	require.Len(t, step.Actions, 1)
+	v, _, gErr := step.Actions[0].Kwargs.Get(starlark.String("msg"))
+	require.NoError(t, gErr)
+	require.NotNil(t, v)
+	captured, isLambda := dag.UnwrapStarlarkLambda(v)
+	require.True(t, isLambda, "interpolated string kwarg must round-trip as *StarlarkLambda inside ActionRef.Kwargs, got %T", v)
+	require.NotNil(t, captured)
+	assert.Equal(t, "test.star", captured.Pos.Filename(),
+		"captured lambda's Pos must point at the user source")
+}
+
+// TestBuiltinStep_ActionFn_CtxTypoRejected: an action_fn lambda that
+// references a non-existent input via ctx.<typo> surfaces as
+// *dag.ValidationError (W10/D4.1-09 — action_fn lambdas flow through the
+// existing D4-02 ctx.<name> walker via captureLambda).
+func TestBuiltinStep_ActionFn_CtxTypoRejected(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={"repo":"string"}, steps=[
+    step(action_fn = lambda ctx: fake_ext.echo(msg = ctx.tyop)),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	var ve *dag.ValidationError
+	require.True(t, errors.As(err, &ve), "expected *dag.ValidationError, got %T: %v", err, err)
+	assert.Contains(t, ve.Msg, "tyop",
+		"D4-02 walker must surface the ctx.<typo> attribute name")
 }

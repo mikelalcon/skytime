@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
@@ -217,26 +218,37 @@ func convertNodeList(lst *starlark.List, callPos syntax.Position, kwargName stri
 // builtinStep — step(action=..., block=[...], retry=..., timeout=...)
 // =============================================================================
 
-// builtinStep produces a *dag.Step. Exactly one of `action` and `block`
-// must be provided. `retry` and `timeout` are optional DSL-08 kwargs that
-// decode through their respective starlark.Unpacker implementations.
+// builtinStep produces a *dag.Step. Exactly one of `action`, `block`,
+// `action_fn`, `block_fn` must be provided (D4.1-06 4-way mutual
+// exclusion). `retry` and `timeout` are optional DSL-08 kwargs that decode
+// through their respective starlark.Unpacker implementations. `name` is
+// the optional display name (D4.1-15) and is run through
+// desugarInterpolation so `${ctx.x}` markers populate Step.NameFn.
 func (p *Parser) builtinStep(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var (
-		action    starlark.Value
-		block     *starlark.List
-		retry     = &dag.RetryPolicy{}
-		timeout   = &dag.Timeout{}
-		taskQueue string // D3-19 — empty string == "inherit flow's task queue"
+		action      starlark.Value
+		block       *starlark.List
+		actionFnVal starlark.Value
+		blockFnVal  starlark.Value
+		nameVal     starlark.Value
+		retry       = &dag.RetryPolicy{}
+		timeout     = &dag.Timeout{}
+		taskQueue   string // D3-19 — empty string == "inherit flow's task queue"
 	)
 	// `action` is intentionally accepted as a generic starlark.Value so we
 	// can return a clean error when consultants pass a non-ActionRef
 	// (e.g., a string). Same for block — UnpackArgs gets the list, we
-	// unwrap entries below.
+	// unwrap entries below. `action_fn`/`block_fn`/`name` are also generic
+	// values so we can run our own type checks and (for name) interpolation
+	// desugaring without UnpackArgs collapsing the value to a string first.
 	hasRetry := false
 	hasTimeout := false
 	if err := starlark.UnpackArgs("step", args, kwargs,
 		"action?", &action,
 		"block?", &block,
+		"action_fn?", &actionFnVal,
+		"block_fn?", &blockFnVal,
+		"name?", &nameVal,
 		"retry?", retry,
 		"timeout?", timeout,
 		"task_queue?", &taskQueue,
@@ -266,23 +278,63 @@ func (p *Parser) builtinStep(thread *starlark.Thread, fn *starlark.Builtin, args
 		}
 	}
 
+	// D4.1-06: 4-way mutual exclusion across action / block / action_fn /
+	// block_fn. Exactly one MUST be present. The canonical error message
+	// is verbatim across both "got 0" and "got 2+" cases for grep-friendly
+	// pinning by downstream tests.
 	hasAction := action != nil && action != starlark.None
 	hasBlock := block != nil && block.Len() > 0
-	switch {
-	case hasAction && hasBlock:
-		return nil, &dag.ParseError{
-			Pos: pos,
-			Msg: "step: must provide exactly one of action or block, got both",
+	hasActionFn := actionFnVal != nil && actionFnVal != starlark.None
+	hasBlockFn := blockFnVal != nil && blockFnVal != starlark.None
+	count := 0
+	for _, b := range []bool{hasAction, hasBlock, hasActionFn, hasBlockFn} {
+		if b {
+			count++
 		}
-	case !hasAction && !hasBlock:
+	}
+	switch {
+	case count == 0:
 		return nil, &dag.ParseError{
 			Pos: pos,
-			Msg: "step: must provide action or block",
+			Msg: "step: must provide action, block, action_fn, or block_fn",
+		}
+	case count > 1:
+		return nil, &dag.ParseError{
+			Pos: pos,
+			Msg: "step: must provide exactly one of action, block, action_fn, or block_fn",
 		}
 	}
 
-	var actions []*dag.ActionRef
-	if hasAction {
+	// D4.1-15: optional name kwarg with ${...} interpolation.
+	var stepName string
+	var stepNameFn *dag.CapturedLambda
+	if nameVal != nil && nameVal != starlark.None {
+		nameStr, isStr := nameVal.(starlark.String)
+		if !isStr {
+			return nil, &dag.ParseError{
+				Pos: pos,
+				Msg: fmt.Sprintf("step.name: expected string, got %s", nameVal.Type()),
+			}
+		}
+		raw := string(nameStr)
+		desugared, err := p.desugarInterpolation(raw, pos)
+		if err != nil {
+			return nil, err
+		}
+		if desugared != nil {
+			stepNameFn = desugared
+		} else {
+			stepName = raw
+		}
+	}
+
+	var (
+		actions      []*dag.ActionRef
+		stepActionFn *dag.CapturedLambda
+		stepBlockFn  *dag.CapturedLambda
+	)
+	switch {
+	case hasAction:
 		ar, ok := action.(*dag.ActionRef)
 		if !ok {
 			return nil, &dag.ParseError{
@@ -290,8 +342,14 @@ func (p *Parser) builtinStep(thread *starlark.Thread, fn *starlark.Builtin, args
 				Msg: fmt.Sprintf("step.action: expected ActionRef from an extension factory, got %s", action.Type()),
 			}
 		}
+		// D4.1-05: walk the kwargs dict and replace any string values
+		// containing `${...}` with *StarlarkLambda wrappers. Must run
+		// BEFORE the dict is frozen by downstream finalize passes.
+		if err := p.desugarActionRefKwargs(ar); err != nil {
+			return nil, err
+		}
 		actions = []*dag.ActionRef{ar}
-	} else {
+	case hasBlock:
 		actions = make([]*dag.ActionRef, 0, block.Len())
 		iter := block.Iterate()
 		defer iter.Done()
@@ -304,11 +362,34 @@ func (p *Parser) builtinStep(thread *starlark.Thread, fn *starlark.Builtin, args
 					Msg: fmt.Sprintf("step.block: every entry must be an ActionRef, got %s", v.Type()),
 				}
 			}
+			if err := p.desugarActionRefKwargs(ar); err != nil {
+				return nil, err
+			}
 			actions = append(actions, ar)
 		}
+	case hasActionFn:
+		captured, err := p.captureLambda(thread, "action_fn", actionFnVal)
+		if err != nil {
+			return nil, err
+		}
+		stepActionFn = captured
+	case hasBlockFn:
+		captured, err := p.captureLambda(thread, "block_fn", blockFnVal)
+		if err != nil {
+			return nil, err
+		}
+		stepBlockFn = captured
 	}
 
-	step := &dag.Step{Pos: pos, Actions: actions, TaskQueue: taskQueue}
+	step := &dag.Step{
+		Pos:       pos,
+		Actions:   actions,
+		Name:      stepName,
+		NameFn:    stepNameFn,
+		ActionFn:  stepActionFn,
+		BlockFn:   stepBlockFn,
+		TaskQueue: taskQueue,
+	}
 	if hasRetry {
 		step.Retry = retry
 	}
@@ -316,6 +397,68 @@ func (p *Parser) builtinStep(thread *starlark.Thread, fn *starlark.Builtin, args
 		step.Timeout = timeout
 	}
 	return wrapNode(step), nil
+}
+
+// desugarActionRefKwargs walks the kwargs *Dict on an ActionRef and
+// replaces every starlark.String value containing "${" with a
+// *StarlarkLambda produced by desugarInterpolation. Acts in-place on the
+// (still unfrozen) dict. Strings that contain only $$ escapes (no real
+// interpolation) are rewritten with the de-escaped literal so the
+// activity-side decoder sees a single $ in the value.
+//
+// ar.Pos is used as openPos for the desugarer; the scanner's per-${
+// position adjustment computes the precise line+col of each marker
+// within the string value, so error attribution remains user-faithful.
+func (p *Parser) desugarActionRefKwargs(ar *dag.ActionRef) error {
+	if ar == nil || ar.Kwargs == nil {
+		return nil
+	}
+	for _, item := range ar.Kwargs.Items() {
+		keyStr, isKeyStr := item[0].(starlark.String)
+		if !isKeyStr {
+			continue
+		}
+		valStr, isValStr := item[1].(starlark.String)
+		if !isValStr {
+			continue
+		}
+		raw := string(valStr)
+		if !strings.Contains(raw, "$") {
+			// Fast path: no $ at all → nothing to scan.
+			continue
+		}
+		captured, err := p.desugarInterpolation(raw, ar.Pos)
+		if err != nil {
+			return err
+		}
+		if captured != nil {
+			if err := ar.Kwargs.SetKey(keyStr, dag.NewStarlarkLambda(captured)); err != nil {
+				return err
+			}
+			continue
+		}
+		// No interpolation found but the string contains $$ escapes —
+		// rebuild the de-escaped literal so the activity sees the
+		// unescaped form. scanInterpolation collapses $$ into a single $
+		// inside Parts[i].Text; we concatenate text parts to recover the
+		// rendered string.
+		scanned, scanErr := scanInterpolation(raw, ar.Pos)
+		if scanErr != nil {
+			return scanErr
+		}
+		var rebuilt strings.Builder
+		for _, part := range scanned.Parts {
+			if part.Kind == "text" {
+				rebuilt.WriteString(part.Text)
+			}
+		}
+		if rebuilt.String() != raw {
+			if err := ar.Kwargs.SetKey(keyStr, starlark.String(rebuilt.String())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // =============================================================================
