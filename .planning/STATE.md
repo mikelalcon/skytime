@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 04.1-05b-PLAN.md
-last_updated: "2026-05-03T13:12:19.951Z"
+status: phase-complete
+stopped_at: "Phase 04.1 complete — dynamic kwargs + interpolation + live block end-to-end"
+last_updated: "2026-05-03T13:25:00Z"
 last_activity: 2026-05-03
 progress:
   total_phases: 7
-  completed_phases: 4
-  total_plans: 27
-  completed_plans: 26
-  percent: 0
+  completed_phases: 5
+  total_plans: 28
+  completed_plans: 28
+  percent: 100
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 
 ## Current Position
 
-Phase: 04.1 (dynamic-step-kwargs-lambda-accepting-step-action-fn-variant-for-runtime-built-action-kwargs) — EXECUTING
-Plan: 8 of 8
-Status: Ready to execute
+Phase: 04.1 (dynamic-step-kwargs-lambda-accepting-step-action-fn-variant-for-runtime-built-action-kwargs) — COMPLETE
+Plan: 8 of 8 (all complete)
+Status: Phase 04.1 complete — dynamic kwargs + interpolation + live block end-to-end; ready for /gsd:verify-work + /gsd:transition to Phase 5
 Last activity: 2026-05-03
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -77,6 +77,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04.1 P04 | 10min | 3 tasks | 4 files |
 | Phase 04.1 P05a | 2min | 1 tasks | 2 files |
 | Phase 04.1 P05b | 25m | 2 tasks | 6 files |
+| Phase 04.1 P07 | 11min | 5 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -185,6 +186,11 @@ Recent decisions affecting current work:
 - [Phase 04.1]: Empty block_fn batch emits step_complete inline (summary='empty batch') and gates the deferred emit via deferEmit=false (D4.1-09)
 - [Phase 04.1]: Lambda-returned ActionRefs are explicitly Freeze()'d in walkStep before resolveKwargs (W8); static actions stay zero-cost via idempotent Freeze
 - [Phase 04.1]: resolveFlowName / stepDisplayLabel never fail the workflow on lambda eval errors — display-only attribute, fall back to literal Name (D4.1-15, D4.1-16)
+- [Phase 04.1]: Plan 04.1-07: examples/skeleton corpus rewritten end-to-end — simple_check.star uses ${ctx.repo} name+path interpolation (D4.1-23); parallel_fanout.star uses step(block_fn=) + for_each_parallel over runtime ctx.repos (D4.1-24); TestDifferentialCorpus passes on rewritten fixtures with NO dryrun dispatch change required (D4.1-25 — workflow's resolveKwargs flattens lambda kwargs before activity dispatch, so AlwaysOkDispatch sees plain strings)
+- [Phase 04.1]: Plan 04.1-07: PROJECT.md amended with D4.1-22 carve-out paragraph (verbatim) appended to BOTH the Strict-Directives "no string compilation" rule AND the Out of Scope "CEL or string-based expressions" bullet — documents that parser-time syntactic sugar (${ctx.expr} → lambda) is not string compilation; runtime template engines (CEL, Jinja) remain forbidden; extending beyond parser-time desugaring requires new ADR
+- [Phase 04.1]: Plan 04.1-07: 7 new requirement IDs registered (DSL-11/12/13, VAL-04, CLI-06/07, EX-FIX-01); v1 requirement count 55→62; Traceability table extended with Phase 04.1 mapping; ALL marked Complete in alignment with Phase 04.1 implementing plans (01..06)
+- [Phase 04.1]: Plan 04.1-07: Auto-fixed Rule 1 — TestE2E_SkytimeRun_Happy was hardcoded to --input '{"repo_path":...}' (Phase 4 corpus shape); rewrite renamed input to "repo" (D4.1-23). Test was failing 'struct has no .repo attribute' on every run; fixed alongside the corpus change so happy-path e2e remains green.
+- [Phase 04.1]: PHASE COMPLETE — go test -race ./... -count=1 GREEN; go vet ./... GREEN; workflowcheck unavailable in environment (documented); decision-coverage grep emits zero MISSING for D4.1-01..25 (all 25 decisions have ≥1 reference in committed code/docs)
 
 ### Pending Todos
 
@@ -201,6 +207,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-03T13:12:19.944Z
-Stopped at: Completed 04.1-05b-PLAN.md
+Last session: 2026-05-03T13:25:00Z
+Stopped at: "Phase 04.1 complete — ready for /gsd:verify-work + /gsd:transition (Phase 5: E2E test harness)"
 Resume file: None
