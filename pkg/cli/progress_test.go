@@ -422,7 +422,13 @@ func TestProgress_StaticPath_NonTTY(t *testing.T) {
 
 // TestProgress_StaticPath_VerboseEvenOnTTY: when Verbose=true, the live
 // block is disabled (D4.1-20) — even a forced-TTY handler emits plain
-// static lines. NO ANSI cursor sequences.
+// static lines. NO live-block ANSI cursor sequences.
+//
+// Note: static-path output on a TTY still wraps headers/markers in
+// color ANSI codes (the existing Phase 4 behavior). The verbose
+// preemption rule applies to the LIVE BLOCK redraw (cursor-up +
+// line-clear), not to color output. Tests assert the absence of the
+// load-bearing live-block sequences only.
 func TestProgress_StaticPath_VerboseEvenOnTTY(t *testing.T) {
 	var progressOut, passOut bytes.Buffer
 	passthrough := slog.NewTextHandler(&passOut, &slog.HandlerOptions{Level: slog.LevelInfo})
@@ -435,7 +441,9 @@ func TestProgress_StaticPath_VerboseEvenOnTTY(t *testing.T) {
 	got := progressOut.String()
 	require.NotContains(t, got, "\x1b[1A", "verbose=true must NOT emit cursor-up sequences (live block disabled per D4.1-20)")
 	require.NotContains(t, got, "\x1b[2K", "verbose=true must NOT emit clear-line sequences")
-	require.Contains(t, got, "[skytime] flow test_flow", "verbose=true still renders Bazel-style static lines")
+	require.NotContains(t, got, "\x1b[?25l", "verbose=true must NOT emit cursor-hide sequences")
+	require.Contains(t, got, "flow test_flow", "verbose=true still renders Bazel-style static lines")
+	require.Contains(t, got, "1 steps  starting", "verbose=true still renders flow_start banner")
 }
 
 // TestProgress_LivePathChosen_TTYNonVerbose: with ForceTTY=true and

@@ -85,15 +85,20 @@ func buildSDKSlogLogger(cfg *config) *slog.Logger {
 // buildRoutedSlogLogger returns the *slog.Logger handed to the worker
 // + Temporal client. It wraps cfg.sdkLogger's handler with a
 // *progressHandler that renders Skytime `event=*` records to
-// progressOut (Bazel-style) and delegates everything else to the
-// cfg.sdkLogger handler.
+// progressOut (Bazel-style or live-block, per useLiveBlock()) and
+// delegates everything else to the cfg.sdkLogger handler.
 //
 // progressOut is normally cmd.OutOrStdout() — the Bazel rendering goes
 // to stdout, the SDK passthrough goes to stderr (via the wrapped
 // charm-log handler). Tests pass a *bytes.Buffer for assertion.
+//
+// Phase 04.1-06: cfg.Verbose is threaded through so the live-block
+// renderer (D4.1-17) deactivates when --verbose is set (D4.1-20).
 func buildRoutedSlogLogger(cfg *config, progressOut io.Writer) *slog.Logger {
 	wrapped := cfg.sdkLogger.Handler()
-	routed := newProgressHandler(wrapped, progressOut)
+	routed := newProgressHandlerWithOptions(wrapped, progressOut, progressHandlerOptions{
+		Verbose: cfg.Verbose,
+	})
 	return slog.New(routed)
 }
 

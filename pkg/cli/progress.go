@@ -2,21 +2,29 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
-	"strings"
+	"sync"
 
 	"golang.org/x/term"
 )
 
 // progressHandler wraps another slog.Handler and intercepts records
-// carrying an "event" attribute, rendering them as Bazel-style progress
-// lines on its output writer. Records without "event" pass through to
-// the wrapped handler unchanged (e.g., raw SDK INFO/DEBUG lines, which
-// then either render via charm-log when --verbose is set, or get dropped
-// when --verbose is off and the wrapped handler is at LevelError+1).
+// carrying an "event" attribute, rendering them either as Bazel-style
+// progress lines (static path) or as a multi-line redrawing live block
+// (live path) on its output writer.
+//
+// Records without "event" pass through to the wrapped handler unchanged
+// (e.g., raw SDK INFO/DEBUG lines, which then either render via
+// charm-log when --verbose is set, or get dropped when --verbose is off
+// and the wrapped handler is at LevelError+1).
+//
+// Mode selection (D4.1-17..21):
+//   - useLiveBlock() == true  → multi-line live block (TTY + non-verbose,
+//     non-Windows). Implemented in pkg/cli/progress_live.go.
+//   - useLiveBlock() == false → static line-per-event Bazel-style output.
+//     Implemented in pkg/cli/progress_static.go.
 //
 // Bazel-style format (quick 260502-guu Fix B):
 //
@@ -40,11 +48,16 @@ type progressHandler struct {
 	out     io.Writer
 
 	// ttyKnown caches the TTY check on `out`. We compute it once at
-	// first Handle() rather than at construction so callers can swap
-	// out (rare in production, common in tests) and the cache resets
-	// per-handler.
+	// first useLiveBlock()/wrap() call rather than at construction so
+	// callers can swap out (rare in production, common in tests) and
+	// the cache resets per-handler.
 	ttyKnown bool
 	tty      bool
+
+	// verbose mirrors the --verbose persistent flag. When true, the live
+	// block is disabled (D4.1-20) — SDK INFO/DEBUG lines stream to
+	// stderr and would constantly break the live region's redraw.
+	verbose bool
 
 	// lastErr captures the most recent step_complete-with-err record so
 	// renderFlowComplete can attribute the failure when err_count > 0.
@@ -52,6 +65,12 @@ type progressHandler struct {
 	// process, multiple workflow executions) does not leak failure
 	// state across runs. Quick 260502-onc Fix C.
 	lastErr *failureContext
+
+	// live is set lazily on the first Handle() call when useLiveBlock()
+	// returns true. nil for static-path handlers. Owned by this
+	// handler — Close() cleans up.
+	live     *liveRenderer
+	liveOnce sync.Once
 }
 
 // failureContext is the per-handler record of the most recent
@@ -63,10 +82,60 @@ type failureContext struct {
 	summary string
 }
 
+// progressEvent is the immutable value the slog handler ships to the
+// live renderer. Defined here (no build tag) so both Unix and Windows
+// liveRenderer variants share an identical struct shape — otherwise
+// buildProgressEvent's field accesses would compile on Unix but fail
+// on Windows. See progress_live.go (!windows) and
+// progress_live_windows.go for the platform-specific renderer.
+type progressEvent struct {
+	Kind       string // "flow_start" | "step_dispatch" | "step_complete" | "branch" | "flow_complete" | "raw"
+	FlowName   string
+	StepCount  int64
+	Idx        int64
+	Total      int64
+	KindAttr   string // event["kind"] — "step", "if_cond", etc.
+	Label      string
+	Status     string
+	Summary    string
+	DurationMs int64
+	OkCount    int64
+	ErrCount   int64
+	TotalMs    int64
+	Branch     string
+	Path       string
+	Raw        string // pre-rendered line for "raw" events
+}
+
+// progressHandlerOptions configures progressHandler at construction.
+// Used when callers need to inject the verbose flag or override TTY
+// detection (tests). The bare newProgressHandler(wrapped, out) signature
+// stays for backward compatibility — it constructs with Verbose=false
+// and auto-TTY.
+type progressHandlerOptions struct {
+	Verbose  bool
+	ForceTTY *bool // nil = auto-detect via term.IsTerminal; non-nil = test override
+}
+
 // newProgressHandler returns a handler that writes Bazel-style progress
-// lines to out and delegates everything else to wrapped.
+// lines to out and delegates everything else to wrapped. Constructed
+// with Verbose=false and auto-TTY detection.
 func newProgressHandler(wrapped slog.Handler, out io.Writer) *progressHandler {
 	return &progressHandler{wrapped: wrapped, out: out}
+}
+
+// newProgressHandlerWithOptions constructs a progressHandler with
+// explicit verbose / TTY-override settings. Callers (run subcommand)
+// thread cfg.Verbose; tests inject ForceTTY to exercise the live path
+// without an actual terminal.
+func newProgressHandlerWithOptions(wrapped slog.Handler, out io.Writer, opts progressHandlerOptions) *progressHandler {
+	p := newProgressHandler(wrapped, out)
+	p.verbose = opts.Verbose
+	if opts.ForceTTY != nil {
+		p.ttyKnown = true
+		p.tty = *opts.ForceTTY
+	}
+	return p
 }
 
 // Enabled returns true unconditionally so SDK-level Enabled() pre-checks
@@ -82,9 +151,15 @@ func (p *progressHandler) Enabled(_ context.Context, _ slog.Level) bool {
 	return true
 }
 
-// Handle routes the record to the Bazel renderer when it carries the
-// `event` attribute, or to the wrapped handler otherwise. The wrapped
-// handler's Enabled() filters passthrough records by level.
+// Handle routes the record to the static Bazel renderer (Task 1) or to
+// the live renderer (Task 3, after un-skip) when it carries the `event`
+// attribute, or to the wrapped handler. The wrapped handler's Enabled()
+// filters passthrough records by level.
+//
+// Phase 04.1-06 Task 1: useLiveBlock() is wired but Handle() always
+// routes static — no behavior change from Phase 4. Task 3 flips the
+// dispatch to honor useLiveBlock() once the live renderer (Task 2)
+// is real, not a stub.
 func (p *progressHandler) Handle(ctx context.Context, r slog.Record) error {
 	if !hasAttr(r, "event") {
 		// Passthrough — but respect the wrapped handler's level.
@@ -93,7 +168,20 @@ func (p *progressHandler) Handle(ctx context.Context, r slog.Record) error {
 		}
 		return p.wrapped.Handle(ctx, r)
 	}
+	// Phase 04.1-06 Task 3 wires the live path here. For now, always
+	// static — same behavior as Phase 4.
 	return p.renderBazelLine(r)
+}
+
+// Close shuts down the background render goroutine if a live renderer
+// was activated. Safe to call multiple times; safe to call on
+// static-path handlers (no-op). The cli.Run subcommand should defer
+// this after the workflow completes so the redraw region drains
+// cleanly.
+func (p *progressHandler) Close() {
+	if p.live != nil {
+		p.live.Close()
+	}
 }
 
 // WithAttrs returns a new progressHandler whose wrapped handler has the
@@ -101,21 +189,93 @@ func (p *progressHandler) Handle(ctx context.Context, r slog.Record) error {
 // are part of the wrapped handler's state. lastErr is shallow-copied
 // (both handlers share the same *failureContext pointer); for the v1
 // usage pattern (one workflow, serial events) this is correct.
+//
+// Note: live + liveOnce are NOT propagated. The first Handle() on the
+// returned handler will lazily construct its own renderer if needed.
+// This is correct for slog's WithAttrs/WithGroup contract (the returned
+// handler is logically a sibling, not an alias).
 func (p *progressHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &progressHandler{wrapped: p.wrapped.WithAttrs(attrs), out: p.out, lastErr: p.lastErr}
+	return &progressHandler{
+		wrapped:  p.wrapped.WithAttrs(attrs),
+		out:      p.out,
+		ttyKnown: p.ttyKnown,
+		tty:      p.tty,
+		verbose:  p.verbose,
+		lastErr:  p.lastErr,
+	}
 }
 
 // WithGroup returns a new progressHandler whose wrapped handler is
 // scoped under the named group. The progress writer is unchanged.
 // lastErr is shallow-copied per the WithAttrs note above.
 func (p *progressHandler) WithGroup(name string) slog.Handler {
-	return &progressHandler{wrapped: p.wrapped.WithGroup(name), out: p.out, lastErr: p.lastErr}
+	return &progressHandler{
+		wrapped:  p.wrapped.WithGroup(name),
+		out:      p.out,
+		ttyKnown: p.ttyKnown,
+		tty:      p.tty,
+		verbose:  p.verbose,
+		lastErr:  p.lastErr,
+	}
+}
+
+// useLiveBlock returns true when the handler should activate the
+// multi-line live-block renderer (D4.1-17). False on Windows (the
+// stub in progress_live_windows.go ensures live renderer is a no-op),
+// non-TTY (D4.1-21), or --verbose (D4.1-20).
+func (p *progressHandler) useLiveBlock() bool {
+	if p.verbose {
+		return false
+	}
+	return p.isTTY()
+}
+
+// isTTY memoizes the term.IsTerminal check on p.out. When p.out is a
+// *os.File whose fd is a terminal, color and live block are enabled;
+// otherwise (bytes buffer, pipe, redirect, non-file Writer) ASCII
+// fallback applies. Tests inject ForceTTY via progressHandlerOptions to
+// bypass the auto-detection.
+func (p *progressHandler) isTTY() bool {
+	if p.ttyKnown {
+		return p.tty
+	}
+	p.ttyKnown = true
+	if f, ok := p.out.(*os.File); ok {
+		p.tty = term.IsTerminal(int(f.Fd()))
+	} else {
+		p.tty = false
+	}
+	return p.tty
+}
+
+// buildProgressEvent translates a slog.Record into a progressEvent
+// value the live renderer consumes. Pure function — no shared state,
+// safe to call from Handle() under concurrent invocations.
+func buildProgressEvent(r slog.Record) progressEvent {
+	attrs := collectAttrs(r)
+	return progressEvent{
+		Kind:       attrs.str("event"),
+		FlowName:   attrs.str("flow_name"),
+		StepCount:  attrs.int("step_count"),
+		Idx:        attrs.int("idx"),
+		Total:      attrs.int("total"),
+		KindAttr:   attrs.str("kind"),
+		Label:      attrs.str("label"),
+		Status:     attrs.str("status"),
+		Summary:    attrs.str("summary"),
+		DurationMs: attrs.int("duration_ms"),
+		OkCount:    attrs.int("ok_count"),
+		ErrCount:   attrs.int("err_count"),
+		TotalMs:    attrs.int("total_ms"),
+		Branch:     attrs.str("branch"),
+		Path:       attrs.str("path"),
+	}
 }
 
 // renderBazelLine inspects the `event` attribute value and dispatches
-// to the per-event renderer. Unknown event values fall back to a no-op
-// (defense in depth — the interpreter is the only known producer and
-// the schema is closed).
+// to the per-event STATIC renderer. Unknown event values fall back to
+// a no-op (defense in depth — the interpreter is the only known
+// producer and the schema is closed).
 func (p *progressHandler) renderBazelLine(r slog.Record) error {
 	attrs := collectAttrs(r)
 	switch attrs.str("event") {
@@ -167,179 +327,6 @@ func collectAttrs(r slog.Record) attrMap {
 	return m
 }
 
-// renderFlowStart: `[skytime] flow <flow_name>  <step_count> steps  starting`
-//
-// Quick 260502-onc Fix C: clears lastErr so a long-lived handler
-// doesn't carry the previous run's failure context into the next.
-func (p *progressHandler) renderFlowStart(a attrMap) error {
-	p.lastErr = nil
-	flow := a.str("flow_name")
-	count := a.int("step_count")
-	line := fmt.Sprintf("%s flow %s  %d steps  starting",
-		p.colorBanner("[skytime]"), flow, count)
-	return p.println(line)
-}
-
-// renderStepDispatch: `[N/M] kind                label`
-//
-// When path indicates nested context (anything other than the bare
-// numeric idx), the row is indented 2 spaces and the counter uses
-// `[path/path]`.
-func (p *progressHandler) renderStepDispatch(a attrMap) error {
-	idx := a.int("idx")
-	total := a.int("total")
-	kind := a.str("kind")
-	label := a.str("label")
-	path := a.str("path")
-
-	indent, counter := p.computeCounter(idx, total, path)
-	line := fmt.Sprintf("%s%s %s %s",
-		indent,
-		p.colorCounter(counter),
-		p.colorKind(padKind(kind)),
-		label,
-	)
-	return p.println(line)
-}
-
-// renderStepComplete:
-//   - on status=ok: `     ✓ <duration_ms>ms  <summary>`
-//   - on status=err: `     ✗ <duration_ms>ms  <summary>`
-//
-// The completion line is indented 5 spaces from column 0 so the marker
-// column-aligns roughly under the counter.
-func (p *progressHandler) renderStepComplete(a attrMap) error {
-	status := a.str("status")
-	dur := a.int("duration_ms")
-	summary := a.str("summary")
-	path := a.str("path")
-	idx := a.int("idx")
-
-	// Quick 260502-onc Fix C: capture failure context for
-	// renderFlowComplete to attribute the failure when err_count > 0.
-	// step_complete carries idx but the renderer also wants total —
-	// best-effort fallback to a.int("total") which the dispatch event
-	// for the same step set; missing total falls back to 0 (renderer
-	// prints "step 2/0", uglier but never crashes).
-	if status == "err" {
-		p.lastErr = &failureContext{
-			idx:     idx,
-			total:   a.int("total"),
-			summary: summary,
-		}
-	}
-
-	// Nested rows already had their dispatch indented 2 spaces; their
-	// completion row indents an additional 2 (total 4) so the marker
-	// sits under the nested counter. Top-level rows indent 5 from col 0.
-	indent := "     "
-	if isNestedPath(idx, path) {
-		indent = "       "
-	}
-
-	marker := p.colorOk("✓")
-	if status == "err" {
-		marker = p.colorErr("✗")
-	}
-	line := fmt.Sprintf("%s%s %dms  %s", indent, marker, dur, summary)
-	return p.println(line)
-}
-
-// renderBranch: `<indent>→ <branch>` — the arrow indicates an if_cond
-// took the named branch (then|else).
-func (p *progressHandler) renderBranch(a attrMap) error {
-	branch := a.str("branch")
-	path := a.str("path")
-	idx := a.int("idx")
-
-	indent := "     "
-	if isNestedPath(idx, path) {
-		indent = "       "
-	}
-
-	line := fmt.Sprintf("%s%s %s", indent, p.colorArrow("→"), branch)
-	return p.println(line)
-}
-
-// renderFlowComplete: success → `[skytime] flow complete  <ok>/<total> steps  total <ms>ms`
-//
-// Quick 260502-onc Fix C: when err_count > 0, render the failure line
-// instead, attributing the most recently captured step failure (or a
-// placeholder when the renderer never saw a step_complete-with-err —
-// defense against malformed event sequences):
-//
-//	[skytime] flow failed  step <I>/<M> (<reason>)  total <ms>ms
-func (p *progressHandler) renderFlowComplete(a attrMap) error {
-	ok := a.int("ok_count")
-	errc := a.int("err_count")
-	totalMs := a.int("total_ms")
-
-	if errc > 0 {
-		idx := int64(0)
-		total := ok + errc
-		summary := "(no per-step error captured)"
-		if p.lastErr != nil {
-			idx = p.lastErr.idx
-			if p.lastErr.total > 0 {
-				total = p.lastErr.total
-			}
-			if p.lastErr.summary != "" {
-				summary = p.lastErr.summary
-			}
-		}
-		line := fmt.Sprintf("%s flow %s  step %d/%d (%s)  total %dms",
-			p.colorBanner("[skytime]"),
-			p.colorErr("failed"),
-			idx, total, summary, totalMs)
-		return p.println(line)
-	}
-
-	line := fmt.Sprintf("%s flow complete  %d/%d steps  total %dms",
-		p.colorBanner("[skytime]"), ok, ok+errc, totalMs)
-	return p.println(line)
-}
-
-// computeCounter picks the right counter format and indent for a row.
-// Top-level rows render `[idx/total]` and have no indent; nested rows
-// render `[path/path]` and indent 2 spaces.
-func (p *progressHandler) computeCounter(idx, total int64, path string) (indent, counter string) {
-	if isNestedPath(idx, path) {
-		return "  ", fmt.Sprintf("[%s/%s]", path, path)
-	}
-	return "", fmt.Sprintf("[%d/%d]", idx, total)
-}
-
-// isNestedPath returns true when path indicates a nested step (anything
-// other than the bare decimal representation of idx, or empty).
-//
-// Top-level path conventions: "1", "2", "3", ... (matches fmt.Sprintf("%d", idx)).
-// Nested conventions: "3a", "3b" (if_cond branches), "3.0.0", "3.1.0" (for_each).
-//
-// Empty path is treated as top-level (defensive — early callers may
-// emit dispatch events before the stepPath is initialized).
-func isNestedPath(idx int64, path string) bool {
-	if path == "" {
-		return false
-	}
-	return path != fmt.Sprintf("%d", idx)
-}
-
-// padKind right-pads a kind label so kind columns align across rows.
-// Width 19 is just over the longest known kind ("for_each_parallel" = 17).
-func padKind(kind string) string {
-	const width = 19
-	if len(kind) >= width {
-		return kind
-	}
-	return kind + strings.Repeat(" ", width-len(kind))
-}
-
-// println writes line followed by a newline to p.out.
-func (p *progressHandler) println(line string) error {
-	_, err := fmt.Fprintln(p.out, line)
-	return err
-}
-
 // hasAttr returns true when r contains an attribute with the given key.
 func hasAttr(r slog.Record, key string) bool {
 	found := false
@@ -352,54 +339,3 @@ func hasAttr(r slog.Record, key string) bool {
 	})
 	return found
 }
-
-// ---------------------------------------------------------------------------
-// Color helpers
-// ---------------------------------------------------------------------------
-//
-// We intentionally use raw ANSI escapes rather than pulling in lipgloss —
-// the cli firewall keeps charmbracelet deps to charm-log only, and these
-// six escape sequences are well-known and trivially testable.
-//
-// When out is not a TTY (test buffers, file redirects), the helpers
-// return the input unchanged → plain ASCII output that's greppable.
-
-const (
-	ansiReset      = "\x1b[0m"
-	ansiDimCyan    = "\x1b[2;36m"
-	ansiBrightCyan = "\x1b[1;36m"
-	ansiBrightWhite = "\x1b[1;37m"
-	ansiGreen      = "\x1b[32m"
-	ansiRed        = "\x1b[31m"
-	ansiYellow     = "\x1b[33m"
-)
-
-// isTTY memoizes the term.IsTerminal check on p.out. When p.out is a
-// *os.File whose fd is a terminal, color is enabled; otherwise (bytes
-// buffer, pipe, redirect, non-file Writer) ASCII fallback applies.
-func (p *progressHandler) isTTY() bool {
-	if p.ttyKnown {
-		return p.tty
-	}
-	p.ttyKnown = true
-	if f, ok := p.out.(*os.File); ok {
-		p.tty = term.IsTerminal(int(f.Fd()))
-	} else {
-		p.tty = false
-	}
-	return p.tty
-}
-
-func (p *progressHandler) wrap(s, color string) string {
-	if !p.isTTY() {
-		return s
-	}
-	return color + s + ansiReset
-}
-
-func (p *progressHandler) colorBanner(s string) string  { return p.wrap(s, ansiDimCyan) }
-func (p *progressHandler) colorCounter(s string) string { return p.wrap(s, ansiBrightCyan) }
-func (p *progressHandler) colorKind(s string) string    { return p.wrap(s, ansiBrightWhite) }
-func (p *progressHandler) colorOk(s string) string      { return p.wrap(s, ansiGreen) }
-func (p *progressHandler) colorErr(s string) string     { return p.wrap(s, ansiRed) }
-func (p *progressHandler) colorArrow(s string) string   { return p.wrap(s, ansiYellow) }
