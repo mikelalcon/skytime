@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -447,10 +448,158 @@ func TestProgress_StaticPath_VerboseEvenOnTTY(t *testing.T) {
 }
 
 // TestProgress_LivePathChosen_TTYNonVerbose: with ForceTTY=true and
-// Verbose=false, useLiveBlock() returns true and Handle() routes to the
-// live renderer. Activated by 04.1-06 Task 3 (Handle dispatch).
+// Verbose=false, useLiveBlock() returns true and Handle() routes to
+// the live renderer. After Task 3 wires the dispatch, a single
+// step_dispatch produces ANSI cursor-up codes via the live block.
 func TestProgress_LivePathChosen_TTYNonVerbose(t *testing.T) {
-	t.Skip("activated by 04.1-06 Task 3 (live renderer wired into Handle)")
+	progressOut := &safeBuffer{}
+	var passOut bytes.Buffer
+	passthrough := slog.NewTextHandler(&passOut, &slog.HandlerOptions{Level: slog.LevelInfo})
+	handler := newProgressHandlerWithOptions(passthrough, progressOut, progressHandlerOptions{
+		Verbose:  false,
+		ForceTTY: boolPtr(true),
+	})
+	defer handler.Close()
+
+	logger := slog.New(handler)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "step_dispatch"),
+		slog.Int("idx", 1), slog.Int("total", 1),
+		slog.String("kind", "step"),
+		slog.String("label", "gh.get(/x)"),
+		slog.String("path", "1"),
+	)
+
+	// Wait for one tick so the live goroutine emits at least one redraw.
+	time.Sleep(150 * time.Millisecond)
+
+	got := progressOut.String()
+	require.Contains(t, got, "\x1b[1A",
+		"TTY + non-verbose Handle() must route to live renderer (cursor-up sequence). Output: %q", got)
+}
+
+// ---------------------------------------------------------------------------
+// Phase 04.1-06 Task 3: live renderer wired into Handle() + Close lifecycle
+// ---------------------------------------------------------------------------
+
+// TestProgress_LiveBlock_DrainsOnFlowComplete: a full event sequence
+// followed by handler.Close() must result in a clean static "[skytime]
+// flow complete" line in the buffer (after stripping ANSI).
+func TestProgress_LiveBlock_DrainsOnFlowComplete(t *testing.T) {
+	progressOut := &safeBuffer{}
+	var passOut bytes.Buffer
+	passthrough := slog.NewTextHandler(&passOut, &slog.HandlerOptions{Level: slog.LevelInfo})
+	handler := newProgressHandlerWithOptions(passthrough, progressOut, progressHandlerOptions{
+		Verbose:  false,
+		ForceTTY: boolPtr(true),
+	})
+
+	logger := slog.New(handler)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "flow_start"),
+		slog.String("flow_name", "test"),
+		slog.Int("step_count", 1),
+	)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "step_dispatch"),
+		slog.Int("idx", 1), slog.Int("total", 1),
+		slog.String("kind", "step"),
+		slog.String("label", "gh.get(/x)"),
+		slog.String("path", "1"),
+	)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "step_complete"),
+		slog.Int("idx", 1), slog.Int("total", 1),
+		slog.String("status", "ok"),
+		slog.Int64("duration_ms", 50),
+		slog.String("summary", "status=200"),
+	)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "flow_complete"),
+		slog.Int("ok_count", 1),
+		slog.Int("err_count", 0),
+		slog.Int64("total_ms", 50),
+	)
+	handler.Close()
+
+	stripped := stripAnsiTest(progressOut.String())
+	require.Contains(t, stripped, "[skytime] flow complete",
+		"flow_complete must render as a clean static line after Close drain. Stripped: %q", stripped)
+}
+
+// TestProgress_LiveBlock_VerboseRemainsStatic: verbose=true + ForceTTY=true
+// → Handle stays on static path, no live-block ANSI sequences emitted.
+func TestProgress_LiveBlock_VerboseRemainsStatic(t *testing.T) {
+	progressOut := &safeBuffer{}
+	var passOut bytes.Buffer
+	passthrough := slog.NewTextHandler(&passOut, &slog.HandlerOptions{Level: slog.LevelInfo})
+	handler := newProgressHandlerWithOptions(passthrough, progressOut, progressHandlerOptions{
+		Verbose:  true,
+		ForceTTY: boolPtr(true),
+	})
+	defer handler.Close()
+
+	logger := slog.New(handler)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "flow_start"),
+		slog.String("flow_name", "test"),
+		slog.Int("step_count", 1),
+	)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "step_dispatch"),
+		slog.Int("idx", 1), slog.Int("total", 1),
+		slog.String("kind", "step"),
+		slog.String("label", "gh.get(/x)"),
+		slog.String("path", "1"),
+	)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "flow_complete"),
+		slog.Int("ok_count", 1),
+		slog.Int("err_count", 0),
+		slog.Int64("total_ms", 50),
+	)
+
+	got := progressOut.String()
+	// Static-path color codes are OK; LIVE-BLOCK sequences are not.
+	require.NotContains(t, got, "\x1b[1A",
+		"verbose=true must NOT emit cursor-up (live block off per D4.1-20)")
+	require.NotContains(t, got, "\x1b[2K",
+		"verbose=true must NOT emit clear-line")
+	require.NotContains(t, got, "\x1b[?25l",
+		"verbose=true must NOT emit cursor-hide")
+}
+
+// TestProgress_LiveBlock_LifecycleNoLeak: construct a live-mode handler,
+// never send any event, call Close. The render goroutine must exit
+// promptly. Failure mode: Close blocks forever.
+func TestProgress_LiveBlock_LifecycleNoLeak(t *testing.T) {
+	progressOut := &safeBuffer{}
+	var passOut bytes.Buffer
+	passthrough := slog.NewTextHandler(&passOut, &slog.HandlerOptions{Level: slog.LevelInfo})
+	handler := newProgressHandlerWithOptions(passthrough, progressOut, progressHandlerOptions{
+		Verbose:  false,
+		ForceTTY: boolPtr(true),
+	})
+
+	// Force lazy renderer init by sending one event so liveOnce fires.
+	logger := slog.New(handler)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "flow_start"),
+		slog.String("flow_name", "leak-test"),
+		slog.Int("step_count", 0),
+	)
+
+	done := make(chan struct{})
+	go func() {
+		handler.Close()
+		close(done)
+	}()
+	select {
+	case <-done:
+		// expected
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler.Close did not return within 2s — render goroutine leaked")
+	}
 }
 
 // TestNewProgressHandler_AcceptsVerboseFlag: the new options-based

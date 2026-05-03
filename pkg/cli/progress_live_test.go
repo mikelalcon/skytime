@@ -3,9 +3,7 @@
 package cli
 
 import (
-	"bytes"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -14,37 +12,16 @@ import (
 
 // Live-block renderer tests (Phase 04.1-06 Task 2, D4.1-17/18/19).
 //
-// Each test instantiates a *bytes.Buffer + creates a liveRenderer + submits
-// events directly via .submit() (bypassing the slog Handle wrapper for
-// unit-level testing) + waits a deterministic time + Close()s to drain
-// the render goroutine.
+// Each test instantiates a safeBuffer (defined in progress_testutil_test.go)
+// + creates a liveRenderer + submits events directly via .submit()
+// (bypassing the slog Handle wrapper for unit-level testing) + waits a
+// deterministic time + Close()s to drain the render goroutine.
 //
 // Generous time margins are used because a 100ms ticker plus a buffered
 // channel makes byte-exact timing assertions flaky; the load-bearing
 // properties are AT-LEAST-ONCE emission of cursor-up sequences,
 // AT-LEAST-N distinct spinner frames seen, and exact "... and N more"
 // presence on truncation.
-
-// safeBuffer wraps bytes.Buffer with a mutex so the render goroutine
-// can write while tests read. bytes.Buffer is NOT safe for concurrent
-// use; the production liveRenderer guarantees a single writer (its own
-// goroutine) but the test reads the buffer between writes.
-type safeBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *safeBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(p)
-}
-
-func (b *safeBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.String()
-}
 
 // TestLiveBlock_AnsiSequencesEmitted: a single step_dispatch produces at
 // least one cursor-up + clear-line pair within a tick window.

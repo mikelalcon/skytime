@@ -5,8 +5,32 @@ package cli
 // the unix-only live-block tests (progress_live_test.go).
 
 import (
+	"bytes"
 	"strings"
+	"sync"
 )
+
+// safeBuffer wraps bytes.Buffer with a mutex so the live-render goroutine
+// can write while tests read. bytes.Buffer is NOT safe for concurrent
+// use; the production liveRenderer guarantees a single writer (its own
+// goroutine) but tests read the buffer while writes may still be
+// in-flight (between submit() and Close()).
+type safeBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *safeBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *safeBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
 
 // stripAnsiTest removes all ANSI CSI escape sequences from s. Used by
 // live-block tests to assert "the static-line residue after redraw
