@@ -1,50 +1,55 @@
-"""simple_check.star — Phase 4 differential corpus fixture (D4-17).
+"""simple_check.star — Phase 04.1 demo of dynamic kwargs + interpolation.
 
-Exercises three DSL primitives against the baked-in http extension:
+Exercises:
 
-  - sequential `step` (one action ref → activity)
-  - `script` (pure state mutation, no I/O)
-  - `if_cond` (branch on lambda result)
+  - sequential `step` with name interpolation (${ctx.repo})
+  - action kwarg interpolation in gh.get(path=...)
+  - script (pure state mutation)
+  - if_cond (branch on lambda result)
 
-Combined with parallel_fanout.star this corpus covers all six DSL
-primitives. The differential test (tests/differential_test.go) parses
-this through the static validator AND a dry-run interpreter and asserts
-they agree on accept/reject.
+Same primitive coverage as Phase 4 (sequential step + script + if_cond)
+but the request URL now actually depends on `--input repo=...` — the
+Phase 4 hardcoded /repos/octocat/Hello-World is gone.
 
-Note: --input='{"repo_path":"..."}' is illustrative; v1 does not yet
-support `step(action=gh.get(path=ctx.repo_path))` — step kwargs are
-static at parse time. The corpus path is hardcoded to
-/repos/octocat/Hello-World for the happy-path demo (a real public
-GitHub endpoint that has returned 200 for over a decade); v1.x will
-add script-builds-path when a real consumer needs it.
+Demo target:
+  skytime run examples/skeleton/simple_check.star \\
+    --flow simple_check --input '{"repo":"octocat/Hello-World"}'
 """
 
 gh = http.endpoint(base_url = "https://api.github.com")
 
 flow(
     name = "simple_check",
-    inputs = {"repo_path": "string"},
+    inputs = {"repo": "string"},
     steps = [
-        # Sequential step — single ActionRef.
+        # Sequential step — single ActionRef built from runtime input
+        # via interpolation in the path kwarg. Step name also
+        # interpolates so the live block shows the active repo.
         step(
-            action = gh.get(path = "/repos/octocat/Hello-World"),
+            name = "Get repo ${ctx.repo}",
+            action = gh.get(path = "/repos/${ctx.repo}"),
         ),
         # Script — pure state mutation, no I/O. Computes a derived
-        # field from inputs and stores it under output_alias="health".
+        # field from the response shape.
         script(
             id = "extract_status",
-            fn = lambda ctx: {"healthy": True, "repo": ctx.repo_path},
+            fn = lambda ctx: {"healthy": True, "repo": ctx.repo},
             output_alias = "health",
         ),
-        # If_cond — branch on the script's output (visible because
-        # script ran first and added "health" to state schema).
+        # If_cond — branch on the script's output.
         if_cond(
             cond = lambda ctx: ctx.health,
             then = [
-                step(action = gh.get(path = "/repos/octocat/Hello-World/branches")),
+                step(
+                    name = "Get branches for ${ctx.repo}",
+                    action = gh.get(path = "/repos/${ctx.repo}/branches"),
+                ),
             ],
             else_ = [
-                step(action = gh.get(path = "/repos/octocat/Hello-World")),
+                step(
+                    name = "Re-fetch ${ctx.repo}",
+                    action = gh.get(path = "/repos/${ctx.repo}"),
+                ),
             ],
         ),
     ],
