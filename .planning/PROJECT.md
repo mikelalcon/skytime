@@ -57,7 +57,7 @@ A consultant team can take an extension catalog and a customer brief, write a `.
 - **Plugin / gRPC / out-of-process extensions** — only static or dynamic-local Go extensions in v1
 - **Web UI / dashboard** — Temporal's UI is sufficient for v1 visibility
 - **Multi-tenant hosted SaaS** — Skytime is a library; productizing it as a service is a separate decision
-- **CEL or string-based expressions** — explicitly rejected; lambdas only
+- **CEL or string-based expressions** — explicitly rejected; lambdas only (parser-time syntactic sugar that desugars to lambdas — e.g., `${ctx.expr}` → `lambda ctx: str(ctx.expr)` — is permitted per D4.1-22 carve-out; runtime template engines remain forbidden)
 - **Starlark unit-test tier** (Tier 2 in spec) — deferred; Static (Tier 1) and Starlark E2E (Tier 3) ship in v1, pure-Starlark unit testing of `def` blocks moves to v2
 - **Workflow versioning helpers** — Temporal patching primitives are available to advanced users, but no Skytime-specific versioning API in v1
 
@@ -68,6 +68,8 @@ A consultant team can take an extension catalog and a customer brief, write a `.
 - **Architectural separation is non-negotiable:** Parse phase generates a deterministic DAG with no I/O; execution phase walks the DAG inside Temporal. Lambdas captured at parse time are evaluated inside the workflow with state injected as nested structs. This split is the project's whole reason to exist.
 - **Strict directives from the spec:**
   - No string compilation (no CEL, no string parsers for conditionals/data mapping) — only native Starlark lambdas.
+
+    > *Parser-time syntactic sugar that desugars to native Starlark lambdas (e.g., `${ctx.expr}` → `lambda ctx: str(ctx.expr)`) is not string compilation. The runtime evaluation surface remains lambda-only. This carve-out exists for ergonomic step naming and string kwargs; runtime template engines (CEL, Jinja, etc.) remain forbidden. Extending this carve-out beyond parser-time desugaring requires a new ADR.* (Phase 04.1, D4.1-22)
   - No dynamic activities — extensions are plain Go functions; they never import `go.temporal.io/sdk/activity`.
   - No context bleed — never pass `workflow.Context` into a Starlark thread, never pass a Starlark `*starlark.Thread` over the network into an activity.
 - **Distribution shape:** Go library. The example project (with extensions and CLI) is the dogfooding vehicle and the proof-of-life demo, not a separate product.
@@ -128,4 +130,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-01 after Phase 4 completion*
+*Last updated: 2026-05-02 after Phase 04.1 completion (D4.1-22 carve-out appended to "no string compilation" rule + Out of Scope mirror)*
