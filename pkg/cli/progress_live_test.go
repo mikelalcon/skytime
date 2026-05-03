@@ -103,8 +103,11 @@ func TestLiveBlock_SpinnerCadence(t *testing.T) {
 }
 
 // TestLiveBlock_TruncationAtTen: 12 step_dispatch events for unique
-// steps produces exactly one "... and 2 more" line (12 - 10 cap = 2).
-// (D4.1-19)
+// steps produces "... and 2 more" lines (12 - 10 cap = 2). The renderer
+// redraws on every event AND every tick, so "... and 2 more" may appear
+// multiple times (one per redraw of the saturated state). The test
+// asserts ≥1 occurrence — the load-bearing property is "truncation
+// engaged when active > cap" (D4.1-19), not the redraw count.
 func TestLiveBlock_TruncationAtTen(t *testing.T) {
 	out := &safeBuffer{}
 	r := newLiveRenderer(out)
@@ -122,9 +125,13 @@ func TestLiveBlock_TruncationAtTen(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	got := out.String()
-	require.Equal(t, 1, strings.Count(stripAnsiTest(got), "... and 2 more"),
-		"truncation cap=10 with 12 active rows must emit '... and 2 more' exactly once. Output: %q", got)
+	stripped := stripAnsiTest(out.String())
+	require.Contains(t, stripped, "... and 2 more",
+		"truncation cap=10 with 12 active rows must emit '... and 2 more' (D4.1-19). Output: %q", stripped)
+	// Defense: NEVER emit "... and 0 more" or any negative-count
+	// truncation line, which would indicate a math bug.
+	require.NotContains(t, stripped, "... and 0 more")
+	require.NotContains(t, stripped, "... and -")
 }
 
 // TestLiveBlock_FinalizeRow: step_dispatch then step_complete (status=ok)
