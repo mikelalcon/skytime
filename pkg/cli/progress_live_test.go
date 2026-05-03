@@ -313,21 +313,108 @@ func TestLiveBlock_CompletedRowMarkerColor_Err(t *testing.T) {
 	require.Contains(t, stripped, "HTTP 404", "summary must survive color wrapping")
 }
 
-// TestLiveBlock_BranchArrowColor: branch event wraps the → glyph in
-// yellow ANSI.
+// TestLiveBlock_BranchArrowColor: a branch event followed by step_complete
+// for the same idx emits an inline ` → then` suffix on the completion
+// line. The → glyph is wrapped in yellow ANSI; the completion line
+// contains both ✓ and 1ms (proving "inline" rather than "standalone
+// adjacent line"). Quick 260503-qkk: branch is now buffer-only; the
+// suffix is the only place the arrow appears.
 func TestLiveBlock_BranchArrowColor(t *testing.T) {
 	out := &safeBuffer{}
 	r := newLiveRenderer(out)
 
-	r.submit(progressEvent{Kind: "branch", Branch: "then"})
+	r.submit(progressEvent{Kind: "branch", Idx: 3, Branch: "then"})
+	time.Sleep(150 * time.Millisecond)
+	r.submit(progressEvent{
+		Kind: "step_complete", Idx: 3, Total: 3, Status: "ok", DurationMs: 1, Summary: "",
+	})
 	time.Sleep(150 * time.Millisecond)
 	r.Close()
 
 	raw := out.String()
-	require.Contains(t, raw, ansiYellow, "branch arrow (→) must be wrapped in ansiYellow")
+	require.Contains(t, raw, ansiYellow, "inline branch arrow (→) must be wrapped in ansiYellow")
 	require.Contains(t, raw, ansiReset, "every color wrap must be closed by ansiReset")
 	stripped := stripAnsiTest(raw)
 	require.Contains(t, stripped, "→ then", "branch arrow + name must survive color wrapping")
+
+	// Inline assertion: the line containing "→ then" must ALSO contain
+	// "✓" and "1ms" (proves the suffix is appended to the step_complete
+	// line, not emitted on a standalone adjacent line).
+	var found bool
+	for _, line := range strings.Split(stripped, "\n") {
+		if strings.Contains(line, "→ then") {
+			require.Contains(t, line, "✓",
+				"line containing branch suffix must also contain ✓ (inline). Line: %q", line)
+			require.Contains(t, line, "1ms",
+				"line containing branch suffix must also contain 1ms (inline). Line: %q", line)
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "expected a line containing '→ then'. Stripped output: %q", stripped)
+
+	// Defense: NO line equals the old standalone shape "     → then" exactly.
+	for _, line := range strings.Split(stripped, "\n") {
+		require.NotEqual(t, "     → then", line,
+			"no stripped line may match the old standalone shape. Stripped: %q", stripped)
+	}
+}
+
+// TestLiveBlock_BranchAppendsToStepComplete: a branch event followed by
+// step_complete for the same idx emits a single line containing the
+// counter [3/3], the kind word "step", the ✓ marker, the duration "1ms",
+// AND the inline branch suffix "→ then" — all on the same rendered line.
+func TestLiveBlock_BranchAppendsToStepComplete(t *testing.T) {
+	out := &safeBuffer{}
+	r := newLiveRenderer(out)
+
+	r.submit(progressEvent{Kind: "branch", Idx: 3, Branch: "then"})
+	time.Sleep(150 * time.Millisecond)
+	r.submit(progressEvent{
+		Kind: "step_complete", Idx: 3, Total: 3, Status: "ok", DurationMs: 1, Summary: "",
+	})
+	time.Sleep(150 * time.Millisecond)
+	r.Close()
+
+	stripped := stripAnsiTest(out.String())
+	require.Contains(t, stripped, "[3/3]", "counter must be present")
+	require.Contains(t, stripped, "step  ✓ 1ms",
+		"completion row must follow the established format. Stripped: %q", stripped)
+	require.Contains(t, stripped, "→ then", "inline branch suffix must be present")
+
+	// All four properties on the same rendered line.
+	var foundAll bool
+	for _, line := range strings.Split(stripped, "\n") {
+		if strings.Contains(line, "[3/3]") &&
+			strings.Contains(line, "step") &&
+			strings.Contains(line, "✓") &&
+			strings.Contains(line, "1ms") &&
+			strings.Contains(line, "→ then") {
+			foundAll = true
+			break
+		}
+	}
+	require.True(t, foundAll,
+		"expected a single line with [3/3], step, ✓, 1ms, AND → then. Stripped: %q", stripped)
+}
+
+// TestLiveBlock_OrphanBranchEvent_NoOutput: a lone branch event (no
+// matching step_complete) produces no visible content — neither the →
+// glyph nor the branch name "then" appears in stripped output. Cursor
+// show/hide ANSI sequences are allowed (Close emits them).
+func TestLiveBlock_OrphanBranchEvent_NoOutput(t *testing.T) {
+	out := &safeBuffer{}
+	r := newLiveRenderer(out)
+
+	r.submit(progressEvent{Kind: "branch", Idx: 99, Branch: "then"})
+	time.Sleep(150 * time.Millisecond)
+	r.Close()
+
+	stripped := stripAnsiTest(out.String())
+	require.NotContains(t, stripped, "→",
+		"orphan branch must produce no visible arrow. Stripped: %q", stripped)
+	require.NotContains(t, stripped, "then",
+		"orphan branch must produce no visible branch name. Stripped: %q", stripped)
 }
 
 // TestLiveBlock_FlowFailedHasRedFailedMarker: flow_complete with

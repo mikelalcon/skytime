@@ -91,16 +91,6 @@ func TestProgress_BazelFormat(t *testing.T) {
 			want: expect{"[3/3]", "if_cond", "ctx.health"},
 		},
 		{
-			name: "branch then arrow",
-			call: call{"skytime", []slog.Attr{
-				slog.String("event", "branch"),
-				slog.Int("idx", 3),
-				slog.String("path", "3"),
-				slog.String("branch", "then"),
-			}},
-			want: expect{"→", "then"},
-		},
-		{
 			name: "flow_complete",
 			call: call{"skytime", []slog.Attr{
 				slog.String("event", "flow_complete"),
@@ -152,6 +142,158 @@ func TestProgress_NestedStepPath(t *testing.T) {
 	got := progressOut.String()
 	require.Contains(t, got, "[3a/3a]", "nested path uses path-based counter, not numeric idx/total")
 	require.True(t, strings.HasPrefix(got, "  "), "nested rows must be indented 2 spaces; got %q", got)
+}
+
+// ---------------------------------------------------------------------------
+// Quick 260503-qkk: branch label inlines onto step_complete line
+// ---------------------------------------------------------------------------
+//
+// renderBranch is now buffer-only; the inline ` → <branch>` suffix is
+// appended to the if_cond's step_complete line. These tests pin:
+//   - happy path: branch then step_complete same idx → suffix appended,
+//     no standalone line.
+//   - happy path (else): same as above with branch="else".
+//   - orphan branch: branch with no matching step_complete → zero output.
+//   - step_complete without buffered branch: format unchanged, no suffix.
+
+// runBranchInlineSequence drives a 3-event sequence (step_dispatch → branch
+// → step_complete) and returns the rendered output. Helper used by the
+// then/else sub-tests below.
+func runBranchInlineSequence(t *testing.T, branchName string) string {
+	t.Helper()
+	var progressOut, passOut bytes.Buffer
+	passthrough := slog.NewTextHandler(&passOut, &slog.HandlerOptions{Level: slog.LevelInfo})
+	handler := newProgressHandler(passthrough, &progressOut)
+	logger := slog.New(handler)
+
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "step_dispatch"),
+		slog.Int("idx", 3), slog.Int("total", 3),
+		slog.String("kind", "if_cond"),
+		slog.String("label", "ctx.health"),
+		slog.String("path", "3"),
+	)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "branch"),
+		slog.Int("idx", 3),
+		slog.String("path", "3"),
+		slog.String("branch", branchName),
+	)
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "step_complete"),
+		slog.Int("idx", 3), slog.Int("total", 3),
+		slog.String("kind", "if_cond"),
+		slog.String("path", "3"),
+		slog.String("status", "ok"),
+		slog.Int64("duration_ms", 1),
+		slog.String("summary", ""),
+	)
+	return progressOut.String()
+}
+
+// TestProgress_BranchAppendsToStepComplete: a branch event followed by
+// the matching step_complete emits a SINGLE completion line ending with
+// ` → <branch>`. The standalone "     → <branch>" line is NOT emitted.
+func TestProgress_BranchAppendsToStepComplete(t *testing.T) {
+	t.Run("then", func(t *testing.T) {
+		got := runBranchInlineSequence(t, "then")
+
+		require.Contains(t, got, "✓ 1ms",
+			"if_cond completion marker + duration must be present. Output: %q", got)
+		require.Contains(t, got, "→ then",
+			"inline branch suffix must be present. Output: %q", got)
+		require.NotContains(t, got, "     → then",
+			"standalone-line shape (5-space indent + arrow + name) must NOT appear. Output: %q", got)
+
+		// Defensive: NO line equals exactly "     → then".
+		for _, line := range strings.Split(got, "\n") {
+			require.NotEqual(t, "     → then", line,
+				"no rendered line may match the old standalone shape exactly. Output: %q", got)
+		}
+
+		// Inline-attached: the line containing "✓ 1ms" must end with "→ then"
+		// (after trimming trailing whitespace).
+		var found bool
+		for _, line := range strings.Split(got, "\n") {
+			if strings.Contains(line, "✓ 1ms") {
+				trimmed := strings.TrimRight(line, " \t\r")
+				require.True(t, strings.HasSuffix(trimmed, "→ then"),
+					"step_complete line must end with branch suffix '→ then'. Got line: %q", line)
+				found = true
+				break
+			}
+		}
+		require.True(t, found, "expected at least one line containing '✓ 1ms'. Output: %q", got)
+	})
+
+	t.Run("else", func(t *testing.T) {
+		got := runBranchInlineSequence(t, "else")
+
+		require.Contains(t, got, "✓ 1ms",
+			"if_cond completion marker + duration must be present. Output: %q", got)
+		require.Contains(t, got, "→ else",
+			"inline branch suffix must be present (else). Output: %q", got)
+		require.NotContains(t, got, "     → else",
+			"standalone-line shape must NOT appear. Output: %q", got)
+
+		var found bool
+		for _, line := range strings.Split(got, "\n") {
+			if strings.Contains(line, "✓ 1ms") {
+				trimmed := strings.TrimRight(line, " \t\r")
+				require.True(t, strings.HasSuffix(trimmed, "→ else"),
+					"step_complete line must end with branch suffix '→ else'. Got line: %q", line)
+				found = true
+				break
+			}
+		}
+		require.True(t, found, "expected at least one line containing '✓ 1ms'. Output: %q", got)
+	})
+}
+
+// TestProgress_OrphanBranchEvent_NoStandaloneLine: a lone branch event
+// (no matching step_complete) produces zero bytes of output. Proves
+// renderBranch is buffer-only.
+func TestProgress_OrphanBranchEvent_NoStandaloneLine(t *testing.T) {
+	var progressOut, passOut bytes.Buffer
+	passthrough := slog.NewTextHandler(&passOut, &slog.HandlerOptions{Level: slog.LevelInfo})
+	handler := newProgressHandler(passthrough, &progressOut)
+	logger := slog.New(handler)
+
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "branch"),
+		slog.Int("idx", 99),
+		slog.String("path", "99"),
+		slog.String("branch", "then"),
+	)
+
+	require.Equal(t, "", progressOut.String(),
+		"orphan branch event must produce zero output (renderBranch is buffer-only)")
+}
+
+// TestProgress_StepCompleteWithoutBufferedBranch_NoSuffix: a step_complete
+// with no prior branch event renders the existing format verbatim — no
+// trailing arrow.
+func TestProgress_StepCompleteWithoutBufferedBranch_NoSuffix(t *testing.T) {
+	var progressOut, passOut bytes.Buffer
+	passthrough := slog.NewTextHandler(&passOut, &slog.HandlerOptions{Level: slog.LevelInfo})
+	handler := newProgressHandler(passthrough, &progressOut)
+	logger := slog.New(handler)
+
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "step_complete"),
+		slog.Int("idx", 1), slog.Int("total", 1),
+		slog.String("kind", "step"),
+		slog.String("path", "1"),
+		slog.String("status", "ok"),
+		slog.Int64("duration_ms", 42),
+		slog.String("summary", "status=200"),
+	)
+
+	got := progressOut.String()
+	require.Contains(t, got, "✓ 42ms  status=200",
+		"existing step_complete format must be preserved verbatim. Output: %q", got)
+	require.NotContains(t, got, "→",
+		"no suffix arrow when buffer is empty. Output: %q", got)
 }
 
 // ---------------------------------------------------------------------------
