@@ -97,10 +97,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Goal:** [Urgent work - to be planned]
 **Requirements**: TBD
 **Depends on:** Phase 4
-**Plans:** 7/8 plans executed
+**Plans:** 8/8 plans complete
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 04.1 to break down)
+- [x] TBD (run /gsd:plan-phase 04.1 to break down) (completed 2026-05-03)
 
 ### Phase 5: Tier-3 E2E Test Harness (`temporal_test`)
 **Goal**: Build `pkg/testing` so consultants can write E2E tests in `.star` files: `tester.workflow`, `tester.mock_action`, and `tester.run` mock the single generic activity inside `testsuite.TestWorkflowEnvironment`, route per-action calls back to Starlark mock lambdas evaluating in the same restricted predeclared environment as production lambdas, and a replay helper runs each test twice and diffs Temporal event histories. `skytime test <dir>` is the discovery and runner entry point.
