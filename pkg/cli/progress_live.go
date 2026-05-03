@@ -211,9 +211,15 @@ func (r *liveRenderer) applyEvent(ev progressEvent) {
 				suffix = fmt.Sprintf(" %s→%s %s", ansiYellow, ansiReset, branch)
 			}
 		}
-		fmt.Fprintf(r.out, "%s[%d/%d]%s %sstep%s  %s %dms  %s%s\n",
+		// Quick 260503-qx1: kind word now comes from ev.KindAttr (no
+		// longer hardcoded "step"), so if_cond/script/for_each_parallel/
+		// call_flow rows render with their correct kind on completion.
+		// ev.Label is inserted between the kind column and the marker so
+		// user-defined step names (D4.1-15) persist past dispatch.
+		fmt.Fprintf(r.out, "%s[%d/%d]%s %s%s%s  %s  %s %dms  %s%s\n",
 			ansiBrightCyan, ev.Idx, ev.Total, ansiReset,
-			ansiBrightWhite, ansiReset,
+			ansiBrightWhite, padKind(ev.KindAttr), ansiReset,
+			ev.Label,
 			marker, ev.DurationMs, ev.Summary, suffix)
 	case "branch":
 		// Quick 260503-qkk: branch is now a buffer-only signal; the

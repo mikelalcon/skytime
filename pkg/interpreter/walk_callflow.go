@@ -56,6 +56,7 @@ func (i *interpreter) walkCallFlow(ctx workflow.Context, cf *dag.CallFlow) (err 
 		logger.Info("skytime",
 			"event", "step_complete",
 			"kind", "call_flow",
+			"label", cf.Name,
 			"status", status,
 			"duration_ms", workflow.Now(ctx).Sub(start).Milliseconds(),
 			"idx", parentIdx, "total", parentTot, "path", parentPath,

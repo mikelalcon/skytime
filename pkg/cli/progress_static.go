@@ -60,18 +60,26 @@ func (p *progressHandler) renderStepDispatch(a attrMap) error {
 	return p.println(line)
 }
 
-// renderStepComplete:
-//   - on status=ok: `     ✓ <duration_ms>ms  <summary>`
-//   - on status=err: `     ✗ <duration_ms>ms  <summary>`
+// renderStepComplete: `<indent><counter> <kind> <label>  <marker> <ms>ms  <summary>`
 //
-// The completion line is indented 5 spaces from column 0 so the marker
-// column-aligns roughly under the counter.
+// Quick 260503-qx1: kind + label persist on the completion row, mirroring
+// the renderStepDispatch column shape. User-defined step names (D4.1-15
+// step(name="Get repo ${ctx.repo}")) survive past the dispatch banner
+// onto the finalized ✓ row.
+//
+// computeCounter returns the same indent+counter pair as renderStepDispatch
+// (top-level rows indent "" + counter "[N/M]"; nested rows indent "  " +
+// counter "[path/path]") so the dispatch row above and the completion row
+// below align column-for-column.
 func (p *progressHandler) renderStepComplete(a attrMap) error {
 	status := a.str("status")
 	dur := a.int("duration_ms")
 	summary := a.str("summary")
 	path := a.str("path")
 	idx := a.int("idx")
+	total := a.int("total")
+	kind := a.str("kind")
+	label := a.str("label")
 
 	// Quick 260502-onc Fix C: capture failure context for
 	// renderFlowComplete to attribute the failure when err_count > 0.
@@ -82,24 +90,24 @@ func (p *progressHandler) renderStepComplete(a attrMap) error {
 	if status == "err" {
 		p.lastErr = &failureContext{
 			idx:     idx,
-			total:   a.int("total"),
+			total:   total,
 			summary: summary,
 		}
 	}
 
-	// Nested rows already had their dispatch indented 2 spaces; their
-	// completion row indents an additional 2 (total 4) so the marker
-	// sits under the nested counter. Top-level rows indent 5 from col 0.
-	indent := "     "
-	if isNestedPath(idx, path) {
-		indent = "       "
-	}
+	indent, counter := p.computeCounter(idx, total, path)
 
 	marker := p.colorOk("✓")
 	if status == "err" {
 		marker = p.colorErr("✗")
 	}
-	line := fmt.Sprintf("%s%s %dms  %s", indent, marker, dur, summary)
+	line := fmt.Sprintf("%s%s %s  %s  %s %dms  %s",
+		indent,
+		p.colorCounter(counter),
+		p.colorKind(padKind(kind)),
+		label,
+		marker, dur, summary,
+	)
 
 	// Quick 260503-qkk: if a `branch` event for this idx was buffered,
 	// read+delete it and append ` <colorArrow(→)> <branch>` to the line.

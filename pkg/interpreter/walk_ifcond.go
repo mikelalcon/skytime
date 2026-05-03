@@ -44,6 +44,7 @@ func (i *interpreter) walkIfCond(ctx workflow.Context, n *dag.IfCond) (err error
 		logger.Info("skytime",
 			"event", "step_complete",
 			"kind", "if_cond",
+			"label", "cond",
 			"status", status,
 			"duration_ms", workflow.Now(ctx).Sub(start).Milliseconds(),
 			"idx", parentIdx, "total", parentTot, "path", parentPath,

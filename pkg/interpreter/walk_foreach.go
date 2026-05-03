@@ -51,6 +51,7 @@ func (i *interpreter) walkForEach(ctx workflow.Context, fe *dag.ForEachParallel)
 		logger.Info("skytime",
 			"event", "step_complete",
 			"kind", "for_each_parallel",
+			"label", "items=?",
 			"status", "err",
 			"duration_ms", workflow.Now(ctx).Sub(start).Milliseconds(),
 			"idx", parentIdx, "total", parentTot, "path", parentPath,
@@ -59,11 +60,15 @@ func (i *interpreter) walkForEach(ctx workflow.Context, fe *dag.ForEachParallel)
 		return err
 	}
 	n := len(items)
+	// Hoist label so dispatch + deferred complete share the same string —
+	// single source of truth, matches the qx1 contract that step_complete
+	// carries the same label as its dispatch.
+	label := fmt.Sprintf("items=%d", n)
 
 	logger.Info("skytime",
 		"event", "step_dispatch",
 		"kind", "for_each_parallel",
-		"label", fmt.Sprintf("items=%d", n),
+		"label", label,
 		"idx", parentIdx, "total", parentTot, "path", parentPath,
 	)
 	defer func() {
@@ -76,6 +81,7 @@ func (i *interpreter) walkForEach(ctx workflow.Context, fe *dag.ForEachParallel)
 		logger.Info("skytime",
 			"event", "step_complete",
 			"kind", "for_each_parallel",
+			"label", label,
 			"status", status,
 			"duration_ms", workflow.Now(ctx).Sub(start).Milliseconds(),
 			"idx", parentIdx, "total", parentTot, "path", parentPath,

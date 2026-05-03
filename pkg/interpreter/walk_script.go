@@ -44,6 +44,7 @@ func (i *interpreter) walkScript(ctx workflow.Context, n *dag.Script) (err error
 		logger.Info("skytime",
 			"event", "step_complete",
 			"kind", "script",
+			"label", label,
 			"status", status,
 			"duration_ms", workflow.Now(ctx).Sub(start).Milliseconds(),
 			"idx", idx, "total", total, "path", path,
