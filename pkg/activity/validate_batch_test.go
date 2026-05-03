@@ -1,6 +1,7 @@
 package activity
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -183,4 +184,137 @@ func TestValidateBatch_SingleNonIdempotent_OK(t *testing.T) {
 	a := newValidationActivity(t)
 	batch := []*dag.ActionRef{mkValidationRef("ext.nonidem")}
 	require.NoError(t, a.validateBatch(batch))
+}
+
+// =============================================================================
+// Plan 04.1-04 Task 3 — runtime block_fn fallback (D4.1-12, D4.1-13)
+//
+// validateBatch is the existing activity-side defense-in-depth gate that
+// already enforces D2-05 (mixed-idempotency reject), D2-06 (single-action
+// non-idempotent allowed), and D2-07 (block-size cap). Phase 04.1 reuses
+// this gate verbatim for dynamic block_fn results — there is NO new
+// production code in pkg/activity. These tests pin that the gate exists
+// AND fires with the canonical messages when a block_fn lambda
+// hypothetically produces a misshapen []ActionRef at runtime.
+// =============================================================================
+
+// TestValidateBatch_MixedIdempotency_RuntimeReject — D4.1-12 runtime
+// fallback: when a block_fn lambda returns a mixed-idempotency batch,
+// the activity-side gate rejects with errType MixedIdempotency and the
+// canonical "batch mixes idempotent and non-idempotent operations"
+// message.
+func TestValidateBatch_MixedIdempotency_RuntimeReject(t *testing.T) {
+	a := newValidationActivity(t)
+	// Shape-of-data this test pins: a []*ActionRef as block_fn would
+	// have produced at runtime.
+	batch := []*dag.ActionRef{
+		mkValidationRef("ext.idem"),
+		mkValidationRef("ext.nonidem"),
+	}
+	err := a.validateBatch(batch)
+	require.Error(t, err)
+	var appErr *temporal.ApplicationError
+	require.True(t, errors.As(err, &appErr))
+	require.True(t, appErr.NonRetryable())
+	require.Equal(t, errTypeMixedIdempotency, appErr.Type())
+	require.Contains(t, appErr.Error(), "batch mixes idempotent and non-idempotent operations")
+}
+
+// TestValidateBatch_OversizedBlock_RuntimeReject — D4.1-13 runtime
+// fallback: D2-07 block-size cap (default 50) extends to runtime
+// block_fn results.
+func TestValidateBatch_OversizedBlock_RuntimeReject(t *testing.T) {
+	a := newValidationActivity(t)
+	batch := make([]*dag.ActionRef, 51) // one over the default cap
+	for i := range batch {
+		batch[i] = mkValidationRef("ext.idem")
+	}
+	err := a.validateBatch(batch)
+	require.Error(t, err)
+	var appErr *temporal.ApplicationError
+	require.True(t, errors.As(err, &appErr))
+	require.True(t, appErr.NonRetryable())
+	require.Equal(t, errTypeBatchTooLarge, appErr.Type())
+	require.Contains(t, appErr.Error(), "batch size 51 exceeds maximum 50")
+}
+
+// TestValidateBatch_HomogeneousIdempotent_OK — happy path of the runtime
+// fallback: all-idempotent block_fn results pass through cleanly.
+func TestValidateBatch_HomogeneousIdempotent_OK(t *testing.T) {
+	a := newValidationActivity(t)
+	batch := []*dag.ActionRef{
+		mkValidationRef("ext.idem"),
+		mkValidationRef("ext.idem"),
+		mkValidationRef("ext.idem"),
+		mkValidationRef("ext.idem"),
+		mkValidationRef("ext.idem"),
+	}
+	require.NoError(t, a.validateBatch(batch))
+}
+
+// TestValidateBatch_EmptyBatch — pin existing layered defense: the
+// workflow side's empty-block_fn short-circuit (Plan 05b Test 6) is the
+// ONLY path that legitimately produces an empty []*ActionRef. If a
+// hand-built test or hypothetical bug ever sends [] to ExecuteBatch
+// directly, validateBatch rejects with errTypeEmptyBatch.
+func TestValidateBatch_EmptyBatch(t *testing.T) {
+	a := newValidationActivity(t)
+	err := a.validateBatch([]*dag.ActionRef{})
+	require.Error(t, err)
+	var appErr *temporal.ApplicationError
+	require.True(t, errors.As(err, &appErr))
+	require.True(t, appErr.NonRetryable())
+	require.Equal(t, errTypeEmptyBatch, appErr.Type())
+	require.Contains(t, appErr.Error(), "empty batch")
+}
+
+// TestValidateBatch_RuntimeBlockFnReachesGate — Phase 04.1's
+// dynamic-block_fn loop closer: prove that a []*ActionRef produced by a
+// block_fn lambda at runtime flows through the same validateBatch gate
+// as a static block. ExecuteBatch is the production entry point; we
+// invoke it directly with a hand-built mixed batch and assert the gate
+// rejects BEFORE any per-action OperationDispatch.Func runs.
+func TestValidateBatch_RuntimeBlockFnReachesGate(t *testing.T) {
+	// Counter increments only when a per-action Func runs. If the
+	// validateBatch gate fires correctly at the top of ExecuteBatch,
+	// the counter stays at 0.
+	var idemCalls, nonIdemCalls int
+	dispatch := OperationDispatch{
+		"ext.idem": extension.OperationSpec{
+			Name:       "idem",
+			Idempotent: extension.Ptr(true),
+			Func: func(_ context.Context, _ any, _ extension.Credential) (dag.OperationOutput, error) {
+				idemCalls++
+				return nil, nil
+			},
+		},
+		"ext.nonidem": extension.OperationSpec{
+			Name:       "nonidem",
+			Idempotent: extension.Ptr(false),
+			Func: func(_ context.Context, _ any, _ extension.Credential) (dag.OperationOutput, error) {
+				nonIdemCalls++
+				return nil, nil
+			},
+		},
+	}
+	handler := &extensiontesting.FakeCredentialHandler{Creds: map[string]extension.Credential{}}
+	a, err := New(dispatch, handler)
+	require.NoError(t, err)
+
+	// The mixed batch shape a block_fn lambda might have produced at
+	// runtime via lambda evaluation in pkg/interpreter.
+	batch := []*dag.ActionRef{
+		mkValidationRef("ext.idem"),
+		mkValidationRef("ext.nonidem"),
+	}
+	_, err = a.ExecuteBatch(context.Background(), batch)
+	require.Error(t, err, "ExecuteBatch must reject mixed batch via validateBatch")
+	var appErr *temporal.ApplicationError
+	require.True(t, errors.As(err, &appErr))
+	require.True(t, appErr.NonRetryable())
+	require.Equal(t, errTypeMixedIdempotency, appErr.Type())
+	require.Equal(t, 0, idemCalls,
+		"validateBatch must reject BEFORE any idempotent Func runs (proves the gate is reached)")
+	require.Equal(t, 0, nonIdemCalls,
+		"validateBatch must reject BEFORE any non-idempotent Func runs")
 }
