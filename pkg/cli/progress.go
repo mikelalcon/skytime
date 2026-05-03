@@ -71,6 +71,13 @@ type progressHandler struct {
 	// handler — Close() cleans up.
 	live     *liveRenderer
 	liveOnce sync.Once
+
+	// branchByIdx buffers `event=branch` records keyed by step idx. The
+	// entry is read+deleted by renderStepComplete for the same idx, which
+	// appends ` <colorArrow(→)> <branch>` to the rendered line. Lazy-init
+	// on first store. Quick 260503-qkk: inlines if_cond branch label onto
+	// the if_cond's step_complete line; standalone branch line removed.
+	branchByIdx map[int64]string
 }
 
 // failureContext is the per-handler record of the most recent
@@ -204,12 +211,13 @@ func (p *progressHandler) Close() {
 // handler is logically a sibling, not an alias).
 func (p *progressHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &progressHandler{
-		wrapped:  p.wrapped.WithAttrs(attrs),
-		out:      p.out,
-		ttyKnown: p.ttyKnown,
-		tty:      p.tty,
-		verbose:  p.verbose,
-		lastErr:  p.lastErr,
+		wrapped:     p.wrapped.WithAttrs(attrs),
+		out:         p.out,
+		ttyKnown:    p.ttyKnown,
+		tty:         p.tty,
+		verbose:     p.verbose,
+		lastErr:     p.lastErr,
+		branchByIdx: p.branchByIdx,
 	}
 }
 
@@ -218,12 +226,13 @@ func (p *progressHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 // lastErr is shallow-copied per the WithAttrs note above.
 func (p *progressHandler) WithGroup(name string) slog.Handler {
 	return &progressHandler{
-		wrapped:  p.wrapped.WithGroup(name),
-		out:      p.out,
-		ttyKnown: p.ttyKnown,
-		tty:      p.tty,
-		verbose:  p.verbose,
-		lastErr:  p.lastErr,
+		wrapped:     p.wrapped.WithGroup(name),
+		out:         p.out,
+		ttyKnown:    p.ttyKnown,
+		tty:         p.tty,
+		verbose:     p.verbose,
+		lastErr:     p.lastErr,
+		branchByIdx: p.branchByIdx,
 	}
 }
 

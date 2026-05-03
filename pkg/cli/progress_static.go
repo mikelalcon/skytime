@@ -100,23 +100,38 @@ func (p *progressHandler) renderStepComplete(a attrMap) error {
 		marker = p.colorErr("✗")
 	}
 	line := fmt.Sprintf("%s%s %dms  %s", indent, marker, dur, summary)
+
+	// Quick 260503-qkk: if a `branch` event for this idx was buffered,
+	// read+delete it and append ` <colorArrow(→)> <branch>` to the line.
+	// The standalone branch line is no longer emitted by renderBranch.
+	if p.branchByIdx != nil {
+		if branch, ok := p.branchByIdx[idx]; ok {
+			delete(p.branchByIdx, idx)
+			if branch != "" {
+				line = fmt.Sprintf("%s %s %s", line, p.colorArrow("→"), branch)
+			}
+		}
+	}
+
 	return p.println(line)
 }
 
-// renderBranch: `<indent>→ <branch>` — the arrow indicates an if_cond
-// took the named branch (then|else).
+// renderBranch buffers the branch name keyed by idx; renderStepComplete
+// for the same idx reads+deletes the buffer and appends a colored
+// ` → <branch>` suffix. Returns nil with NO output. Quick 260503-qkk:
+// previously emitted a standalone `     → <branch>` line; that line is
+// now inlined onto the if_cond's step_complete row.
 func (p *progressHandler) renderBranch(a attrMap) error {
 	branch := a.str("branch")
-	path := a.str("path")
 	idx := a.int("idx")
-
-	indent := "     "
-	if isNestedPath(idx, path) {
-		indent = "       "
+	if branch == "" {
+		return nil // defensive: empty-branch event is a no-op
 	}
-
-	line := fmt.Sprintf("%s%s %s", indent, p.colorArrow("→"), branch)
-	return p.println(line)
+	if p.branchByIdx == nil {
+		p.branchByIdx = make(map[int64]string)
+	}
+	p.branchByIdx[idx] = branch
+	return nil
 }
 
 // renderFlowComplete: success → `[skytime] flow complete  <ok>/<total> steps  total <ms>ms`

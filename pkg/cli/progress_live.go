@@ -67,6 +67,13 @@ type liveRenderer struct {
 	cap        int
 	drawnLines int
 	spinIdx    int
+
+	// branchByIdx buffers branch events keyed by step idx; consumed by
+	// case "step_complete" which appends ` → <branch>` (yellow arrow) to
+	// the rendered Fprintf line. Owned by the render goroutine. Quick
+	// 260503-qkk: replaces the previous standalone `     → <branch>`
+	// emission to inline the suffix onto the if_cond's completion line.
+	branchByIdx map[int64]string
 }
 
 // newLiveRenderer constructs a live renderer, hides the cursor, and
@@ -75,10 +82,11 @@ type liveRenderer struct {
 // events, clears the redraw region, and restores the cursor.
 func newLiveRenderer(out io.Writer) *liveRenderer {
 	r := &liveRenderer{
-		out:    out,
-		events: make(chan progressEvent, 64),
-		closed: make(chan struct{}),
-		cap:    10, // D4.1-19
+		out:         out,
+		events:      make(chan progressEvent, 64),
+		closed:      make(chan struct{}),
+		cap:         10, // D4.1-19
+		branchByIdx: make(map[int64]string),
 	}
 	// Hide cursor on activation; restored on Close().
 	fmt.Fprint(out, "\x1b[?25l")
@@ -191,15 +199,30 @@ func (r *liveRenderer) applyEvent(ev progressEvent) {
 		if ev.Status == "err" {
 			marker = ansiRed + "✗" + ansiReset
 		}
-		fmt.Fprintf(r.out, "%s[%d/%d]%s %sstep%s  %s %dms  %s\n",
+		// Quick 260503-qkk: if a buffered branch event matches this
+		// idx, read+delete it and append ` → <branch>` (yellow arrow)
+		// as a suffix on the same step_complete line. Replaces the
+		// standalone `     → <branch>` line previously emitted by
+		// case "branch".
+		suffix := ""
+		if branch, ok := r.branchByIdx[ev.Idx]; ok {
+			delete(r.branchByIdx, ev.Idx)
+			if branch != "" {
+				suffix = fmt.Sprintf(" %s→%s %s", ansiYellow, ansiReset, branch)
+			}
+		}
+		fmt.Fprintf(r.out, "%s[%d/%d]%s %sstep%s  %s %dms  %s%s\n",
 			ansiBrightCyan, ev.Idx, ev.Total, ansiReset,
 			ansiBrightWhite, ansiReset,
-			marker, ev.DurationMs, ev.Summary)
+			marker, ev.DurationMs, ev.Summary, suffix)
 	case "branch":
-		// Quick 260503-q9p: wrap → arrow in yellow, mirroring the
-		// static path's colorArrow choice.
-		r.clearRedrawRegion()
-		fmt.Fprintf(r.out, "     %s→%s %s\n", ansiYellow, ansiReset, ev.Branch)
+		// Quick 260503-qkk: branch is now a buffer-only signal; the
+		// suffix is emitted on the matching step_complete event. No
+		// Fprintf and no clearRedrawRegion — the next tick or
+		// step_complete will redraw as needed.
+		if ev.Branch != "" {
+			r.branchByIdx[ev.Idx] = ev.Branch
+		}
 	case "flow_complete":
 		// Quick 260503-q9p: wrap [skytime] banner in dim cyan; on the
 		// failure path also wrap the word "failed" in red — mirrors
