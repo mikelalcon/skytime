@@ -142,9 +142,24 @@ func (p *Parser) builtinFlow(thread *starlark.Thread, fn *starlark.Builtin, args
 		return nil, err
 	}
 
+	// D4.1-16: optional ${...} interpolation in the flow name. The
+	// authoritative duplicate-detection key remains the LITERAL name —
+	// two flows with different templates that resolve to the same string
+	// at runtime do NOT collide here (documented v1 limitation; the
+	// duplicate check above already keyed on the literal name).
+	var flowNameFn *dag.CapturedLambda
+	if strings.Contains(name, "${") {
+		desugared, derr := p.desugarInterpolation(name, pos)
+		if derr != nil {
+			return nil, derr
+		}
+		flowNameFn = desugared
+	}
+
 	f := &dag.Flow{
 		Pos:       pos,
 		Name:      name,
+		NameFn:    flowNameFn,
 		Inputs:    inputsMap,
 		Body:      body,
 		TaskQueue: taskQueue,

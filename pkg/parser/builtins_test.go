@@ -728,3 +728,67 @@ func TestBuiltinStep_ActionFn_CtxTypoRejected(t *testing.T) {
 	assert.Contains(t, ve.Msg, "tyop",
 		"D4-02 walker must surface the ctx.<typo> attribute name")
 }
+
+// =============================================================================
+// Plan 04.1-03 Task 3 — builtinFlow(name=...) supports ${...} interpolation
+// (D4.1-16)
+// =============================================================================
+
+// TestBuiltinFlow_NameInterpolation: a flow name carrying ${...} populates
+// Flow.NameFn while keeping Flow.Name as the literal template (kept for
+// D-15 duplicate detection).
+func TestBuiltinFlow_NameInterpolation(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="Run for ${ctx.org}", inputs={"org":"string"}, steps=[
+    step(action=fake_ext.echo(msg="hi")),
+])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	require.Contains(t, flows, "Run for ${ctx.org}",
+		"literal name template kept for duplicate-detection key")
+	f := flows["Run for ${ctx.org}"]
+	require.NotNil(t, f.NameFn, "interpolated flow name must populate NameFn")
+	assert.Equal(t, "test.star", f.NameFn.Pos.Filename())
+}
+
+// TestBuiltinFlow_NameLiteral_NoInterpolation: a plain literal flow name
+// leaves Flow.NameFn nil (no regression on Phase 1 behavior).
+func TestBuiltinFlow_NameLiteral_NoInterpolation(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="literal", inputs={}, steps=[step(action=fake_ext.echo(msg="hi"))])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	f, ok := flows["literal"]
+	require.True(t, ok)
+	assert.Equal(t, "literal", f.Name)
+	assert.Nil(t, f.NameFn, "literal flow name must leave NameFn nil")
+}
+
+// TestBuiltinFlow_DuplicateNameStillRejected: two flows with the same
+// literal name still produce a duplicate-name *dag.ParseError. Pin
+// no-regression on D-15.
+func TestBuiltinFlow_DuplicateNameStillRejected(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="dup", inputs={}, steps=[step(action=fake_ext.echo(msg="a"))])
+flow(name="dup", inputs={}, steps=[step(action=fake_ext.echo(msg="b"))])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate flow name")
+}
+
+// TestBuiltinFlow_DuplicateNameAcrossLiteralAndInterpolated_Allowed: two
+// flows where one is a literal name and the other a ${}-template that
+// happens to read identically AT THE TEMPLATE LAYER do NOT collide.
+// Documented v1 limitation: collision detection is template-equality, not
+// runtime-resolved-string-equality.
+func TestBuiltinFlow_DuplicateNameAcrossLiteralAndInterpolated_Allowed(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={}, steps=[step(action=fake_ext.echo(msg="a"))])
+flow(name="${ctx.x}", inputs={"x":"string"}, steps=[step(action=fake_ext.echo(msg="b"))])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err, "different template strings must not collide on Flow.Name")
+	require.Contains(t, flows, "x")
+	require.Contains(t, flows, "${ctx.x}")
+	assert.Nil(t, flows["x"].NameFn, "literal flow leaves NameFn nil")
+	assert.NotNil(t, flows["${ctx.x}"].NameFn, "interpolated flow populates NameFn")
+}
