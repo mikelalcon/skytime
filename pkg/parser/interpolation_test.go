@@ -2,6 +2,8 @@ package parser
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -13,6 +15,8 @@ import (
 	"go.starlark.net/syntax"
 
 	"github.com/mikelalcon/skytime/pkg/dag"
+	"github.com/mikelalcon/skytime/pkg/extension"
+	httpext "github.com/mikelalcon/skytime/pkg/extension/builtin/http"
 )
 
 // =============================================================================
@@ -378,20 +382,44 @@ func TestCtxWalk_FallsBackToPos(t *testing.T) {
 	}
 }
 
-// TestInterpolation_TypoRejected — END-TO-END test that requires
-// interpolation desugaring to be wired into the kwarg-unpacking path
-// (builtinStep / http builtin). That wiring is Plan 04.1-03's
-// responsibility (file footprint disjoint with this plan). Skip until
-// Plan 03 lands; the BodyPos plumbing this plan ships gives Plan 03 the
-// hook it needs to make this test pass.
+// TestInterpolation_TypoRejected — END-TO-END test pinned by Plan 04.1-03:
+// builtinStep now routes string action kwargs through desugarInterpolation,
+// so `path = "/repos/${ctx.tyop}"` lands as a *StarlarkLambda inside the
+// ActionRef.Kwargs Dict. The D4-02 walker (extended in 04.1-03 Task 2 to
+// visit Step.Actions[i].Kwargs entries) re-parses the synthetic file via
+// BodyPos and surfaces the typo as *dag.ValidationError citing the user's
+// `${` position.
 func TestInterpolation_TypoRejected(t *testing.T) {
-	t.Skip("requires Plan 04.1-03 to wire desugarInterpolation into builtinStep / http extension; BodyPos walker plumbing in this plan provides the hook")
+	root := findModuleRootForFixture(t)
+	fixturePath := root + "/tests/fixtures/interp_invalid_typo.star"
+	p, err := NewParser(WithExtensions(httpExtensionForTest()))
+	require.NoError(t, err)
+	_, err = p.ParseFile(fixturePath)
+	require.Error(t, err, "ctx.tyop must surface as ValidationError")
+	var ve *dag.ValidationError
+	require.True(t, errors.As(err, &ve), "expected *dag.ValidationError, got %T: %v", err, err)
+	assert.Contains(t, ve.Msg, "tyop",
+		"ValidationError must mention the typo'd attribute name")
 }
 
-// TestInterpolation_NoTypo — END-TO-END companion to the typo test;
-// same dependency on Plan 04.1-03's wiring.
+// TestInterpolation_NoTypo — END-TO-END companion: an interp_valid_simple
+// fixture parses without error and produces a flow whose Step.Actions[0]
+// kwargs include a *StarlarkLambda for the interpolated `path` kwarg.
 func TestInterpolation_NoTypo(t *testing.T) {
-	t.Skip("requires Plan 04.1-03 to wire desugarInterpolation into builtinStep / http extension")
+	root := findModuleRootForFixture(t)
+	fixturePath := root + "/tests/fixtures/interp_valid_simple.star"
+	p, err := NewParser(WithExtensions(httpExtensionForTest()))
+	require.NoError(t, err)
+	flows, err := p.ParseFile(fixturePath)
+	require.NoError(t, err, "valid interpolation must parse cleanly")
+	require.Contains(t, flows, "interp_valid_simple")
+	step, ok := flows["interp_valid_simple"].Body[0].(*dag.Step)
+	require.True(t, ok)
+	require.Len(t, step.Actions, 1)
+	v, _, _ := step.Actions[0].Kwargs.Get(starlark.String("path"))
+	require.NotNil(t, v)
+	_, isLambda := dag.UnwrapStarlarkLambda(v)
+	assert.True(t, isLambda, "path kwarg with ${ctx.repo} must round-trip as *StarlarkLambda, got %T", v)
 }
 
 // =============================================================================
@@ -415,4 +443,29 @@ func matchString(pattern, s string) (bool, error) {
 		return false, err
 	}
 	return re.MatchString(s), nil
+}
+
+// findModuleRootForFixture walks up from CWD looking for go.mod so the
+// interpolation e2e tests can reach the tests/fixtures/ corpus regardless
+// of the package's working directory. Mirrors tests/differential_test.go's
+// findModuleRootCLI but local to pkg/parser to avoid reaching into the
+// firewall_test package.
+func findModuleRootForFixture(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	for dir := wd; dir != "/" && dir != ""; dir = filepath.Dir(dir) {
+		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr == nil {
+			return dir
+		}
+	}
+	t.Fatal("could not find go.mod walking up from " + wd)
+	return ""
+}
+
+// httpExtensionForTest returns the baked-in http extension for fixture
+// loading. Imported via extension.Extension so the parser sees the same
+// shape it would in production cmd/skytime wiring.
+func httpExtensionForTest() extension.Extension {
+	return httpext.New()
 }

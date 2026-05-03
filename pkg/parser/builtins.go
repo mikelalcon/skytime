@@ -414,12 +414,15 @@ func (p *Parser) builtinStep(thread *starlark.Thread, fn *starlark.Builtin, args
 	return wrapNode(step), nil
 }
 
-// desugarActionRefKwargs walks the kwargs *Dict on an ActionRef and
-// replaces every starlark.String value containing "${" with a
-// *StarlarkLambda produced by desugarInterpolation. Acts in-place on the
-// (still unfrozen) dict. Strings that contain only $$ escapes (no real
-// interpolation) are rewritten with the de-escaped literal so the
-// activity-side decoder sees a single $ in the value.
+// desugarActionRefKwargs walks the kwargs *Dict on an ActionRef and,
+// when any string value contains a `${...}` interpolation marker (or
+// only `$$` escapes), rebuilds the entire kwargs *Dict with the lambda
+// or de-escaped value substituted. Always-rebuild handles the http
+// extension shape where the per-method builtin freezes its output dict
+// before returning the ActionRef — mutating in place would surface as
+// "cannot insert into frozen hash table". The fresh dict is left
+// unfrozen; downstream finalize / activity-side dispatch handle freeze
+// when appropriate.
 //
 // ar.Pos is used as openPos for the desugarer; the scanner's per-${
 // position adjustment computes the precise line+col of each marker
@@ -428,31 +431,47 @@ func (p *Parser) desugarActionRefKwargs(ar *dag.ActionRef) error {
 	if ar == nil || ar.Kwargs == nil {
 		return nil
 	}
-	for _, item := range ar.Kwargs.Items() {
-		keyStr, isKeyStr := item[0].(starlark.String)
-		if !isKeyStr {
-			continue
-		}
+	// First pass: detect whether any value needs rewriting. If not,
+	// preserve the original (possibly frozen) dict unchanged.
+	items := ar.Kwargs.Items()
+	needRewrite := false
+	for _, item := range items {
 		valStr, isValStr := item[1].(starlark.String)
 		if !isValStr {
 			continue
 		}
-		raw := string(valStr)
-		if !strings.Contains(raw, "$") {
-			// Fast path: no $ at all → nothing to scan.
+		if strings.Contains(string(valStr), "$") {
+			needRewrite = true
+			break
+		}
+	}
+	if !needRewrite {
+		return nil
+	}
+
+	rebuilt := starlark.NewDict(len(items))
+	for _, item := range items {
+		key := item[0]
+		val := item[1]
+		valStr, isValStr := val.(starlark.String)
+		if !isValStr || !strings.Contains(string(valStr), "$") {
+			if err := rebuilt.SetKey(key, val); err != nil {
+				return err
+			}
 			continue
 		}
+		raw := string(valStr)
 		captured, err := p.desugarInterpolation(raw, ar.Pos)
 		if err != nil {
 			return err
 		}
 		if captured != nil {
-			if err := ar.Kwargs.SetKey(keyStr, dag.NewStarlarkLambda(captured)); err != nil {
+			if err := rebuilt.SetKey(key, dag.NewStarlarkLambda(captured)); err != nil {
 				return err
 			}
 			continue
 		}
-		// No interpolation found but the string contains $$ escapes —
+		// No interpolation found but the string contained $$ escapes —
 		// rebuild the de-escaped literal so the activity sees the
 		// unescaped form. scanInterpolation collapses $$ into a single $
 		// inside Parts[i].Text; we concatenate text parts to recover the
@@ -461,18 +480,17 @@ func (p *Parser) desugarActionRefKwargs(ar *dag.ActionRef) error {
 		if scanErr != nil {
 			return scanErr
 		}
-		var rebuilt strings.Builder
+		var deEsc strings.Builder
 		for _, part := range scanned.Parts {
 			if part.Kind == "text" {
-				rebuilt.WriteString(part.Text)
+				deEsc.WriteString(part.Text)
 			}
 		}
-		if rebuilt.String() != raw {
-			if err := ar.Kwargs.SetKey(keyStr, starlark.String(rebuilt.String())); err != nil {
-				return err
-			}
+		if err := rebuilt.SetKey(key, starlark.String(deEsc.String())); err != nil {
+			return err
 		}
 	}
+	ar.Kwargs = rebuilt
 	return nil
 }
 
@@ -522,18 +540,40 @@ func (p *Parser) builtinIfCond(thread *starlark.Thread, fn *starlark.Builtin, ar
 
 func (p *Parser) builtinScript(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var (
-		id     string
-		lamFn  starlark.Value
-		alias  string
+		idVal starlark.Value
+		lamFn starlark.Value
+		alias string
 	)
 	if err := starlark.UnpackArgs("script", args, kwargs,
-		"id", &id,
+		"id", &idVal,
 		"fn", &lamFn,
 		"output_alias", &alias,
 	); err != nil {
 		return nil, p.wrapBuiltinError("script", thread, err)
 	}
 	pos := callerPosition(thread)
+
+	idStr, ok := idVal.(starlark.String)
+	if !ok {
+		return nil, &dag.ParseError{
+			Pos: pos,
+			Msg: fmt.Sprintf("script.id: expected string, got %s", idVal.Type()),
+		}
+	}
+	id := string(idStr)
+
+	// D4.1-02: optional ${...} interpolation in the script id. Same
+	// shape as flow.NameFn / step.NameFn — literal template kept on
+	// Script.ID for cross-script keys; IDFn carries the synthesized
+	// *CapturedLambda when interpolation is present.
+	var scriptIDFn *dag.CapturedLambda
+	if strings.Contains(id, "${") {
+		desugared, derr := p.desugarInterpolation(id, pos)
+		if derr != nil {
+			return nil, derr
+		}
+		scriptIDFn = desugared
+	}
 
 	captured, err := p.captureLambda(thread, "fn", lamFn)
 	if err != nil {
@@ -543,6 +583,7 @@ func (p *Parser) builtinScript(thread *starlark.Thread, fn *starlark.Builtin, ar
 	return wrapNode(&dag.Script{
 		Pos:         pos,
 		ID:          id,
+		IDFn:        scriptIDFn,
 		LambdaID:    captured.ID,
 		OutputAlias: alias,
 	}), nil

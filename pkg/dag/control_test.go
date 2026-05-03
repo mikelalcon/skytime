@@ -32,6 +32,16 @@ func TestScript_FieldsRoundTrip(t *testing.T) {
 	assert.Equal(t, "pr_link", s.OutputAlias)
 }
 
+// TestScript_HasIDFn pins the D4.1-02 / W9 field. Compile-only proof
+// that Script.IDFn exists and accepts a *CapturedLambda. Runtime
+// evaluation belongs to a future plan; the parser-side desugar surface
+// in 04.1-03 needs the field today.
+func TestScript_HasIDFn(t *testing.T) {
+	s := &Script{IDFn: &CapturedLambda{ID: "x"}}
+	require.NotNil(t, s.IDFn)
+	assert.Equal(t, "x", s.IDFn.ID)
+}
+
 // --- ForEachParallel ---------------------------------------------------------
 
 func TestForEachParallel_Validate_LambdaOnly(t *testing.T) {

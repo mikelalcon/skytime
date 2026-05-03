@@ -32,6 +32,15 @@ type Script struct {
 	ID          string // human-readable script id from the `id=` kwarg
 	LambdaID    string // resolves into WorkflowInput.Lambdas
 	OutputAlias string // the state key under which the lambda's return value is stored
+
+	// IDFn is the resolved-at-runtime variant of ID. Set by the parser's
+	// interpolation desugarer when `script(id="..._${ctx.x}_...")`
+	// contains ${...} markers (D4.1-02). The interpreter evaluates this
+	// lambda before the script body fires and uses the result as the
+	// runtime ID string (visible in slog events). Mutually exclusive with
+	// ID at the runtime layer; the parser keeps the LITERAL template in
+	// ID for cross-script keys (mirrors D4.1-16 flow.Name handling).
+	IDFn *CapturedLambda `json:"-"`
 }
 
 var _ Node = (*Script)(nil)

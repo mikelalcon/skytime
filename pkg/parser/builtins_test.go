@@ -792,3 +792,58 @@ flow(name="${ctx.x}", inputs={"x":"string"}, steps=[step(action=fake_ext.echo(ms
 	assert.Nil(t, flows["x"].NameFn, "literal flow leaves NameFn nil")
 	assert.NotNil(t, flows["${ctx.x}"].NameFn, "interpolated flow populates NameFn")
 }
+
+// =============================================================================
+// Plan 04.1-03 Task 4 — script(id=...) supports ${...} interpolation
+// (D4.1-02 / W9)
+// =============================================================================
+
+// TestBuiltinScript_IDInterpolation_PopulatesIDFn: a script id containing
+// ${...} routes through desugarInterpolation and populates Script.IDFn.
+// Script.ID retains the literal template (kept for future cross-script
+// duplicate-detection — same shape as flow.NameFn / step.NameFn).
+func TestBuiltinScript_IDInterpolation_PopulatesIDFn(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={"repo":"string"}, steps=[
+    script(id = "extract_${ctx.repo}", fn = lambda ctx: {}, output_alias = "out"),
+])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	scr, ok := flows["x"].Body[0].(*dag.Script)
+	require.True(t, ok)
+	assert.Equal(t, "extract_${ctx.repo}", scr.ID,
+		"literal template kept on Script.ID for cross-script keys")
+	require.NotNil(t, scr.IDFn, "interpolated script id must populate IDFn")
+	assert.Equal(t, "test.star", scr.IDFn.Pos.Filename())
+}
+
+// TestBuiltinScript_IDLiteral_NoInterpolation: a plain literal id
+// populates Script.ID and leaves Script.IDFn nil. No regression on
+// Phase 3 behavior.
+func TestBuiltinScript_IDLiteral_NoInterpolation(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={}, steps=[
+    script(id = "extract_status", fn = lambda ctx: {}, output_alias = "out"),
+])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	scr, ok := flows["x"].Body[0].(*dag.Script)
+	require.True(t, ok)
+	assert.Equal(t, "extract_status", scr.ID)
+	assert.Nil(t, scr.IDFn)
+}
+
+// TestBuiltinScript_IDNonString_Errors: a non-string id surfaces a clear
+// *dag.ParseError naming the offending kwarg and the actual type.
+func TestBuiltinScript_IDNonString_Errors(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={}, steps=[
+    script(id = 123, fn = lambda ctx: {}, output_alias = "out"),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	var pe *dag.ParseError
+	require.True(t, errors.As(err, &pe), "expected *dag.ParseError, got %T: %v", err, err)
+	assert.Contains(t, pe.Msg, "script.id: expected string")
+	assert.Contains(t, pe.Msg, "int")
+}
