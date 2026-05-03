@@ -3,6 +3,7 @@ package parser
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/mikelalcon/skytime/pkg/dag"
 )
@@ -152,11 +153,20 @@ func (p *Parser) checkLambdaCtx(flow *dag.Flow, lambdaID string, state stateSet)
 	if !ok {
 		return nil
 	}
-	src, ok := p.fileBytes[captured.Pos.Filename()]
+	// D4.1-01 BodyPos preference: synthesized lambdas (e.g., from
+	// interpolation desugaring) carry the lambda body in a synthetic
+	// file (`<interp:...>`), not the user's source. The walker re-parses
+	// whichever file actually contains the AST. Hand-written lambdas
+	// leave BodyPos zero and the walker uses Pos as before.
+	walkPos := captured.Pos
+	if captured.BodyPos.IsValid() {
+		walkPos = captured.BodyPos
+	}
+	src, ok := p.fileBytes[walkPos.Filename()]
 	if !ok || src == nil {
 		return nil
 	}
-	accesses, err := findCtxAccesses(src, captured.Pos.Filename(), captured.Pos)
+	accesses, err := findCtxAccesses(src, walkPos.Filename(), walkPos)
 	if err != nil {
 		return &dag.ValidationError{
 			Pos:     captured.Pos,
@@ -167,8 +177,17 @@ func (p *Parser) checkLambdaCtx(flow *dag.Flow, lambdaID string, state stateSet)
 	}
 	for _, acc := range accesses {
 		if !state.has(acc.AttrName) {
+			// D4.1-01 RESEARCH §Pitfall 1: when the access lives in a
+			// synthetic interpolation file, remap the error position back
+			// to the user's source (the opening ${ in captured.Pos) so
+			// users never see "<interp:...>" leaked into ValidationError
+			// output.
+			errPos := acc.Pos
+			if strings.HasPrefix(errPos.Filename(), "<interp:") {
+				errPos = captured.Pos
+			}
 			return &dag.ValidationError{
-				Pos:  acc.Pos,
+				Pos:  errPos,
 				Flow: flow.Name,
 				Msg:  fmt.Sprintf("ctx.%s not in declared state (visible: %v)", acc.AttrName, state.sortedKeys()),
 			}

@@ -313,6 +313,88 @@ func TestDesugarInterpolation_InnerExprSyntaxErrorReports(t *testing.T) {
 }
 
 // =============================================================================
+// Task 3 — BodyPos wiring + end-to-end typo rejection
+// =============================================================================
+
+// TestCtxWalk_RespectsBodyPos: when CapturedLambda.BodyPos is set, the
+// validator (checkLambdaCtx) walks the BodyPos file's source and finds
+// the synthesized lambda inside it. The negative half: a typo
+// (${ctx.tyop}) where `tyop` is NOT in the state set MUST surface a
+// *dag.ValidationError. If the walker were still using Pos for the
+// re-parse, the user file (which does not contain `lambda`) would yield
+// zero accesses and the typo would slip through.
+func TestCtxWalk_RespectsBodyPos(t *testing.T) {
+	p := newTestParser(t)
+	userFilename := "user_no_lambda.star"
+	userSrc := []byte("# user file with NO lambda body\n\n\n\n\nx = 1\n")
+	p.fileBytes[userFilename] = userSrc
+
+	userPosForLambda := syntax.MakePosition(&userFilename, 5, 10)
+	cl, err := p.desugarInterpolation("${ctx.tyop}", userPosForLambda)
+	require.NoError(t, err)
+	require.NotNil(t, cl)
+	require.True(t, cl.BodyPos.IsValid(), "synthesized lambda must populate BodyPos")
+
+	// State only declares `repo` — `tyop` is undeclared. The walker MUST
+	// walk the synthetic file (where ctx.tyop actually lives) and reject.
+	flow := &dag.Flow{Name: "f"}
+	state := newStateSet()
+	state.add("repo")
+	walkErr := p.checkLambdaCtx(flow, cl.ID, state)
+	require.Error(t, walkErr, "BodyPos walker must catch ctx.tyop against state {repo}")
+	var ve *dag.ValidationError
+	require.True(t, errors.As(walkErr, &ve), "expected *dag.ValidationError, got %T: %v", walkErr, walkErr)
+	assert.Contains(t, ve.Msg, "tyop")
+
+	// And the positive: when state HAS the attr, no error.
+	p2 := newTestParser(t)
+	p2.fileBytes[userFilename] = userSrc
+	cl2, err := p2.desugarInterpolation("${ctx.repo}", userPosForLambda)
+	require.NoError(t, err)
+	state2 := newStateSet()
+	state2.add("repo")
+	require.NoError(t, p2.checkLambdaCtx(flow, cl2.ID, state2),
+		"BodyPos walker must validate ctx.repo against state {repo}")
+}
+
+// TestCtxWalk_FallsBackToPos: when BodyPos is zero (hand-written lambda),
+// the walker uses Pos.Filename() — backward compatibility for existing
+// captureLambda usage.
+func TestCtxWalk_FallsBackToPos(t *testing.T) {
+	// A normal hand-written lambda flow. The existing test corpus already
+	// covers this end-to-end (TestFinalize_CtxAccess_Valid etc.); pin it
+	// here as a unit on findCtxAccesses with BodyPos zero.
+	p := newTestParser(t)
+	src := []byte(`flow(name="ok", inputs={"repo_name":"string"}, steps=[
+    script(id="s", fn=lambda ctx: {"out": ctx.repo_name}, output_alias="r"),
+])`)
+	_, err := p.ParseSource("ok.star", src)
+	require.NoError(t, err)
+	// One captured lambda — and its BodyPos must be zero (hand-written).
+	require.Len(t, p.Lambdas(), 1)
+	for _, cl := range p.Lambdas() {
+		assert.False(t, cl.BodyPos.IsValid(),
+			"hand-written lambda must have zero BodyPos (fallback-to-Pos contract)")
+	}
+}
+
+// TestInterpolation_TypoRejected — END-TO-END test that requires
+// interpolation desugaring to be wired into the kwarg-unpacking path
+// (builtinStep / http builtin). That wiring is Plan 04.1-03's
+// responsibility (file footprint disjoint with this plan). Skip until
+// Plan 03 lands; the BodyPos plumbing this plan ships gives Plan 03 the
+// hook it needs to make this test pass.
+func TestInterpolation_TypoRejected(t *testing.T) {
+	t.Skip("requires Plan 04.1-03 to wire desugarInterpolation into builtinStep / http extension; BodyPos walker plumbing in this plan provides the hook")
+}
+
+// TestInterpolation_NoTypo — END-TO-END companion to the typo test;
+// same dependency on Plan 04.1-03's wiring.
+func TestInterpolation_NoTypo(t *testing.T) {
+	t.Skip("requires Plan 04.1-03 to wire desugarInterpolation into builtinStep / http extension")
+}
+
+// =============================================================================
 // helpers
 // =============================================================================
 
