@@ -28,6 +28,14 @@ type Flow struct {
 	// Empty string means "inherit from worker default" (typically "skytime").
 	// Set via the parser's `flow(..., task_queue="...")` kwarg.
 	TaskQueue string `json:"task_queue,omitempty"`
+
+	// NameFn is the resolved-at-runtime variant of Name. Set by the
+	// parser's interpolation desugarer when `flow(name="...${ctx.x}...")`
+	// contains ${...} markers (D4.1-16 + D4.1-01..05). The interpreter
+	// evaluates this lambda once at flow start and uses the result as the
+	// display name (visible in Temporal UI). Empty NameFn means "use the
+	// literal Name field unchanged".
+	NameFn *CapturedLambda `json:"-"`
 }
 
 // Compile-time guarantee: *Flow satisfies the sealed Node interface.

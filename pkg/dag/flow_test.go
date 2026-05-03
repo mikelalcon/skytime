@@ -52,6 +52,24 @@ func TestFlow_TaskQueueRoundTrip(t *testing.T) {
 	assert.False(t, hasTaskQueue, "zero-value TaskQueue must be omitted from JSON via omitempty")
 }
 
+// TestFlow_HasNameFn — D4.1-16: Flow.NameFn holds the desugared lambda when
+// `flow(name="...${ctx.x}...")` contains interpolation markers. The
+// interpreter evaluates this lambda once at flow start and uses the result
+// as the display name (visible in Temporal UI). Empty NameFn means "use the
+// literal Name field unchanged".
+func TestFlow_HasNameFn(t *testing.T) {
+	f := &Flow{Name: "literal", NameFn: &CapturedLambda{ID: "fnameid"}}
+	require.NotNil(t, f.NameFn)
+	assert.Equal(t, "fnameid", f.NameFn.ID)
+	assert.Equal(t, "literal", f.Name, "literal Name still readable alongside NameFn (parser enforces mutual exclusion)")
+}
+
+// TestFlow_KindUnchanged — sanity check that adding NameFn does not regress
+// the existing Node interface contract.
+func TestFlow_KindUnchanged(t *testing.T) {
+	assert.Equal(t, "Flow", (&Flow{}).Kind())
+}
+
 func TestFlow_BodyAcceptsHeterogeneousNodes(t *testing.T) {
 	pos := nodePos(t, 1, 1)
 	f := &Flow{

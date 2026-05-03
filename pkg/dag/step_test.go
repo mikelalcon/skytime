@@ -54,3 +54,43 @@ func TestStep_ActionsSlice(t *testing.T) {
 	}
 	assert.Len(t, s.Actions, 2)
 }
+
+// TestStep_HasNameField — D4.1-15: Step.Name carries the literal display name
+// from `step(name="...")`. Empty string falls back to auto-derived "<kind>(<label>)".
+func TestStep_HasNameField(t *testing.T) {
+	s := &Step{Name: "literal"}
+	assert.Equal(t, "literal", s.Name)
+}
+
+// TestStep_HasNameFn — D4.1-15: Step.NameFn holds the desugared lambda when
+// `step(name="...${ctx.x}...")` contains interpolation markers. Mutually
+// exclusive with Name (parser enforces).
+func TestStep_HasNameFn(t *testing.T) {
+	s := &Step{NameFn: &CapturedLambda{ID: "id"}}
+	require.NotNil(t, s.NameFn)
+	assert.Equal(t, "id", s.NameFn.ID)
+}
+
+// TestStep_HasActionFn — D4.1-06: Step.ActionFn holds the lambda variant of
+// `step(action_fn=lambda ctx: ext.op(...))`; evaluated inside the workflow
+// at dispatch time and must return a single *ActionRef.
+func TestStep_HasActionFn(t *testing.T) {
+	s := &Step{ActionFn: &CapturedLambda{ID: "afn"}}
+	require.NotNil(t, s.ActionFn)
+	assert.Equal(t, "afn", s.ActionFn.ID)
+}
+
+// TestStep_HasBlockFn — D4.1-06: Step.BlockFn holds the lambda variant of
+// `step(block_fn=lambda ctx: [ext.op(...) for ...])`; evaluated inside the
+// workflow at dispatch time and must return a Starlark list of *ActionRef.
+func TestStep_HasBlockFn(t *testing.T) {
+	s := &Step{BlockFn: &CapturedLambda{ID: "bfn"}}
+	require.NotNil(t, s.BlockFn)
+	assert.Equal(t, "bfn", s.BlockFn.ID)
+}
+
+// TestStep_KindUnchanged — sanity check that adding the new optional fields
+// does not regress the existing Node interface contract.
+func TestStep_KindUnchanged(t *testing.T) {
+	assert.Equal(t, "Step", (&Step{}).Kind())
+}
