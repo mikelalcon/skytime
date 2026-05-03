@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.1-03-PLAN.md
-last_updated: "2026-05-03T04:20:38.818Z"
+stopped_at: Completed 04.1-04-PLAN.md
+last_updated: "2026-05-03T04:33:08.207Z"
 last_activity: 2026-05-03
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 27
-  completed_plans: 23
+  completed_plans: 24
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04.1 (dynamic-step-kwargs-lambda-accepting-step-action-fn-variant-for-runtime-built-action-kwargs) — EXECUTING
-Plan: 5 of 8
+Plan: 6 of 8
 Status: Ready to execute
 Last activity: 2026-05-03
 
@@ -74,6 +74,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04.1 P06 | 12min | 3 tasks | 9 files |
 | Phase 04.1 P02 | 11min | 3 tasks | 4 files |
 | Phase 04.1 P03 | 10min | 4 tasks | 8 files |
+| Phase 04.1 P04 | 10min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -173,6 +174,9 @@ Recent decisions affecting current work:
 - [Phase 04.1]: Plan 04.1-06: CLI-06/CLI-07 requirements not yet registered in REQUIREMENTS.md (Plan 04.1-07 adds them via the registrar plan); requirements mark-complete deferred to 04.1-07 execution
 - [Phase 04.1]: Plan 04.1-02: synthesized-source string + re-parse desugarer (RESEARCH §Pattern 1) + dual-position attribution (Pos at user source, BodyPos at synthetic file) + filename-prefix remap of <interp:...> back to user Pos for ValidationError clarity
 - [Phase 04.1]: Plan 04.1-03: builtinStep extended with action_fn/block_fn/name kwargs + 4-way mutual exclusion (D4.1-06, D4.1-15); builtinFlow + builtinScript accept ${...} interpolation (D4.1-16, D4.1-02); D4-02 walker extended for *dag.Step (validates ActionFn/BlockFn/NameFn lambdas + every *StarlarkLambda inside ActionRef.Kwargs); extension.assignStarlarkToGo carve-out accepts *StarlarkLambda for string-typed schema fields (D4.1-05); desugarActionRefKwargs always-rebuilds dict to survive http extension's freeze-on-construction invariant; un-skipped Plan 02 deferred TestInterpolation_TypoRejected + TestInterpolation_NoTypo e2e tests (now passing)
+- [Phase 04.1]: lookupOpSpec two-step extension recognition heuristic (registry.Get + unique op-name scan) — handles both fake_ext.echo and gh.get-where-gh=http.endpoint patterns
+- [Phase 04.1]: Outermost-CallExpr-only AST walk via return false — kwargs of recognized <ext>.<op>(...) calls NOT walked (D4.1-11 amendment)
+- [Phase 04.1]: Runtime block_fn fallback is tests-only — pkg/activity/validate_batch.go already enforces D2-05/06/07; Plan 04 pins the gate via TestValidateBatch_RuntimeBlockFnReachesGate
 
 ### Pending Todos
 
@@ -189,6 +193,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-03T04:20:38.814Z
-Stopped at: Completed 04.1-03-PLAN.md
+Last session: 2026-05-03T04:33:08.203Z
+Stopped at: Completed 04.1-04-PLAN.md
 Resume file: None
