@@ -131,6 +131,8 @@ func TestLiveBlock_FinalizeRow(t *testing.T) {
 		Kind:       "step_complete",
 		Idx:        1,
 		Total:      1,
+		KindAttr:   "step",
+		Label:      "gh.get(/x)",
 		Status:     "ok",
 		DurationMs: 50,
 		Summary:    "status=200",
@@ -142,6 +144,8 @@ func TestLiveBlock_FinalizeRow(t *testing.T) {
 	require.Contains(t, stripped, "✓", "finalized row must include ok marker")
 	require.Contains(t, stripped, "50ms", "finalized row must include duration")
 	require.Contains(t, stripped, "status=200", "finalized row must include summary")
+	require.Contains(t, stripped, "gh.get(/x)",
+		"finalized row must include the user-defined label (qx1). Stripped: %q", stripped)
 }
 
 // TestLiveBlock_FlushFinal: send flow_start, 1 step_dispatch,
@@ -181,7 +185,8 @@ func TestLiveBlock_FailedStepRendersX(t *testing.T) {
 	})
 	time.Sleep(120 * time.Millisecond)
 	r.submit(progressEvent{
-		Kind: "step_complete", Idx: 1, Total: 1, Status: "err", DurationMs: 80, Summary: "HTTP 404",
+		Kind: "step_complete", Idx: 1, Total: 1, KindAttr: "step", Label: "gh.get(/missing)",
+		Status: "err", DurationMs: 80, Summary: "HTTP 404",
 	})
 	time.Sleep(120 * time.Millisecond)
 	r.Close()
@@ -189,6 +194,8 @@ func TestLiveBlock_FailedStepRendersX(t *testing.T) {
 	stripped := stripAnsiTest(out.String())
 	require.Contains(t, stripped, "✗", "failed step must render ✗ marker")
 	require.Contains(t, stripped, "HTTP 404", "failed step summary must appear")
+	require.Contains(t, stripped, "gh.get(/missing)",
+		"failed step row must include the user-defined label (qx1). Stripped: %q", stripped)
 }
 
 // TestLiveBlock_NoFlickerOnRapidEvents: 5 step_dispatch events in
@@ -272,7 +279,8 @@ func TestLiveBlock_CompletedRowMarkerColor_Ok(t *testing.T) {
 	})
 	time.Sleep(120 * time.Millisecond)
 	r.submit(progressEvent{
-		Kind: "step_complete", Idx: 1, Total: 1, Status: "ok", DurationMs: 50, Summary: "status=200",
+		Kind: "step_complete", Idx: 1, Total: 1, KindAttr: "step", Label: "x",
+		Status: "ok", DurationMs: 50, Summary: "status=200",
 	})
 	time.Sleep(150 * time.Millisecond)
 	r.Close()
@@ -299,7 +307,8 @@ func TestLiveBlock_CompletedRowMarkerColor_Err(t *testing.T) {
 	})
 	time.Sleep(120 * time.Millisecond)
 	r.submit(progressEvent{
-		Kind: "step_complete", Idx: 1, Total: 1, Status: "err", DurationMs: 50, Summary: "HTTP 404",
+		Kind: "step_complete", Idx: 1, Total: 1, KindAttr: "step", Label: "x",
+		Status: "err", DurationMs: 50, Summary: "HTTP 404",
 	})
 	time.Sleep(150 * time.Millisecond)
 	r.Close()
@@ -326,7 +335,8 @@ func TestLiveBlock_BranchArrowColor(t *testing.T) {
 	r.submit(progressEvent{Kind: "branch", Idx: 3, Branch: "then"})
 	time.Sleep(150 * time.Millisecond)
 	r.submit(progressEvent{
-		Kind: "step_complete", Idx: 3, Total: 3, Status: "ok", DurationMs: 1, Summary: "",
+		Kind: "step_complete", Idx: 3, Total: 3, KindAttr: "if_cond", Label: "ctx.health",
+		Status: "ok", DurationMs: 1, Summary: "",
 	})
 	time.Sleep(150 * time.Millisecond)
 	r.Close()
@@ -371,22 +381,28 @@ func TestLiveBlock_BranchAppendsToStepComplete(t *testing.T) {
 	r.submit(progressEvent{Kind: "branch", Idx: 3, Branch: "then"})
 	time.Sleep(150 * time.Millisecond)
 	r.submit(progressEvent{
-		Kind: "step_complete", Idx: 3, Total: 3, Status: "ok", DurationMs: 1, Summary: "",
+		Kind: "step_complete", Idx: 3, Total: 3, KindAttr: "if_cond", Label: "ctx.health",
+		Status: "ok", DurationMs: 1, Summary: "",
 	})
 	time.Sleep(150 * time.Millisecond)
 	r.Close()
 
 	stripped := stripAnsiTest(out.String())
 	require.Contains(t, stripped, "[3/3]", "counter must be present")
-	require.Contains(t, stripped, "step  ✓ 1ms",
-		"completion row must follow the established format. Stripped: %q", stripped)
+	require.Contains(t, stripped, "if_cond",
+		"completion row must carry the if_cond kind word (qx1). Stripped: %q", stripped)
+	require.Contains(t, stripped, "ctx.health",
+		"completion row must carry the cond label (qx1). Stripped: %q", stripped)
+	require.Contains(t, stripped, "✓ 1ms",
+		"completion row must include marker + duration. Stripped: %q", stripped)
 	require.Contains(t, stripped, "→ then", "inline branch suffix must be present")
 
-	// All four properties on the same rendered line.
+	// All five properties on the same rendered line.
 	var foundAll bool
 	for _, line := range strings.Split(stripped, "\n") {
 		if strings.Contains(line, "[3/3]") &&
-			strings.Contains(line, "step") &&
+			strings.Contains(line, "if_cond") &&
+			strings.Contains(line, "ctx.health") &&
 			strings.Contains(line, "✓") &&
 			strings.Contains(line, "1ms") &&
 			strings.Contains(line, "→ then") {
@@ -395,7 +411,7 @@ func TestLiveBlock_BranchAppendsToStepComplete(t *testing.T) {
 		}
 	}
 	require.True(t, foundAll,
-		"expected a single line with [3/3], step, ✓, 1ms, AND → then. Stripped: %q", stripped)
+		"expected a single line with [3/3], if_cond, ctx.health, ✓, 1ms, AND → then. Stripped: %q", stripped)
 }
 
 // TestLiveBlock_OrphanBranchEvent_NoOutput: a lone branch event (no
@@ -454,4 +470,149 @@ func TestLiveBlock_FlowCompleteBannerColored(t *testing.T) {
 	stripped := stripAnsiTest(raw)
 	require.Contains(t, stripped, "[skytime] flow complete  3/3 steps", "success banner content must survive color wrapping")
 	require.Contains(t, stripped, "100ms", "total_ms must survive color wrapping")
+}
+
+// ---------------------------------------------------------------------------
+// Quick 260503-qx1: kind + label persist on live-path step_complete line
+// ---------------------------------------------------------------------------
+//
+// Mirrors the static-path qx1 tests: the live renderer's case "step_complete"
+// MUST consume ev.KindAttr (not hardcoded "step") and insert ev.Label between
+// the kind column and the marker. Branch suffix from qkk continues to append
+// after the summary.
+
+// TestLiveBlock_StepCompleteIncludesKindAndLabel: a step_dispatch +
+// step_complete pair carrying KindAttr="step" + Label="Get repo octocat/
+// Hello-World" produces a finalized line containing all of [1/3], "step",
+// the label, ✓, 234ms, and status=200.
+func TestLiveBlock_StepCompleteIncludesKindAndLabel(t *testing.T) {
+	out := &safeBuffer{}
+	r := newLiveRenderer(out)
+
+	r.submit(progressEvent{
+		Kind: "step_dispatch", Idx: 1, Total: 3,
+		KindAttr: "step", Label: "Get repo octocat/Hello-World", Path: "1",
+	})
+	time.Sleep(120 * time.Millisecond)
+	r.submit(progressEvent{
+		Kind: "step_complete", Idx: 1, Total: 3,
+		KindAttr: "step", Label: "Get repo octocat/Hello-World",
+		Status: "ok", DurationMs: 234, Summary: "status=200",
+	})
+	time.Sleep(150 * time.Millisecond)
+	r.Close()
+
+	stripped := stripAnsiTest(out.String())
+	require.Contains(t, stripped, "[1/3]", "live completion line must carry counter")
+	require.Contains(t, stripped, "step", "live completion line must carry kind word")
+	require.Contains(t, stripped, "Get repo octocat/Hello-World",
+		"live completion line must carry user-defined label. Stripped: %q", stripped)
+	require.Contains(t, stripped, "✓", "marker must be present")
+	require.Contains(t, stripped, "234ms", "duration must be present")
+	require.Contains(t, stripped, "status=200", "summary must be present")
+
+	// All six properties on the same line.
+	var foundAll bool
+	for _, line := range strings.Split(stripped, "\n") {
+		if strings.Contains(line, "[1/3]") &&
+			strings.Contains(line, "step") &&
+			strings.Contains(line, "Get repo octocat/Hello-World") &&
+			strings.Contains(line, "✓") &&
+			strings.Contains(line, "234ms") &&
+			strings.Contains(line, "status=200") {
+			foundAll = true
+			break
+		}
+	}
+	require.True(t, foundAll,
+		"expected single line with [1/3] + step + label + ✓ + 234ms + status=200. Stripped: %q", stripped)
+}
+
+// TestLiveBlock_StepCompleteIncludesKindAndLabel_Err: same shape with
+// status=err, kind="if_cond", label="ctx.health". Persists kind+label on
+// the failure line.
+func TestLiveBlock_StepCompleteIncludesKindAndLabel_Err(t *testing.T) {
+	out := &safeBuffer{}
+	r := newLiveRenderer(out)
+
+	r.submit(progressEvent{
+		Kind: "step_dispatch", Idx: 2, Total: 3,
+		KindAttr: "if_cond", Label: "ctx.health", Path: "2",
+	})
+	time.Sleep(120 * time.Millisecond)
+	r.submit(progressEvent{
+		Kind: "step_complete", Idx: 2, Total: 3,
+		KindAttr: "if_cond", Label: "ctx.health",
+		Status: "err", DurationMs: 80, Summary: "boom",
+	})
+	time.Sleep(150 * time.Millisecond)
+	r.Close()
+
+	stripped := stripAnsiTest(out.String())
+	require.Contains(t, stripped, "[2/3]", "live err line must carry counter")
+	require.Contains(t, stripped, "if_cond",
+		"live err line must carry the if_cond kind word (NOT hardcoded 'step'). Stripped: %q", stripped)
+	require.Contains(t, stripped, "ctx.health",
+		"live err line must carry the cond label. Stripped: %q", stripped)
+	require.Contains(t, stripped, "✗", "err marker must be present")
+	require.Contains(t, stripped, "80ms", "duration must be present")
+	require.Contains(t, stripped, "boom", "summary must be present")
+}
+
+// TestLiveBlock_StepCompleteIncludesLabelWithBranchSuffix: a branch event
+// followed by step_complete (KindAttr="if_cond", Label="ctx.health") emits
+// a single line containing counter [3/3], if_cond, ctx.health, ✓, 1ms, and
+// → then. Pins branch+kind+label coexistence on the live path.
+func TestLiveBlock_StepCompleteIncludesLabelWithBranchSuffix(t *testing.T) {
+	out := &safeBuffer{}
+	r := newLiveRenderer(out)
+
+	r.submit(progressEvent{Kind: "branch", Idx: 3, Branch: "then"})
+	time.Sleep(120 * time.Millisecond)
+	r.submit(progressEvent{
+		Kind: "step_complete", Idx: 3, Total: 3,
+		KindAttr: "if_cond", Label: "ctx.health",
+		Status: "ok", DurationMs: 1, Summary: "",
+	})
+	time.Sleep(150 * time.Millisecond)
+	r.Close()
+
+	stripped := stripAnsiTest(out.String())
+	var foundAll bool
+	for _, line := range strings.Split(stripped, "\n") {
+		if strings.Contains(line, "[3/3]") &&
+			strings.Contains(line, "if_cond") &&
+			strings.Contains(line, "ctx.health") &&
+			strings.Contains(line, "✓") &&
+			strings.Contains(line, "1ms") &&
+			strings.Contains(line, "→ then") {
+			foundAll = true
+			break
+		}
+	}
+	require.True(t, foundAll,
+		"expected single line with [3/3] + if_cond + ctx.health + ✓ + 1ms + → then. Stripped: %q", stripped)
+}
+
+// TestLiveBlock_StepCompleteEmptyLabel_NoCrash: KindAttr="step" + Label="".
+// Live-path completion line still contains kind + ✓ + 50ms; no panic.
+func TestLiveBlock_StepCompleteEmptyLabel_NoCrash(t *testing.T) {
+	require.NotPanics(t, func() {
+		out := &safeBuffer{}
+		r := newLiveRenderer(out)
+
+		r.submit(progressEvent{
+			Kind: "step_complete", Idx: 1, Total: 1,
+			KindAttr: "step", Label: "",
+			Status: "ok", DurationMs: 50, Summary: "status=200",
+		})
+		time.Sleep(150 * time.Millisecond)
+		r.Close()
+
+		stripped := stripAnsiTest(out.String())
+		require.Contains(t, stripped, "step",
+			"empty-label live completion must still render kind. Stripped: %q", stripped)
+		require.Contains(t, stripped, "✓", "marker must still render")
+		require.Contains(t, stripped, "50ms", "duration must still render")
+	})
 }

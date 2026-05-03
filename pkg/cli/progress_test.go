@@ -59,12 +59,13 @@ func TestProgress_BazelFormat(t *testing.T) {
 				slog.String("event", "step_complete"),
 				slog.Int("idx", 1), slog.Int("total", 3),
 				slog.String("kind", "step"),
+				slog.String("label", "gh.get(/x)"),
 				slog.String("path", "1"),
 				slog.String("status", "ok"),
 				slog.Int64("duration_ms", 234),
 				slog.String("summary", "status=200"),
 			}},
-			want: expect{"✓", "234ms", "status=200"},
+			want: expect{"✓", "234ms", "status=200", "gh.get(/x)"},
 		},
 		{
 			name: "step_complete err",
@@ -72,12 +73,13 @@ func TestProgress_BazelFormat(t *testing.T) {
 				slog.String("event", "step_complete"),
 				slog.Int("idx", 2), slog.Int("total", 3),
 				slog.String("kind", "step"),
+				slog.String("label", "gh.get(/x)"),
 				slog.String("path", "2"),
 				slog.String("status", "err"),
 				slog.Int64("duration_ms", 120),
 				slog.String("summary", "connection refused"),
 			}},
-			want: expect{"✗", "120ms", "connection refused"},
+			want: expect{"✗", "120ms", "connection refused", "gh.get(/x)"},
 		},
 		{
 			name: "step_dispatch if_cond kind",
@@ -294,6 +296,158 @@ func TestProgress_StepCompleteWithoutBufferedBranch_NoSuffix(t *testing.T) {
 		"existing step_complete format must be preserved verbatim. Output: %q", got)
 	require.NotContains(t, got, "→",
 		"no suffix arrow when buffer is empty. Output: %q", got)
+}
+
+// ---------------------------------------------------------------------------
+// Quick 260503-qx1: kind + label persist on step_complete line
+// ---------------------------------------------------------------------------
+//
+// Mirrors the step_dispatch shape on the step_complete line so user-defined
+// step names (D4.1-15 step(name="...")) persist past completion. The label
+// MUST appear BEFORE the marker on the same line; the kind word MUST come
+// from ev.KindAttr (not a hardcoded "step" string) so if_cond/script/
+// for_each_parallel/call_flow rows render with the correct kind.
+
+// TestProgress_StepCompleteIncludesKindAndLabel: a step_complete record
+// carrying kind="step" + label="Get repo octocat/Hello-World" renders a
+// single line containing the counter, padded kind, label, marker,
+// duration, and summary. The label appears BEFORE the marker.
+func TestProgress_StepCompleteIncludesKindAndLabel(t *testing.T) {
+	out := emitProgress(t, []struct {
+		msg   string
+		attrs []slog.Attr
+	}{
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_complete"),
+			slog.Int("idx", 1), slog.Int("total", 3),
+			slog.String("kind", "step"),
+			slog.String("label", "Get repo octocat/Hello-World"),
+			slog.String("path", "1"),
+			slog.String("status", "ok"),
+			slog.Int64("duration_ms", 234),
+			slog.String("summary", "status=200"),
+		}},
+	})
+
+	require.Contains(t, out, "[1/3]", "completion line must carry [N/M] counter")
+	require.Contains(t, out, "step", "completion line must carry kind word")
+	require.Contains(t, out, "Get repo octocat/Hello-World",
+		"completion line must carry the user-defined label. Output: %q", out)
+	require.Contains(t, out, "✓ 234ms", "marker + duration must be present")
+	require.Contains(t, out, "status=200", "summary must be present")
+
+	// Label must appear BEFORE the marker on the same line.
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "Get repo octocat/Hello-World") {
+			labelIdx := strings.Index(line, "Get repo octocat/Hello-World")
+			markerIdx := strings.Index(line, "✓")
+			require.Greater(t, markerIdx, labelIdx,
+				"label must appear before the ✓ marker. Line: %q", line)
+		}
+	}
+}
+
+// TestProgress_StepCompleteIncludesKindAndLabel_Err: same shape with an
+// err status; kind+label persist on the failure line.
+func TestProgress_StepCompleteIncludesKindAndLabel_Err(t *testing.T) {
+	out := emitProgress(t, []struct {
+		msg   string
+		attrs []slog.Attr
+	}{
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_complete"),
+			slog.Int("idx", 2), slog.Int("total", 3),
+			slog.String("kind", "step"),
+			slog.String("label", "Get repo octocat/Hello-World"),
+			slog.String("path", "2"),
+			slog.String("status", "err"),
+			slog.Int64("duration_ms", 120),
+			slog.String("summary", "HTTP 404"),
+		}},
+	})
+
+	require.Contains(t, out, "[2/3]", "err completion line must carry counter")
+	require.Contains(t, out, "step", "err completion line must carry kind word")
+	require.Contains(t, out, "Get repo octocat/Hello-World",
+		"err completion line must carry the user-defined label. Output: %q", out)
+	require.Contains(t, out, "✗ 120ms", "err marker + duration must be present")
+	require.Contains(t, out, "HTTP 404", "err summary must be present")
+}
+
+// TestProgress_StepCompleteIncludesLabelWithBranchSuffix: an if_cond
+// step_complete with kind="if_cond" + label="ctx.health" preceded by a
+// branch event for the same idx renders a single line containing the
+// counter, kind, label, marker, duration, AND inline branch suffix.
+func TestProgress_StepCompleteIncludesLabelWithBranchSuffix(t *testing.T) {
+	out := emitProgress(t, []struct {
+		msg   string
+		attrs []slog.Attr
+	}{
+		{"skytime", []slog.Attr{
+			slog.String("event", "branch"),
+			slog.Int("idx", 3),
+			slog.String("path", "3"),
+			slog.String("branch", "then"),
+		}},
+		{"skytime", []slog.Attr{
+			slog.String("event", "step_complete"),
+			slog.Int("idx", 3), slog.Int("total", 3),
+			slog.String("kind", "if_cond"),
+			slog.String("label", "ctx.health"),
+			slog.String("path", "3"),
+			slog.String("status", "ok"),
+			slog.Int64("duration_ms", 1),
+			slog.String("summary", ""),
+		}},
+	})
+
+	require.Contains(t, out, "if_cond", "completion line must carry the if_cond kind word")
+	require.Contains(t, out, "ctx.health",
+		"completion line must carry the cond label. Output: %q", out)
+	require.Contains(t, out, "✓ 1ms", "marker + duration must be present")
+	require.Contains(t, out, "→ then", "qkk branch suffix must still append after summary")
+
+	// All five properties on the same line: counter, kind, label, marker, suffix.
+	var foundAll bool
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "[3/3]") &&
+			strings.Contains(line, "if_cond") &&
+			strings.Contains(line, "ctx.health") &&
+			strings.Contains(line, "✓") &&
+			strings.Contains(line, "1ms") &&
+			strings.Contains(line, "→ then") {
+			foundAll = true
+			break
+		}
+	}
+	require.True(t, foundAll,
+		"expected single line containing [3/3] + if_cond + ctx.health + ✓ + 1ms + → then. Output: %q", out)
+}
+
+// TestProgress_StepCompleteEmptyLabel_NoCrash: a step_complete with
+// label="" renders without panic and still contains the kind + marker.
+func TestProgress_StepCompleteEmptyLabel_NoCrash(t *testing.T) {
+	require.NotPanics(t, func() {
+		out := emitProgress(t, []struct {
+			msg   string
+			attrs []slog.Attr
+		}{
+			{"skytime", []slog.Attr{
+				slog.String("event", "step_complete"),
+				slog.Int("idx", 1), slog.Int("total", 1),
+				slog.String("kind", "step"),
+				slog.String("label", ""),
+				slog.String("path", "1"),
+				slog.String("status", "ok"),
+				slog.Int64("duration_ms", 50),
+				slog.String("summary", "status=200"),
+			}},
+		})
+
+		require.Contains(t, out, "step", "kind word must still render with empty label")
+		require.Contains(t, out, "✓ 50ms",
+			"marker + duration must still render with empty label. Output: %q", out)
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -528,6 +682,7 @@ func emitTestEvents(t *testing.T, h *progressHandler) string {
 		slog.String("event", "step_complete"),
 		slog.Int("idx", 1), slog.Int("total", 1),
 		slog.String("kind", "step"),
+		slog.String("label", "gh.get(/x)"),
 		slog.String("path", "1"),
 		slog.String("status", "ok"),
 		slog.Int64("duration_ms", 50),
