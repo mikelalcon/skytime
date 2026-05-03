@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/syntax"
 
 	"github.com/mikelalcon/skytime/pkg/dag"
 )
@@ -48,6 +49,50 @@ func (p *Parser) captureLambda(thread *starlark.Thread, kwargName string, val st
 		ID:       id,
 		Fn:       fn,
 		Pos:      pos,
+		FreeVars: freeVars,
+	}
+	p.lambdas[id] = captured
+	return captured, nil
+}
+
+// captureLambdaAtPosition is the variant of captureLambda used by the
+// D4.1-01 interpolation desugarer to register a synthesized lambda. It
+// differs from captureLambda in three ways:
+//
+//  1. The caller supplies the *starlark.Function directly (already
+//     compiled from synthetic source). No type-assertion gate.
+//  2. The caller supplies userPos (the user's source position, opening
+//     ${ for interpolation) — used for Pos and for D-18 ID hashing
+//     against the USER file's bytes. Cosmetic edits to the template
+//     string change the ID via the user file's content hash, matching
+//     the D-18 deployment property.
+//  3. The caller supplies bodyPos (the synthetic-file location where the
+//     lambda body actually lives) — populated on CapturedLambda.BodyPos
+//     so D4-02's findCtxAccesses re-parses the synthetic file to walk
+//     the AST.
+//
+// Synthesized lambdas have NO free variables — `${ctx.foo}` references
+// only the lambda's own ctx parameter. Setting FreeVars to an empty,
+// frozen StringDict here matches what validateFreeVars would return for
+// a lambda with no closures and skips the D-19 module-level binding
+// check (which would mis-attribute the synthetic file as the owning
+// file; see RESEARCH §Pitfall 3).
+func (p *Parser) captureLambdaAtPosition(fn *starlark.Function, userPos, bodyPos syntax.Position) (*dag.CapturedLambda, error) {
+	fileBytes, ok := p.fileBytes[userPos.Filename()]
+	if !ok || fileBytes == nil {
+		return nil, &dag.ParseError{
+			Pos: userPos,
+			Msg: fmt.Sprintf("internal: file bytes for %q not cached", userPos.Filename()),
+		}
+	}
+	id := dag.ComputeLambdaID(fileBytes, userPos)
+	freeVars := starlark.StringDict{}
+	freeVars.Freeze()
+	captured := &dag.CapturedLambda{
+		ID:       id,
+		Fn:       fn,
+		Pos:      userPos,
+		BodyPos:  bodyPos,
 		FreeVars: freeVars,
 	}
 	p.lambdas[id] = captured

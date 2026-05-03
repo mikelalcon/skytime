@@ -1,10 +1,13 @@
 package parser
 
 import (
+	"fmt"
 	"strings"
 
+	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
+	"github.com/mikelalcon/skytime/pkg/bridge"
 	"github.com/mikelalcon/skytime/pkg/dag"
 )
 
@@ -70,13 +73,13 @@ func scanInterpolation(raw string, openPos syntax.Position) (scannedTemplate, er
 	state := stText
 
 	var (
-		exprStart  int             // byte offset of opening ${ in raw
-		exprBuf    strings.Builder // accumulates the inner expression text
-		exprPos    syntax.Position // user-source position of opening ${
-		depth      int             // bracket nesting in expr mode (counts {[(])
-		quote      byte            // active quote char in expr-str mode
-		tripleQ    bool            // true when in triple-quoted literal
-		escapeNext bool            // last char in expr-str was \
+		exprStart  int               // byte offset of opening ${ in raw
+		exprBuf    strings.Builder   // accumulates the inner expression text
+		exprPos    syntax.Position   // user-source position of opening ${
+		depth      int               // bracket nesting in expr mode (counts {[(])
+		quote      byte              // active quote char in expr-str mode
+		tripleQ    bool              // true when in triple-quoted literal
+		escapeNext bool              // last char in expr-str was \
 	)
 
 	// posAt computes the user-source position of byte offset i in raw,
@@ -237,4 +240,175 @@ func scanInterpolation(raw string, openPos syntax.Position) (scannedTemplate, er
 
 	flushText()
 	return scannedTemplate{Parts: parts, HasInterpolation: hasInterp}, nil
+}
+
+// =============================================================================
+// Task 2 — desugarInterpolation + supporting helpers
+// =============================================================================
+
+// buildLambdaSource turns a sequence of scanPart into the body of a
+// `lambda ctx: ...` expression. The synthesized source ALWAYS wraps each
+// expr in str(...) per D4.1-04 — the wrap is unconditional (handles int,
+// bool, None, float gracefully).
+//
+// For an empty parts list this returns `lambda ctx: ""`. The caller
+// short-circuits for the no-interpolation case before calling buildLambdaSource;
+// this path is defensive.
+func buildLambdaSource(parts []scanPart) string {
+	var b strings.Builder
+	b.WriteString("lambda ctx: ")
+	if len(parts) == 0 {
+		b.WriteString(`""`)
+		return b.String()
+	}
+	for i, p := range parts {
+		if i > 0 {
+			b.WriteString(" + ")
+		}
+		switch p.Kind {
+		case "text":
+			b.WriteString(starlarkQuote(p.Text))
+		case "expr":
+			b.WriteString("str(")
+			b.WriteString(p.Expr)
+			b.WriteString(")")
+		}
+	}
+	return b.String()
+}
+
+// starlarkQuote returns a double-quoted Starlark literal of s with
+// minimal escaping. Mirrors strconv.Quote for ASCII-friendly output.
+//
+// Escapes: \ → \\, " → \", \n → \n (literal escape sequence),
+// \r → \r, \t → \t. Any other byte is emitted verbatim — Starlark
+// allows arbitrary UTF-8 inside double-quoted strings.
+func starlarkQuote(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) + 2)
+	b.WriteByte('"')
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch c {
+		case '\\':
+			b.WriteString(`\\`)
+		case '"':
+			b.WriteString(`\"`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\t':
+			b.WriteString(`\t`)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
+// desugarInterpolation converts a Starlark string literal's content into
+// a synthesized *CapturedLambda (D4.1-01). Returns (nil, nil) when no
+// ${...} markers are present — the caller stores the literal string
+// unchanged. Returns (nil, *dag.ParseError) on scanner errors or invalid
+// inner expressions, with the error position attributed to the user's
+// source (NOT the synthetic file).
+//
+// openPos is the position of the OPENING quote of the user's string
+// literal; the scanner-computed expr Pos values are relative to it.
+//
+// Implementation steps (RESEARCH §Pattern 1):
+//  1. scan via scanInterpolation; short-circuit if !HasInterpolation.
+//  2. Validate each expr part via syntax.ParseExpr — surfaces syntax
+//     errors with the user's source position rather than the synthetic
+//     file.
+//  3. Build "result = lambda ctx: ..." source.
+//  4. Cache the synthetic source under "<interp:<file>:<line>:<col>>"
+//     in p.fileBytes so D4-02's findCtxAccesses can re-parse it.
+//  5. Compile via starlark.ExecFileOptions on a sub-thread that uses
+//     the locked D-20 lambda-time globals.
+//  6. Pluck globals["result"] as *starlark.Function.
+//  7. Build *CapturedLambda via captureLambdaAtPosition with Pos =
+//     openPos (user attribution) and BodyPos = the synthetic position.
+//  8. Register in p.lambdas and return.
+func (p *Parser) desugarInterpolation(raw string, openPos syntax.Position) (*dag.CapturedLambda, error) {
+	scanned, err := scanInterpolation(raw, openPos)
+	if err != nil {
+		return nil, err
+	}
+	if !scanned.HasInterpolation {
+		return nil, nil
+	}
+
+	// Validate each expr part via syntax.ParseExpr. We use the user file
+	// name so any syntax-error attribution lands on user-readable source
+	// even if the resulting message line/col are relative to the snippet.
+	for _, part := range scanned.Parts {
+		if part.Kind != "expr" {
+			continue
+		}
+		if _, perr := syntax.ParseExpr(openPos.Filename(), part.Expr, 0); perr != nil {
+			return nil, &dag.ParseError{
+				Pos: part.Pos,
+				Msg: fmt.Sprintf("interpolation expression %q: %v", part.Expr, perr),
+			}
+		}
+	}
+
+	src := buildLambdaSource(scanned.Parts)
+	syntheticName := fmt.Sprintf("<interp:%s:%d:%d>", openPos.Filename(), openPos.Line, openPos.Col)
+	fullSrc := "result = " + src
+	if p.fileBytes == nil {
+		p.fileBytes = make(map[string][]byte)
+	}
+	p.fileBytes[syntheticName] = []byte(fullSrc)
+
+	// Compile via ExecFileOptions on a sub-thread that imports nothing.
+	// Use the locked D-20 lambda-time globals (bridge.LambdaTimeGlobals)
+	// so the synthesized lambda runs in the SAME predeclared environment
+	// any user-written lambda would. The synthesized lambda itself only
+	// uses + concatenation and str(), but parity here means a future
+	// hand-written lambda that's later re-routed through this code path
+	// behaves identically.
+	subThread := &starlark.Thread{Name: "skytime-desugar:" + syntheticName}
+	opts := defaultFileOptions()
+	globals, err := starlark.ExecFileOptions(opts, subThread, syntheticName, fullSrc, lambdaTimeGlobalsForDesugar())
+	if err != nil {
+		return nil, &dag.ParseError{
+			Pos: openPos,
+			Msg: fmt.Sprintf("interpolation: failed to compile synthesized lambda: %v", err),
+		}
+	}
+	fnVal, ok := globals["result"]
+	if !ok {
+		return nil, &dag.ParseError{Pos: openPos, Msg: "interpolation: internal — synthesized source produced no 'result'"}
+	}
+	fn, ok := fnVal.(*starlark.Function)
+	if !ok {
+		return nil, &dag.ParseError{
+			Pos: openPos,
+			Msg: fmt.Sprintf("interpolation: internal — synthesized 'result' is %s, expected function", fnVal.Type()),
+		}
+	}
+
+	// BodyPos points at line 1, col 10 of the synthetic file — the
+	// position of `lambda` in `result = lambda ctx: ...`. (1-based: chars
+	// 1..9 are "result = ", so `lambda` begins at col 10.) Computing this
+	// dynamically would require parsing the synthetic file; the prefix is
+	// fixed so a constant offset is sufficient and matches what the
+	// re-parser will report for the LambdaExpr keyword position.
+	const resultPrefix = "result = "
+	bodyPos := syntax.MakePosition(&syntheticName, 1, int32(len(resultPrefix)+1))
+
+	return p.captureLambdaAtPosition(fn, openPos, bodyPos)
+}
+
+// lambdaTimeGlobalsForDesugar returns the locked D-20 subset used as
+// predeclared globals when compiling the synthesized lambda. Delegates
+// to bridge.LambdaTimeGlobals (Phase 1 D-20) for a single source of
+// truth; a fresh copy is returned per call so callers may mutate it
+// without affecting the locked source.
+func lambdaTimeGlobalsForDesugar() starlark.StringDict {
+	return bridge.LambdaTimeGlobals()
 }
