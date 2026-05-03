@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.1-06-PLAN.md
-last_updated: "2026-05-03T03:50:09.653Z"
+stopped_at: Completed 04.1-02-PLAN.md
+last_updated: "2026-05-03T04:05:38.810Z"
 last_activity: 2026-05-03
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 27
-  completed_plans: 21
+  completed_plans: 22
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04.1 (dynamic-step-kwargs-lambda-accepting-step-action-fn-variant-for-runtime-built-action-kwargs) — EXECUTING
-Plan: 3 of 8
+Plan: 4 of 8
 Status: Ready to execute
 Last activity: 2026-05-03
 
@@ -72,6 +72,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 260501-p7c P01 | 6min | 3 tasks | 4 files |
 | Phase 04.1 P01 | 5min | 3 tasks | 17 files |
 | Phase 04.1 P06 | 12min | 3 tasks | 9 files |
+| Phase 04.1 P02 | 11min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -169,6 +170,7 @@ Recent decisions affecting current work:
 - [Phase 04.1]: Plan 04.1-06: progressEvent struct lives in progress.go (no build tag) — Unix and Windows liveRenderer variants share the EXACT same struct shape; otherwise buildProgressEvent's field accesses would compile on Unix but fail on Windows (W12 in plan)
 - [Phase 04.1]: Plan 04.1-06: submit() defer-recover() handles close-race between fast-path closed-check and channel send — documented Go idiom that lets the renderer remain goroutine-isolated without an extra mutex on every submit
 - [Phase 04.1]: Plan 04.1-06: CLI-06/CLI-07 requirements not yet registered in REQUIREMENTS.md (Plan 04.1-07 adds them via the registrar plan); requirements mark-complete deferred to 04.1-07 execution
+- [Phase 04.1]: Plan 04.1-02: synthesized-source string + re-parse desugarer (RESEARCH §Pattern 1) + dual-position attribution (Pos at user source, BodyPos at synthetic file) + filename-prefix remap of <interp:...> back to user Pos for ValidationError clarity
 
 ### Pending Todos
 
@@ -185,6 +187,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-03T03:49:55.860Z
-Stopped at: Completed 04.1-06-PLAN.md
+Last session: 2026-05-03T04:05:38.806Z
+Stopped at: Completed 04.1-02-PLAN.md
 Resume file: None
