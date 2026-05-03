@@ -163,10 +163,30 @@ func UnpackOperationKwargs(opName string, callPos syntax.Position, specs []Field
 //
 // Extension authors will extend this switch when their Phase-6 ops need
 // additional types (e.g., []int, time.Duration, custom enums).
+//
+// D4.1-05 carve-out: a *dag.StarlarkLambda wrapper means the consultant
+// supplied a ${...}-interpolated string (or, in a future plan, an
+// explicit lambda) for a string-typed kwarg. The interpreter's runtime
+// resolveKwargs (Plan 04.1-05a) replaces the wrapper with a real string
+// before activity-side dispatch. For PARSE-time validation we accept the
+// lambda for string-typed fields (leaving the Go field zero) and reject
+// it for any other type — there is no implicit lambda → int / lambda →
+// list coercion.
 func assignStarlarkToGo(dst reflect.Value, src starlark.Value) error {
 	// Starlark None → leave Go zero value.
 	if src == starlark.None {
 		return nil
+	}
+
+	// D4.1-05: *StarlarkLambda wrapper short-circuit. Accept for string
+	// fields (zero-valued; runtime resolveKwargs fills in the resolved
+	// string) and reject loudly for non-string fields so callers know
+	// lambda→non-string coercion is unsupported.
+	if _, isLambda := dag.UnwrapStarlarkLambda(src); isLambda {
+		if dst.Kind() == reflect.String {
+			return nil
+		}
+		return fmt.Errorf("lambda not allowed for non-string field (got lambda kwarg, declared type is %s)", dst.Kind())
 	}
 
 	switch dst.Kind() {

@@ -626,3 +626,127 @@ func TestDecodeKwargsFromDict_NilDict(t *testing.T) {
 	require.True(t, errors.As(err, &vErr))
 	assert.Contains(t, vErr.Msg, `missing required kwarg "repo"`)
 }
+
+// ----------------------------------------------------------------------------
+// Plan 04.1-03 Task 1 — *StarlarkLambda acceptance for string-typed fields
+// (D4.1-05). The interpolation desugarer wraps a *CapturedLambda in
+// *dag.StarlarkLambda before storing it inside an ActionRef.Kwargs *Dict.
+// At parse-time validation (UnpackOperationKwargs / DecodeKwargsFromDict)
+// the schema layer must accept the wrapper for string-typed schema fields
+// and reject it for non-string fields. Type coercion is SKIPPED in the
+// lambda case — the runtime interpreter's resolveKwargs (Plan 04.1-05a)
+// fills in the resolved string before the activity sees it.
+// ----------------------------------------------------------------------------
+
+// lambdaArgs is the test-corpus parameter struct used by the Plan 03 Task 1
+// tests. Path is required string (the lambda-acceptance target). Count is
+// required int (the lambda-rejection target — non-string field).
+type lambdaArgs struct {
+	Path  string `star:"path,required"`
+	Count int    `star:"count,required"`
+}
+
+// stringOnlyArgs has only a string field; used to test happy paths where
+// the int field absence isn't relevant.
+type stringOnlyArgs struct {
+	Path string `star:"path,required"`
+}
+
+// makeFakeLambda returns a *dag.StarlarkLambda wrapping a *CapturedLambda
+// whose ID is supplied by caller. The wrapped Fn is nil — these tests
+// only exercise the type-routing branch of assignStarlarkToGo, never call
+// the lambda.
+func makeFakeLambda(id string) *dag.StarlarkLambda {
+	return dag.NewStarlarkLambda(&dag.CapturedLambda{ID: id})
+}
+
+// TestUnpackOperationKwargs_LambdaAsRequiredString_NoError — a *StarlarkLambda
+// supplied for a required string field must validate cleanly (no error)
+// and leave the Go field at its zero value. Runtime resolveKwargs fills in
+// the resolved string before the activity dispatch.
+func TestUnpackOperationKwargs_LambdaAsRequiredString_NoError(t *testing.T) {
+	specs, err := ParseSchema(reflect.TypeOf(stringOnlyArgs{}))
+	require.NoError(t, err)
+
+	lam := makeFakeLambda("abc:1:1")
+	kwargs := []starlark.Tuple{
+		{starlark.String("path"), lam},
+	}
+	var target stringOnlyArgs
+
+	err = UnpackOperationKwargs("get", dummyPos(10, 5), specs, kwargs, &target)
+	require.NoError(t, err, "lambda for required string field must validate cleanly")
+	assert.Equal(t, "", target.Path,
+		"Go field must remain zero (runtime resolveKwargs fills it later)")
+}
+
+// TestUnpackOperationKwargs_LambdaForNonStringField_Errors — a
+// *StarlarkLambda supplied for a non-string field (here `Count int`) must
+// surface a clear error mentioning "lambda not allowed for non-string
+// field" and the actual destination Kind ("int").
+func TestUnpackOperationKwargs_LambdaForNonStringField_Errors(t *testing.T) {
+	specs, err := ParseSchema(reflect.TypeOf(lambdaArgs{}))
+	require.NoError(t, err)
+
+	lam := makeFakeLambda("abc:1:1")
+	kwargs := []starlark.Tuple{
+		{starlark.String("path"), starlark.String("/x")},
+		{starlark.String("count"), lam},
+	}
+	var target lambdaArgs
+
+	err = UnpackOperationKwargs("get", dummyPos(10, 5), specs, kwargs, &target)
+	require.Error(t, err)
+
+	var ve *dag.ValidationError
+	require.True(t, errors.As(err, &ve), "expected *dag.ValidationError, got %T", err)
+	assert.Contains(t, ve.Msg, "count")
+	assert.Contains(t, ve.Msg, "lambda not allowed for non-string field")
+	assert.Contains(t, ve.Msg, "int",
+		"error must mention the actual destination Kind so callers can pattern-match")
+}
+
+// TestDecodeKwargsFromDict_RoundTripsLambda — a *starlark.Dict carrying a
+// *StarlarkLambda value for a string-typed field must round-trip cleanly
+// through DecodeKwargsFromDict. The Go target field stays zero-valued; the
+// lambda is preserved in the dict for resolveKwargs to evaluate later.
+func TestDecodeKwargsFromDict_RoundTripsLambda(t *testing.T) {
+	dict := starlark.NewDict(1)
+	require.NoError(t, dict.SetKey(starlark.String("path"), makeFakeLambda("abc:1:1")))
+	dict.Freeze() // mirror parse-time freeze on ActionRef.Kwargs
+
+	var got stringOnlyArgs
+	err := DecodeKwargsFromDict("get", dict, &got)
+	require.NoError(t, err, "lambda round-trip via DecodeKwargsFromDict must validate cleanly")
+	assert.Equal(t, "", got.Path,
+		"Go field must remain zero — lambda is preserved inside the dict for runtime resolveKwargs")
+}
+
+// TestAssignStarlarkToGo_LambdaToString — direct unit test of the
+// public-facing function's contract: lambda → string field returns nil
+// error and leaves the destination zero-valued.
+func TestAssignStarlarkToGo_LambdaToString(t *testing.T) {
+	var dst string
+	lam := makeFakeLambda("abc:1:1")
+	err := assignStarlarkToGo(reflect.ValueOf(&dst).Elem(), lam)
+	require.NoError(t, err, "lambda → string field must accept without error")
+	assert.Equal(t, "", dst, "destination must be left zero-valued")
+}
+
+// TestUnpackOperationKwargs_StringStillWorks — regression test pinning
+// that adding the lambda-acceptance branch did not change the behavior of
+// plain starlark.String for string-typed fields.
+func TestUnpackOperationKwargs_StringStillWorks(t *testing.T) {
+	specs, err := ParseSchema(reflect.TypeOf(stringOnlyArgs{}))
+	require.NoError(t, err)
+
+	kwargs := []starlark.Tuple{
+		{starlark.String("path"), starlark.String("/repos/x")},
+	}
+	var target stringOnlyArgs
+
+	err = UnpackOperationKwargs("get", dummyPos(10, 5), specs, kwargs, &target)
+	require.NoError(t, err)
+	assert.Equal(t, "/repos/x", target.Path,
+		"plain string must continue to populate the Go field as before")
+}
