@@ -19,6 +19,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **DSL-08**: A step accepts Temporal `RetryPolicy` kwargs (initial interval, backoff, max attempts, non-retryable errors) and timeouts (start-to-close, schedule-to-start)
 - [x] **DSL-09**: Lambdas access workflow state via dot-notation (`ctx.req.repo_name`) — the bridge recursively converts Go state maps into nested `*starlarkstruct.Struct` instances with deterministic key order
 - [x] **DSL-10**: `resolve.AllowLambda = true` is set explicitly before any Starlark parse; `lambda` is the only legal expression-evaluation surface (no CEL, no string parsers)
+- [x] **DSL-11**: A flow can dynamically build a single action via `step(action_fn=lambda ctx: ext.op(...))` returning a single `ActionRef`; the lambda evaluates inside the workflow with the locked predeclared globals (D-20) and cancellation watchdog (D3-21)
+- [x] **DSL-12**: A flow can dynamically build a batch via `step(block_fn=lambda ctx: [ext.op(...) for ...])` returning a Starlark list of `ActionRef`; empty results short-circuit (no activity dispatch); mixed-idempotency batches reject at parse time (best-effort, D4.1-11) or at runtime (defense-in-depth, D4.1-12)
+- [x] **DSL-13**: String kwargs accept `${ctx.expr}` interpolation that desugars at parse time into `lambda ctx: "..." + str(ctx.expr) + "..."`; honors `$$` escape, single-line only, empty `${}` is a parse error; the synthesized lambda flows through the existing D4-02 ctx.<name> walker so typos surface as `*dag.ValidationError` at parse time
 
 ### Extension SDK
 
@@ -68,6 +71,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **VAL-01**: `skytime validate <file.star>` parses and checks every flow without executing — verifies kwargs match each extension's declared schema, every input maps to a registered schema, every lambda's free variables reference declared state, and the lambda predeclared-global subset is honored
 - [x] **VAL-02**: Static validation and runtime parsing share the same parser code path — a CI corpus test runs every `.star` file in `examples/` through both static `validate` and a dry-run interpreter (all actions mocked) and asserts they agree on accept/reject
 - [x] **VAL-03**: Validation errors are formatted `<file>:<line>:<col> [flow > step > action]: <message>` and exit non-zero; `--debug` reveals Go internals only
+- [x] **VAL-04**: `block_fn` lambdas pass best-effort static idempotency analysis at parse time via `pkg/parser/block_fn_lint.go::classifyBlockFn`; opaque shapes (helper functions, indirect dispatch) defer to the runtime fallback in `pkg/activity/validate_batch.go`
 
 ### E2E Test Harness (Tier 3)
 
@@ -84,6 +88,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **CLI-03**: `skytime test <dir>` discovers `.star` test files, runs the Tier 3 harness, and reports pass/fail with Starlark callsite errors
 - [x] **CLI-04**: `skytime dev-server` spawns a local Temporal dev server (Temporalite or `temporal server start-dev`) for local development of the example project
 - [x] **CLI-05**: The CLI lives under `cmd/skytime/`; cobra and charmbracelet/log are CLI-only dependencies — they are not reachable from the library root
+- [x] **CLI-06**: `skytime run` renders progress as a multi-line live block on TTY + non-verbose; spinner cadence 100 ms; max 10 active rows + `... and M more` truncation; cursor-up + line-clear ANSI preserves scrollback
+- [x] **CLI-07**: The renderer falls back to static line-per-event mode when stdout is non-TTY OR `--verbose` is set OR the build is Windows
 
 ### Example Project (Dogfood + Demo)
 
@@ -91,6 +97,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **EX-02**: The example contains four to six `.star` flows that collectively exercise every DSL primitive (sequential, block batch, `if_cond`, `script`, `for_each_parallel`, `call_flow`) and every concern (retries, timeouts, credentials, cancellation)
 - [ ] **EX-03**: The example contains at least one `.star` test file using `temporal_test` that exercises retries via `attempt` and asserts replay determinism
 - [ ] **EX-04**: A README walkthrough takes a reader from `git clone` to a successfully-executed flow against `skytime dev-server` in under five commands
+- [x] **EX-FIX-01**: `examples/skeleton/simple_check.star` and `examples/skeleton/parallel_fanout.star` demonstrate `--input`-driven dynamic kwargs end-to-end via `${ctx.expr}` interpolation and `step(action_fn=...)` / `step(block_fn=...)` (D4.1-23 + D4.1-24); differential corpus (D4.1-25) pins parse + dryrun agreement
 
 ## v2 Requirements
 
@@ -201,10 +208,17 @@ Which phases cover which requirements. Populated during roadmap creation.
 | EX-02 | Phase 6 | Pending |
 | EX-03 | Phase 6 | Pending |
 | EX-04 | Phase 6 | Pending |
+| DSL-11 | Phase 04.1 | Complete |
+| DSL-12 | Phase 04.1 | Complete |
+| DSL-13 | Phase 04.1 | Complete |
+| VAL-04 | Phase 04.1 | Complete |
+| CLI-06 | Phase 04.1 | Complete |
+| CLI-07 | Phase 04.1 | Complete |
+| EX-FIX-01 | Phase 04.1 | Complete |
 
 **Coverage:**
-- v1 requirements: 55 total (header previously stated 51 — actual enumerated count is 55)
-- Mapped to phases: 55 ✓
+- v1 requirements: 62 total (55 original + 7 added in Phase 04.1: DSL-11/12/13, VAL-04, CLI-06/07, EX-FIX-01)
+- Mapped to phases: 62 ✓
 - Unmapped: 0
 
 **Phase summary:**
@@ -212,9 +226,10 @@ Which phases cover which requirements. Populated during roadmap creation.
 - Phase 2 (Generic Activity + Block-Batch Dispatch + Credentials): 6 requirements (ACT-01..06)
 - Phase 3 (Lambda-Serialization Decision + Interpreter + Worker): 10 requirements (INTRP-01..07, WORK-01..03)
 - Phase 4 (Static Validation Tier + CLI Skeleton): 7 requirements (VAL-01..03, CLI-01, CLI-02, CLI-04, CLI-05)
+- Phase 04.1 (Dynamic step kwargs + interpolation + live progress block): 7 requirements (DSL-11/12/13, VAL-04, CLI-06/07, EX-FIX-01)
 - Phase 5 (Tier-3 E2E Test Harness): 6 requirements (TEST-01..05, CLI-03)
 - Phase 6 (Example Project): 4 requirements (EX-01..04)
 
 ---
 *Requirements defined: 2026-04-26*
-*Last updated: 2026-04-26 — traceability populated by roadmap creation*
+*Last updated: 2026-05-02 — Phase 04.1 added DSL-11/12/13, VAL-04, CLI-06/07, EX-FIX-01 (7 new requirements; v1 total 55→62)*
