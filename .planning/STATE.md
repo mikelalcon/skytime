@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.1-01-PLAN.md
-last_updated: "2026-05-03T03:32:34.088Z"
+stopped_at: Completed 04.1-06-PLAN.md
+last_updated: "2026-05-03T03:50:09.653Z"
 last_activity: 2026-05-03
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 27
-  completed_plans: 20
+  completed_plans: 21
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04.1 (dynamic-step-kwargs-lambda-accepting-step-action-fn-variant-for-runtime-built-action-kwargs) — EXECUTING
-Plan: 2 of 8
+Plan: 3 of 8
 Status: Ready to execute
 Last activity: 2026-05-03
 
@@ -71,6 +71,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04-static-validation-tier-cli-skeleton P07 | 7min | 3 tasks | 11 files |
 | Phase 260501-p7c P01 | 6min | 3 tasks | 4 files |
 | Phase 04.1 P01 | 5min | 3 tasks | 17 files |
+| Phase 04.1 P06 | 12min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -162,6 +163,12 @@ Recent decisions affecting current work:
 - [Phase 04.1]: Plan 04.1-01: dag.Step gains Name/NameFn/ActionFn/BlockFn (D4.1-15, D4.1-06); dag.Flow gains NameFn (D4.1-16); dag.CapturedLambda gains BodyPos with zero-value sentinel (RESEARCH §Pattern 2)
 - [Phase 04.1]: Plan 04.1-01: StarlarkLambda starlark.Value wrapper lives in pkg/dag (not pkg/parser) — pkg/interpreter must UnwrapStarlarkLambda inside resolveKwargs WITHOUT importing pkg/parser; placing wrapper in pkg/dag breaks the would-be cycle. Mirrors nodeValue idiom but moved upstream for cross-tier use.
 - [Phase 04.1]: Plan 04.1-01: Wave 0 fixtures land directly under tests/fixtures/ (not the existing valid/ or invalid/ subdirs). Plan's verify command and downstream-wave fixture-loaders use the verbatim path tests/fixtures/<name>.star. Existing 01-*.star..11-*.star Phase 1/2 corpora in subdirs are undisturbed.
+- [Phase 04.1]: Plan 04.1-06: ANSI strategy = cursor-up + line-clear (NOT alternate-screen-buffer) — preserves scrollback for demos and CI logs per cargo/npm/bazel precedent (RESEARCH §4)
+- [Phase 04.1]: Plan 04.1-06: Inline 10-frame braille spinner (locked verbatim ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ at 100ms cadence) over charm/huh dependency — 5 LOC + a string slice; charm/huh would conflict with the slog-handler-driven event model
+- [Phase 04.1]: Plan 04.1-06: Single render goroutine + buffered chan (size 64) — Handle() is mutex-free; goroutine owns the writer. Avoids the mu.Lock anti-pattern from RESEARCH §Pattern 5; batches concurrent for_each_parallel events through one redraw cycle
+- [Phase 04.1]: Plan 04.1-06: progressEvent struct lives in progress.go (no build tag) — Unix and Windows liveRenderer variants share the EXACT same struct shape; otherwise buildProgressEvent's field accesses would compile on Unix but fail on Windows (W12 in plan)
+- [Phase 04.1]: Plan 04.1-06: submit() defer-recover() handles close-race between fast-path closed-check and channel send — documented Go idiom that lets the renderer remain goroutine-isolated without an extra mutex on every submit
+- [Phase 04.1]: Plan 04.1-06: CLI-06/CLI-07 requirements not yet registered in REQUIREMENTS.md (Plan 04.1-07 adds them via the registrar plan); requirements mark-complete deferred to 04.1-07 execution
 
 ### Pending Todos
 
@@ -178,6 +185,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-03T03:32:34.084Z
-Stopped at: Completed 04.1-01-PLAN.md
+Last session: 2026-05-03T03:49:55.860Z
+Stopped at: Completed 04.1-06-PLAN.md
 Resume file: None
