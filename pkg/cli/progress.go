@@ -151,15 +151,15 @@ func (p *progressHandler) Enabled(_ context.Context, _ slog.Level) bool {
 	return true
 }
 
-// Handle routes the record to the static Bazel renderer (Task 1) or to
-// the live renderer (Task 3, after un-skip) when it carries the `event`
-// attribute, or to the wrapped handler. The wrapped handler's Enabled()
-// filters passthrough records by level.
+// Handle routes the record to the static Bazel renderer or to the live
+// renderer when it carries the `event` attribute, or to the wrapped
+// handler. The wrapped handler's Enabled() filters passthrough records
+// by level.
 //
-// Phase 04.1-06 Task 1: useLiveBlock() is wired but Handle() always
-// routes static — no behavior change from Phase 4. Task 3 flips the
-// dispatch to honor useLiveBlock() once the live renderer (Task 2)
-// is real, not a stub.
+// Phase 04.1-06 Task 3: dispatch honors useLiveBlock(). On TTY +
+// non-verbose, the lazy-constructed liveRenderer owns all writes (its
+// own goroutine writes to p.out). On non-TTY OR --verbose OR Windows,
+// the static Bazel renderer writes directly to p.out.
 func (p *progressHandler) Handle(ctx context.Context, r slog.Record) error {
 	if !hasAttr(r, "event") {
 		// Passthrough — but respect the wrapped handler's level.
@@ -168,9 +168,17 @@ func (p *progressHandler) Handle(ctx context.Context, r slog.Record) error {
 		}
 		return p.wrapped.Handle(ctx, r)
 	}
-	// Phase 04.1-06 Task 3 wires the live path here. For now, always
-	// static — same behavior as Phase 4.
-	return p.renderBazelLine(r)
+	if !p.useLiveBlock() {
+		return p.renderBazelLine(r)
+	}
+	// Lazily construct the live renderer on the first event-bearing
+	// record. liveOnce ensures only one goroutine ever runs even if
+	// Handle is invoked concurrently from multiple workflow workers.
+	p.liveOnce.Do(func() {
+		p.live = newLiveRenderer(p.out)
+	})
+	p.live.submit(buildProgressEvent(r))
+	return nil
 }
 
 // Close shuts down the background render goroutine if a live renderer

@@ -95,11 +95,25 @@ func buildSDKSlogLogger(cfg *config) *slog.Logger {
 // Phase 04.1-06: cfg.Verbose is threaded through so the live-block
 // renderer (D4.1-17) deactivates when --verbose is set (D4.1-20).
 func buildRoutedSlogLogger(cfg *config, progressOut io.Writer) *slog.Logger {
+	logger, _ := buildRoutedSlogLoggerWithHandle(cfg, progressOut)
+	return logger
+}
+
+// buildRoutedSlogLoggerWithHandle is the underlying constructor — returns
+// both the *slog.Logger AND the underlying *progressHandler so the
+// caller (skytime run) can defer handler.Close() to drain the live
+// renderer goroutine. The handler is the same instance whose Handle()
+// the SDK invokes; calling Close() on it shuts down the live block
+// goroutine if one was lazily constructed.
+//
+// Behavior is identical to buildRoutedSlogLogger; this is the seam for
+// callers who need the Close hook (Phase 04.1-06 Task 3).
+func buildRoutedSlogLoggerWithHandle(cfg *config, progressOut io.Writer) (*slog.Logger, *progressHandler) {
 	wrapped := cfg.sdkLogger.Handler()
-	routed := newProgressHandlerWithOptions(wrapped, progressOut, progressHandlerOptions{
+	handler := newProgressHandlerWithOptions(wrapped, progressOut, progressHandlerOptions{
 		Verbose: cfg.Verbose,
 	})
-	return slog.New(routed)
+	return slog.New(handler), handler
 }
 
 // renderError writes a single error to out using D4-18 Starlark-first

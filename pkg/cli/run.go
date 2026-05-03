@@ -80,7 +80,14 @@ func newRunCommand(cfg *config) *cobra.Command {
 			//     — stdout is reserved for the JSON workflow result).
 			//   - Other records pass through cfg.sdkLogger's wrapped
 			//     handler (charm-log when --verbose, discard otherwise).
-			cfg.sdkLogger = buildRoutedSlogLogger(cfg, cmd.ErrOrStderr())
+			//
+			// Phase 04.1-06 Task 3: capture the *progressHandler so
+			// the live-block render goroutine (D4.1-17) drains
+			// cleanly on flow completion. The deferred Close is a
+			// no-op for static-mode handlers (verbose / non-TTY).
+			routedLogger, progHandler := buildRoutedSlogLoggerWithHandle(cfg, cmd.ErrOrStderr())
+			cfg.sdkLogger = routedLogger
+			defer progHandler.Close()
 
 			// 3. Connect — variant routing per D4-08. (uses cfg.sdkLogger)
 			c, err := connectClient(cfg)
