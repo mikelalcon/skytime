@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 04.1 context gathered (dynamic kwargs + interpolation desugar + live block)
-last_updated: "2026-05-03T01:27:23.405Z"
-last_activity: 2026-05-01
+status: executing
+stopped_at: Completed 04.1-01-PLAN.md
+last_updated: "2026-05-03T03:32:34.088Z"
+last_activity: 2026-05-03
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 19
-  completed_plans: 19
+  total_plans: 27
+  completed_plans: 20
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-26)
 
 **Core value:** A consultant team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
-**Current focus:** Phase 04 — static-validation-tier-cli-skeleton
+**Current focus:** Phase 04.1 — dynamic-step-kwargs-lambda-accepting-step-action-fn-variant-for-runtime-built-action-kwargs
 
 ## Current Position
 
-Phase: 5
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-05-01
+Phase: 04.1 (dynamic-step-kwargs-lambda-accepting-step-action-fn-variant-for-runtime-built-action-kwargs) — EXECUTING
+Plan: 2 of 8
+Status: Ready to execute
+Last activity: 2026-05-03
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -70,6 +70,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04 P06 | 3min | 1 tasks | 3 files |
 | Phase 04-static-validation-tier-cli-skeleton P07 | 7min | 3 tasks | 11 files |
 | Phase 260501-p7c P01 | 6min | 3 tasks | 4 files |
+| Phase 04.1 P01 | 5min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -158,6 +159,9 @@ Recent decisions affecting current work:
 - [Phase quick-260502-onc]: Quick 260502-onc: walkStep extractFirstNonRetryable wires D2-14 (results, nil) soft failures into workflow-level errors so the renderer prints flow_failed; helper-level test coverage for first-wins property keeps test count manageable
 - [Phase quick-260502-onc]: Quick 260502-onc: progressHandler lastErr lifecycle — schema-stable (no new event attrs), reset on flow_start, shallow-copied through WithAttrs/WithGroup; defensive '(no per-step error captured)' placeholder for malformed event sequences
 - [Phase quick-260502-onc]: Quick 260502-onc: e2e subprocess teardown — Setpgid + syscall.Kill(-pgid, SIGTERM→3s grace→SIGKILL) wired from defer + signal.Notify; ensureDevServer probe-then-spawn reuses existing 7233 listener; //go:build !windows (Setpgid is Unix-only)
+- [Phase 04.1]: Plan 04.1-01: dag.Step gains Name/NameFn/ActionFn/BlockFn (D4.1-15, D4.1-06); dag.Flow gains NameFn (D4.1-16); dag.CapturedLambda gains BodyPos with zero-value sentinel (RESEARCH §Pattern 2)
+- [Phase 04.1]: Plan 04.1-01: StarlarkLambda starlark.Value wrapper lives in pkg/dag (not pkg/parser) — pkg/interpreter must UnwrapStarlarkLambda inside resolveKwargs WITHOUT importing pkg/parser; placing wrapper in pkg/dag breaks the would-be cycle. Mirrors nodeValue idiom but moved upstream for cross-tier use.
+- [Phase 04.1]: Plan 04.1-01: Wave 0 fixtures land directly under tests/fixtures/ (not the existing valid/ or invalid/ subdirs). Plan's verify command and downstream-wave fixture-loaders use the verbatim path tests/fixtures/<name>.star. Existing 01-*.star..11-*.star Phase 1/2 corpora in subdirs are undisturbed.
 
 ### Pending Todos
 
@@ -174,6 +178,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-03T01:27:23.392Z
-Stopped at: Phase 04.1 context gathered (dynamic kwargs + interpolation desugar + live block)
-Resume file: .planning/phases/04.1-dynamic-step-kwargs-lambda-accepting-step-action-fn-variant-for-runtime-built-action-kwargs/04.1-CONTEXT.md
+Last session: 2026-05-03T03:32:34.084Z
+Stopped at: Completed 04.1-01-PLAN.md
+Resume file: None
