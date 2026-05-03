@@ -4,7 +4,7 @@ milestone: v1.42.0
 milestone_name: milestone
 status: verifying
 stopped_at: ""Phase 04.1 complete — ready for /gsd:verify-work + /gsd:transition (Phase 5: E2E test harness)""
-last_updated: "2026-05-03T23:18:00.000Z"
+last_updated: "2026-05-03T23:33:00.000Z"
 last_activity: 2026-05-03
 progress:
   total_phases: 7
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 Phase: 5
 Plan: Not started
 Status: Phase 04.1 complete — dynamic kwargs + interpolation + live block end-to-end; ready for /gsd:verify-work + /gsd:transition to Phase 5
-Last activity: 2026-05-03 - Completed quick task 260503-qkk: inline if_cond branch label onto step_complete line
+Last activity: 2026-05-03 - Completed quick task 260503-qx1: include kind + label on step_complete line (mirrors step_dispatch column shape)
 
 Progress: [██████████] 100%
 
@@ -207,6 +207,7 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 260503-q9p | Restore ANSI colors in the live progress block (regression from Phase 04.1 Plan 06) | 2026-05-03 | 76da75e | [260503-q9p-restore-ansi-colors-in-the-live-progress](./quick/260503-q9p-restore-ansi-colors-in-the-live-progress/) |
 | 260503-qkk | Inline if_cond branch label (` → then`/` → else`) onto step_complete line; drop standalone branch row on both static + live renderers | 2026-05-03 | b58bffc + 9d95b49 | [260503-qkk-inline-if-cond-branch-label-then-else-on](./quick/260503-qkk-inline-if-cond-branch-label-then-else-on/) |
+| 260503-qx1 | Include kind + label on step_complete line — mirrors step_dispatch column shape so user-defined step names persist past dispatch onto the finalized ✓ row; fixes latent live-renderer bug that hardcoded "step" for every kind | 2026-05-03 | 70de069 + 9f4858b | [260503-qx1-include-step-kind-label-on-step-complete](./quick/260503-qx1-include-step-kind-label-on-step-complete/) |
 
 ### Roadmap Evolution
 
@@ -214,6 +215,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-03T23:18:00Z
-Stopped at: "Quick 260503-qkk complete — Phase 04.1 stays ready for /gsd:verify-work + /gsd:transition (Phase 5: E2E test harness)"
+Last session: 2026-05-03T23:33:00Z
+Stopped at: "Quick 260503-qx1 complete — kind + label persist on step_complete row; Phase 04.1 stays ready for /gsd:verify-work + /gsd:transition (Phase 5: E2E test harness)"
 Resume file: None
