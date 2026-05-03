@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"go.starlark.net/starlark"
@@ -103,5 +104,46 @@ func CallLambda(ctx context.Context, captured *dag.CapturedLambda, state map[str
 
 	// Call the lambda with the state struct as the single positional arg.
 	// Lambdas authored via the DSL are by convention `lambda ctx: ...`.
-	return starlark.Call(thread, captured.Fn, starlark.Tuple{stateStruct}, nil)
+	val, err := starlark.Call(thread, captured.Fn, starlark.Tuple{stateStruct}, nil)
+	if err != nil {
+		// B6 (D4.1-08): preserve the inner-fail() callsite. starlark.Call
+		// returns *starlark.EvalError on `fail("...")` from inside the
+		// lambda body; its Error() method renders ONLY the bare reason
+		// (e.g. "fail: oops") — the per-frame position lives in the
+		// CallStack. We re-wrap here with the deepest user-source
+		// frame's Position so callers (e.g. interpreter walkStep
+		// dispatching action_fn / block_fn) see "<file>:<line>:<col>:
+		// fail: oops" — pinning the exact line where the user wrote
+		// fail() rather than just the lambda definition line or the
+		// synthetic <builtin> position.
+		//
+		// CallStack layout (per go.starlark.net/starlark/eval.go:215):
+		//   - The slice is "outermost first": CallStack[0] is the
+		//     outermost frame, CallStack[len-1] is the innermost.
+		//   - CallStack.At(i) returns CallStack[len-1-i] — i.e. At(0) is
+		//     the innermost frame.
+		//   - The innermost frame for fail("...") is the <builtin>
+		//     frame for the fail builtin itself, NOT the user's
+		//     callsite. Frames carrying a user .star file are one or
+		//     more steps further out.
+		//
+		// We therefore walk the slice from innermost (len-1) toward
+		// outermost (0), skipping frames whose filename is "<builtin>"
+		// or empty (synthetic). The first user-source frame we hit is
+		// the .star location we want to surface. If none is found we
+		// fall through with the original error so we never lose
+		// information.
+		if ee, ok := err.(*starlark.EvalError); ok && len(ee.CallStack) > 0 {
+			for i := len(ee.CallStack) - 1; i >= 0; i-- {
+				fr := ee.CallStack[i]
+				fname := fr.Pos.Filename()
+				if fname == "" || fname == "<builtin>" {
+					continue
+				}
+				return val, fmt.Errorf("%s: %w", fr.Pos, ee)
+			}
+		}
+		return val, err
+	}
+	return val, nil
 }

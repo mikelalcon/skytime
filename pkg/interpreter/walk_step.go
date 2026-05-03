@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"go.starlark.net/starlark"
+	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 
 	"github.com/mikelalcon/skytime/pkg/dag"
@@ -34,6 +35,12 @@ func (i *interpreter) walkStep(ctx workflow.Context, step *dag.Step) (err error)
 		"label", label,
 		"idx", idx, "total", total, "path", path,
 	)
+	// deferEmit gates the success-path step_complete emission. The
+	// empty-batch short-circuit (D4.1-09) emits step_complete inline
+	// with summary="empty batch" and sets deferEmit=false to avoid
+	// duplicate emission. Every other return path keeps deferEmit=true
+	// so the existing post-ExecuteActivity summary logic fires.
+	deferEmit := true
 	// Use dag.ActionResults (typed slice) so the sealed-sum entries decode
 	// via its UnmarshalJSON discriminator. Decoding into []dag.ActionResult
 	// would fail because ActionResult is an interface; the typed slice
@@ -42,6 +49,9 @@ func (i *interpreter) walkStep(ctx workflow.Context, step *dag.Step) (err error)
 	// success-path summary.
 	var results dag.ActionResults
 	defer func() {
+		if !deferEmit {
+			return
+		}
 		status := "ok"
 		summary := ""
 		if err != nil {
@@ -63,8 +73,60 @@ func (i *interpreter) walkStep(ctx workflow.Context, step *dag.Step) (err error)
 		)
 	}()
 
+	// Plan 04.1-05b D4.1-06/07: dispatch ActionFn / BlockFn before the
+	// activity call. Static steps (Actions populated, no ActionFn /
+	// BlockFn) flow through unchanged.
+	actions, err := i.buildStepActions(ctx, step)
+	if err != nil {
+		return err
+	}
+
+	// D4.1-09 empty-batch short-circuit: when block_fn returns []
+	// emit step_complete with summary="empty batch" and skip the activity
+	// dispatch entirely. Cheaper than dispatching a no-op activity;
+	// observable to the renderer.
+	if len(actions) == 0 && step.BlockFn != nil {
+		logger.Info("skytime",
+			"event", "step_complete",
+			"kind", "step",
+			"status", "ok",
+			"duration_ms", workflow.Now(ctx).Sub(start).Milliseconds(),
+			"idx", idx, "total", total, "path", path,
+			"summary", "empty batch",
+		)
+		deferEmit = false
+		return nil
+	}
+
+	// W8: lambda-returned ActionRefs do NOT pass through the parser's
+	// freeze pass. Freeze each returned ref explicitly so its Kwargs
+	// *Dict becomes immutable for the rest of the workflow's lifetime.
+	// Replays then see byte-identical Items() iteration. Static
+	// (parser-built) actions are already frozen — Freeze() is idempotent
+	// so re-freezing is a no-op.
+	for _, ref := range actions {
+		ref.Freeze()
+	}
+
+	// D4.1-14: resolve lambda-valued kwargs on each action BEFORE
+	// ExecuteActivity. Plan 04.1-05a's resolveKwargs walks ref.Kwargs in
+	// deterministic order (insertion order via *starlark.Dict.Items),
+	// evaluates each *StarlarkLambda value, and returns a frozen *Dict
+	// suitable for the activity boundary. The fast path (no lambdas)
+	// returns the original frozen dict unchanged.
+	for _, ref := range actions {
+		resolved, rerr := i.resolveKwargs(ctx, ref)
+		if rerr != nil {
+			err = rerr
+			return err
+		}
+		if resolved != nil {
+			ref.Kwargs = resolved
+		}
+	}
+
 	actx := workflow.WithActivityOptions(ctx, i.activityOptionsForStep(step))
-	if err = workflow.ExecuteActivity(actx, "ExecuteBatch", step.Actions).Get(ctx, &results); err != nil {
+	if err = workflow.ExecuteActivity(actx, "ExecuteBatch", actions).Get(ctx, &results); err != nil {
 		return err
 	}
 	// Quick 260502-onc Fix B-2: convert the activity layer's D2-14
@@ -78,6 +140,72 @@ func (i *interpreter) walkStep(ctx workflow.Context, step *dag.Step) (err error)
 		return err
 	}
 	return nil
+}
+
+// buildStepActions returns step.Actions for static steps, evaluates
+// step.ActionFn for dynamic single-action steps, and evaluates
+// step.BlockFn for dynamic batches (D4.1-06).
+//
+// Strict return-type contract per D4.1-07:
+//   - action_fn MUST return a single *ActionRef.
+//   - block_fn MUST return a Starlark list whose every element is *ActionRef.
+//
+// Wrong types surface as temporal.NewNonRetryableApplicationError with
+// the lambda position embedded in the message — this is a programming
+// error in the .star file and Temporal must NOT retry it (D4.1-08).
+//
+// fail() callsite preservation (D4.1-08, B6): pkg/bridge/lambda_call.go
+// re-wraps *starlark.EvalError so its Error() includes the inner-fail
+// callsite (e.g. "<file>:<line>:<col>: fail: <reason>"). evalLambda then
+// adds the lambda's def-position prefix (lambda <id> @ <pos>: ...). The
+// composed message therefore carries BOTH positions, letting
+// the test for the LambdaPanic case grep for ":<inner-line>:".
+func (i *interpreter) buildStepActions(ctx workflow.Context, step *dag.Step) ([]*dag.ActionRef, error) {
+	switch {
+	case step.ActionFn != nil:
+		val, err := i.evalLambda(ctx, step.ActionFn.ID)
+		if err != nil {
+			return nil, temporal.NewNonRetryableApplicationError(
+				fmt.Sprintf("action_fn lambda failed (defined at %s): %v", step.ActionFn.Pos, err),
+				"ActionFnFailed", nil)
+		}
+		ref, ok := val.(*dag.ActionRef)
+		if !ok {
+			return nil, temporal.NewNonRetryableApplicationError(
+				fmt.Sprintf("action_fn returned %s, expected ActionRef (at %s)", val.Type(), step.ActionFn.Pos),
+				"ActionFnTypeMismatch", nil)
+		}
+		return []*dag.ActionRef{ref}, nil
+	case step.BlockFn != nil:
+		val, err := i.evalLambda(ctx, step.BlockFn.ID)
+		if err != nil {
+			return nil, temporal.NewNonRetryableApplicationError(
+				fmt.Sprintf("block_fn lambda failed (defined at %s): %v", step.BlockFn.Pos, err),
+				"BlockFnFailed", nil)
+		}
+		list, ok := val.(*starlark.List)
+		if !ok {
+			return nil, temporal.NewNonRetryableApplicationError(
+				fmt.Sprintf("block_fn returned %s, expected list of ActionRef (at %s)", val.Type(), step.BlockFn.Pos),
+				"BlockFnTypeMismatch", nil)
+		}
+		out := make([]*dag.ActionRef, 0, list.Len())
+		iter := list.Iterate()
+		defer iter.Done()
+		var v starlark.Value
+		for iter.Next(&v) {
+			ref, ok := v.(*dag.ActionRef)
+			if !ok {
+				return nil, temporal.NewNonRetryableApplicationError(
+					fmt.Sprintf("block_fn batch entry is %s, expected ActionRef (at %s)", v.Type(), step.BlockFn.Pos),
+					"BlockFnTypeMismatch", nil)
+			}
+			out = append(out, ref)
+		}
+		return out, nil
+	default:
+		return step.Actions, nil
+	}
 }
 
 // extractStatusSummary computes the summary attr for a successful step.

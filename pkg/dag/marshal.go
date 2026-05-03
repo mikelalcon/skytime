@@ -3,6 +3,7 @@ package dag
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"go.starlark.net/starlark"
 )
@@ -232,8 +233,20 @@ func (a *ActionRef) UnmarshalJSON(data []byte) error {
 	a.Kind_ = raw.Kind
 	a.CredentialID = raw.CredentialID
 	a.Kwargs = starlark.NewDict(len(raw.Kwargs))
-	for k, v := range raw.Kwargs {
-		sv := goValueToStarlark(v)
+	// Determinism (Plan 04.1-05b W8): Go map range is randomized, so iterating
+	// raw.Kwargs directly would yield a *starlark.Dict whose insertion-order
+	// (and therefore Items() iteration order) varies across activity-boundary
+	// round-trips, breaking replay-byte-equal expectations even when the wire
+	// JSON is canonical (encoding/json sorts map keys on Marshal). We sort the
+	// keys before SetKey so the rebuilt Dict has stable insertion order
+	// matching the wire ordering.
+	keys := make([]string, 0, len(raw.Kwargs))
+	for k := range raw.Kwargs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		sv := goValueToStarlark(raw.Kwargs[k])
 		if err := a.Kwargs.SetKey(starlark.String(k), sv); err != nil {
 			return err
 		}
