@@ -1,7 +1,7 @@
 // Package firewall_test enforces architecture firewalls that span
 // the whole tree (no single pkg/ owns the rule). Mirrors the
 // pattern in pkg/activity/firewall_test.go but covers cobra /
-// pflag / charm-log instead of go.temporal.io/sdk.
+// pflag / charm-log / lipgloss instead of go.temporal.io/sdk.
 //
 // Charm-log was renamed upstream from github.com/charmbracelet/log/v2 to
 // charm.land/log/v2 (the GitHub repo still hosts the source; the module
@@ -33,6 +33,7 @@ func TestNoCobraImportsOutsideAllowList(t *testing.T) {
 		"github.com/spf13/cobra",
 		"github.com/spf13/pflag",
 		"charm.land/log/v2",
+		"charm.land/lipgloss/v2",
 	}
 	allowedRel := []string{"cli"} // pkg/cli — the only library-side allow
 

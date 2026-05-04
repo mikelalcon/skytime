@@ -3,6 +3,7 @@ module github.com/mikelalcon/skytime
 go 1.25.8
 
 require (
+	charm.land/lipgloss/v2 v2.0.1
 	charm.land/log/v2 v2.0.0
 	github.com/charmbracelet/colorprofile v0.4.2
 	github.com/nexus-rpc/sdk-go v0.6.0
@@ -14,7 +15,6 @@ require (
 )
 
 require (
-	charm.land/lipgloss/v2 v2.0.1 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20251205161215-1948445e3318 // indirect
 	github.com/charmbracelet/x/ansi v0.11.6 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
