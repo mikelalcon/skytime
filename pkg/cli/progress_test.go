@@ -992,6 +992,97 @@ func TestNewProgressHandler_AcceptsVerboseFlag(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Phase 04.2-05 Task 1: progressEvent extension + attrMap.strSlice + dispatch
+// ---------------------------------------------------------------------------
+//
+// These tests pin the slog-record → progressEvent translation for the new
+// `event=result_bound` shape (D4.2-15): alias (string), keys ([]string),
+// path (string). The buildProgressEvent function gains Alias + Keys
+// extraction; attrMap gains a strSlice helper that tolerates both
+// []string (pre-Resolve) and []any (post-Resolve degradation per slog
+// docs); renderBazelLine dispatches event=result_bound to a new
+// renderResultBound method.
+
+// TestBuildProgressEvent_ResultBound: a slog.Record with attrs
+// `{event:result_bound, alias:X, keys:[c,a,b], path:0a}` translates
+// into a progressEvent with Kind="result_bound", Alias="X",
+// Keys=["c","a","b"], Path="0a". Insertion order preserved (D3-23).
+func TestBuildProgressEvent_ResultBound(t *testing.T) {
+	r := slog.NewRecord(time.Time{}, slog.LevelInfo, "skytime", 0)
+	r.AddAttrs(
+		slog.String("event", "result_bound"),
+		slog.String("alias", "X"),
+		slog.Any("keys", []string{"c", "a", "b"}),
+		slog.String("path", "0a"),
+	)
+
+	ev := buildProgressEvent(r)
+	require.Equal(t, "result_bound", ev.Kind, "Kind mirrors event attr")
+	require.Equal(t, "X", ev.Alias, "Alias from alias attr")
+	require.Equal(t, []string{"c", "a", "b"}, ev.Keys,
+		"Keys preserve source-insertion order (D3-23)")
+	require.Equal(t, "0a", ev.Path, "Path attribute carried through")
+}
+
+// TestAttrMap_StrSlice_HandlesStringSlice: a slog.Value carrying a
+// []string returns the same slice from strSlice.
+func TestAttrMap_StrSlice_HandlesStringSlice(t *testing.T) {
+	m := attrMap{"keys": slog.AnyValue([]string{"a", "b"})}
+	require.Equal(t, []string{"a", "b"}, m.strSlice("keys"))
+}
+
+// TestAttrMap_StrSlice_MissingReturnsNil: absent key yields nil (defensive
+// — caller treats nil as "no keys to render").
+func TestAttrMap_StrSlice_MissingReturnsNil(t *testing.T) {
+	m := attrMap{}
+	require.Nil(t, m.strSlice("keys"))
+}
+
+// TestAttrMap_StrSlice_WrongTypeReturnsNil: a non-[]string value yields
+// nil rather than panicking (defensive — protects the renderer from a
+// malformed event).
+func TestAttrMap_StrSlice_WrongTypeReturnsNil(t *testing.T) {
+	m := attrMap{"keys": slog.IntValue(42)}
+	require.Nil(t, m.strSlice("keys"))
+}
+
+// TestAttrMap_StrSlice_HandlesAnySlice: a slog.Value carrying []any
+// (the post-Resolve degraded shape per slog docs) is coerced
+// element-by-element back to []string. Mixed-type elements yield "" for
+// non-string entries rather than panicking.
+func TestAttrMap_StrSlice_HandlesAnySlice(t *testing.T) {
+	pure := attrMap{"keys": slog.AnyValue([]any{"a", "b", "c"})}
+	require.Equal(t, []string{"a", "b", "c"}, pure.strSlice("keys"),
+		"[]any with all strings coerces to []string")
+
+	mixed := attrMap{"keys": slog.AnyValue([]any{"a", 1, "c"})}
+	require.Equal(t, []string{"a", "", "c"}, mixed.strSlice("keys"),
+		"[]any with non-string element yields empty string for that slot (defensive)")
+}
+
+// TestRenderBazelLine_DispatchesResultBound: a slog.Record with
+// event=result_bound routes to renderResultBound. Asserted via the
+// captured output containing the load-bearing `→ ctx.<alias>` token.
+// (Exact format pinned by Task 2 tests; this test only verifies dispatch.)
+func TestRenderBazelLine_DispatchesResultBound(t *testing.T) {
+	var progressOut, passOut bytes.Buffer
+	passthrough := slog.NewTextHandler(&passOut, &slog.HandlerOptions{Level: slog.LevelInfo})
+	handler := newProgressHandler(passthrough, &progressOut)
+	logger := slog.New(handler)
+
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "skytime",
+		slog.String("event", "result_bound"),
+		slog.String("alias", "myalias"),
+		slog.Any("keys", []string{"x", "y"}),
+		slog.String("path", "0a"),
+	)
+
+	got := progressOut.String()
+	require.Contains(t, got, "→ ctx.myalias",
+		"renderBazelLine must dispatch event=result_bound to renderResultBound. Output: %q", got)
+}
+
+// ---------------------------------------------------------------------------
 // Quick 260503-rhy: render if_cond + for_each_parallel as scopes
 // ---------------------------------------------------------------------------
 //

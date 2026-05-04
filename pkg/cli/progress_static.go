@@ -177,6 +177,38 @@ func (p *progressHandler) renderBranch(a attrMap) error {
 	return p.println(line)
 }
 
+// renderResultBound emits the leaf row for an expression-mode if_cond
+// result-binding (D4.2-15 + D4.2-16). The row appears INSIDE the active
+// branch scope, between the branch header (rendered by renderBranch)
+// and the if_cond's footer (rendered by renderStepComplete{kind=if_cond}).
+//
+// Format:
+//
+//	<indent>✓ → ctx.<alias>
+//	<indent>✓ → ctx.<alias>  keys=[a b c]   // --verbose mode only
+//
+// Indent is depth-based via pathDepth (4 spaces per level, D-RHY-07).
+// The path attr identifies the active branch path (e.g., "0a" for the
+// then-branch of the top-level if_cond).
+//
+// Color: ✓ in green when TTY (via colorOk); the `→` arrow and alias are
+// uncolored — visual emphasis is the alias name, and uncolored alias
+// stays greppable for tooling.
+func (p *progressHandler) renderResultBound(a attrMap) error {
+	alias := a.str("alias")
+	path := a.str("path")
+	keys := a.strSlice("keys")
+
+	indent := strings.Repeat(" ", 4*pathDepth(path))
+	marker := p.colorOk("✓")
+
+	line := fmt.Sprintf("%s%s → ctx.%s", indent, marker, alias)
+	if p.verbose && len(keys) > 0 {
+		line = fmt.Sprintf("%s  keys=%v", line, keys)
+	}
+	return p.println(line)
+}
+
 // renderFlowComplete: success → `[skytime] flow complete  <ok>/<total> steps  total <ms>ms`
 //
 // Quick 260502-onc Fix C: when err_count > 0, render the failure line

@@ -101,7 +101,7 @@ type failureContext struct {
 // on Windows. See progress_live.go (!windows) and
 // progress_live_windows.go for the platform-specific renderer.
 type progressEvent struct {
-	Kind       string // "flow_start" | "step_dispatch" | "step_complete" | "branch" | "flow_complete" | "raw"
+	Kind       string // "flow_start" | "step_dispatch" | "step_complete" | "branch" | "result_bound" | "flow_complete" | "raw"
 	FlowName   string
 	StepCount  int64
 	Idx        int64
@@ -117,6 +117,12 @@ type progressEvent struct {
 	Branch     string
 	Path       string
 	Raw        string // pre-rendered line for "raw" events
+	// Phase 04.2-05 (D4.2-15): event=result_bound carries the alias the
+	// expression-mode if_cond bound the resolved dict to AND the bound
+	// dict's keys in source-insertion order. Renderer surfaces these as
+	// `→ ctx.<Alias>` (with `keys=[...]` in --verbose mode).
+	Alias string   // OutputAlias of the enclosing if_cond
+	Keys  []string // dict keys in source-insertion order (D3-23 + Pitfall 5)
 }
 
 // progressHandlerOptions configures progressHandler at construction.
@@ -291,6 +297,9 @@ func buildProgressEvent(r slog.Record) progressEvent {
 		TotalMs:    attrs.int("total_ms"),
 		Branch:     attrs.str("branch"),
 		Path:       attrs.str("path"),
+		// Phase 04.2-05 (D4.2-15): event=result_bound shape.
+		Alias: attrs.str("alias"),
+		Keys:  attrs.strSlice("keys"),
 	}
 }
 
@@ -309,6 +318,10 @@ func (p *progressHandler) renderBazelLine(r slog.Record) error {
 		return p.renderStepComplete(attrs)
 	case "branch":
 		return p.renderBranch(attrs)
+	case "result_bound":
+		// Phase 04.2-05 (D4.2-15): leaf row for expression-mode if_cond
+		// result-binding. Implemented in progress_static.go.
+		return p.renderResultBound(attrs)
 	case "flow_complete":
 		return p.renderFlowComplete(attrs)
 	}
@@ -335,6 +348,47 @@ func (m attrMap) int(k string) int64 {
 		return 0
 	}
 	return v.Int64()
+}
+
+// strSlice returns the []string carried by the slog.Value at key k.
+//
+// Used by buildProgressEvent to extract the `keys` attribute on
+// `event=result_bound` records (D4.2-15). The interpreter emits
+// `slog.Any("keys", n.Keys)` where `n.Keys` is `[]string`; slog wraps
+// it in a Value of KindAny whose `.Any()` returns the original
+// `[]string`.
+//
+// Defense in depth: slog.Value.Any() may degrade `[]string` to `[]any`
+// after Resolve() runs (capturing handlers in tests trigger this path).
+// We tolerate both shapes — element-by-element coercion when `[]any` is
+// encountered; non-string elements yield "" rather than panicking
+// (caller treats result as best-effort display data).
+//
+// Returns nil when the key is absent or carries a non-slice value (a
+// stricter alternative would panic, which would be a renderer-side
+// regression for malformed events — defensive nil is correct).
+func (m attrMap) strSlice(k string) []string {
+	v, ok := m[k]
+	if !ok {
+		return nil
+	}
+	raw := v.Any()
+	if s, ok := raw.([]string); ok {
+		return s
+	}
+	if a, ok := raw.([]any); ok {
+		// []any fallback — Resolve() may degrade []string here. Coerce
+		// element-by-element; non-string elements yield "" rather than
+		// panicking.
+		out := make([]string, len(a))
+		for i, e := range a {
+			if s, ok := e.(string); ok {
+				out[i] = s
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 // collectAttrs walks r.Attrs once and builds an attrMap. slog.Record
