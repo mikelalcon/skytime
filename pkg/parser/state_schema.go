@@ -165,6 +165,18 @@ func (p *Parser) walkBodyForCtxValidation(flow *dag.Flow, body []dag.Node, state
 			if err := p.walkBodyForCtxValidation(flow, n.Else, state.clone()); err != nil {
 				return err
 			}
+			// D4.2-13: expression-mode if_cond exposes OutputAlias in
+			// post-branch state. Both branches end in result(...) or
+			// fail(...) (validateIfCondExpressionShape enforces); when
+			// the chosen branch is fail, the workflow raises before
+			// downstream nodes run, so the alias is only ever read on
+			// the result-path. Statically, downstream lambdas may
+			// reference ctx.<alias> — add it untyped (visibility-only;
+			// the per-key TypeInfo lives on *dag.Result.Types and is
+			// consumed by the branch-equality validator, not by D4-02).
+			if n.OutputAlias != "" {
+				state.addUntyped(n.OutputAlias)
+			}
 		case *dag.ForEachParallel:
 			// The items producer (when items=lambda) sees only PRE-loop
 			// state — it cannot reference its own item-var.

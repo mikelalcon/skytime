@@ -92,6 +92,11 @@ func (p *Parser) walkValidateIfCondExpression(flow *dag.Flow, body []dag.Node, s
 				if err := p.walkBranchSkippingLastResultOrFail(flow, n.Else, schema.clone()); err != nil {
 					return err
 				}
+				// D4.2-13: expression-mode if_cond exposes OutputAlias in
+				// post-branch state so downstream nodes (and recursive
+				// validation walks) see ctx.<alias>. Mirrors the same
+				// post-branch addUntyped in walkBodyForCtxValidation.
+				schema.addUntyped(n.OutputAlias)
 			} else {
 				// Procedural-mode if_cond: descend normally. *dag.Result
 				// inside a procedural branch is illegal — the

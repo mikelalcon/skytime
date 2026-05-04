@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	sdkactivity "go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
 
@@ -32,6 +34,20 @@ import (
 	"github.com/mikelalcon/skytime/pkg/validator"
 	"github.com/mikelalcon/skytime/pkg/validator/dryrun"
 )
+
+// expectedErrFlows enumerates flow names whose dry-run under
+// stubInitState is expected to raise a *temporal.ApplicationError
+// (top-level fail() exercised by stub seeds). Phase 04.2 introduced
+// the first two via examples/skeleton/expression_if.star; future
+// fixtures with similar shapes extend this map.
+//
+// Flows NOT listed here keep the strict NoError assertion — the
+// regression-protection net for every fixture that should dry-run
+// cleanly under stubInitState.
+var expectedErrFlows = map[string]bool{
+	"procedural_demo": true, // examples/skeleton/expression_if.star — repo="" → fail("repo input is required")
+	"check_user":      true, // examples/skeleton/expression_if.star — user_id="" → fail("invalid user_id: ...")
+}
 
 // corpusExtensions returns the extension list the differential test
 // injects into both static + dry-run sides. Wave 4 (plan 04-07)
@@ -194,7 +210,25 @@ func runDryRun(t *testing.T, file, rootDir string, exts []extension.Extension) (
 		if !env.IsWorkflowCompleted() {
 			return false, errors.New("workflow did not complete: " + name)
 		}
-		if werr := env.GetWorkflowError(); werr != nil {
+		werr := env.GetWorkflowError()
+		if expectedErrFlows[name] {
+			// Phase 04.2 D4.2-05/D4.2-15: flows whose stubInitState
+			// path exercises top-level fail() raise a
+			// NonRetryableApplicationError by design. The corpus's
+			// agreement check is parse + dry-run structural
+			// agreement; a deterministic *temporal.ApplicationError
+			// is a valid outcome. Existing fixtures (parallel_fanout.star,
+			// simple_check.star, etc.) are NOT in expectedErrFlows so
+			// their strict NoError assertion is preserved.
+			if werr == nil {
+				return false, fmt.Errorf("flow %q expected to fail (in expectedErrFlows) but completed without error", name)
+			}
+			var appErr *temporal.ApplicationError
+			if !errors.As(werr, &appErr) {
+				return false, fmt.Errorf("flow %q: expected *temporal.ApplicationError, got %T: %w", name, werr, werr)
+			}
+			// Acceptable — deterministic Application error.
+		} else if werr != nil {
 			return false, werr
 		}
 	}

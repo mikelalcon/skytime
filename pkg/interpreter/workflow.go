@@ -174,6 +174,26 @@ func (i *interpreter) walkNode(ctx workflow.Context, node dag.Node) error {
 		return i.walkForEach(ctx, n)
 	case *dag.CallFlow:
 		return i.walkCallFlow(ctx, n)
+	case *dag.Fail:
+		// D4.2-07: fail() is legal as a procedural-mode if_cond branch
+		// node (procedural_demo demo in examples/skeleton/expression_if.star).
+		// Expression-mode last-position fail() is dispatched directly by
+		// walkIfCond and does NOT reach walkNode. raiseFail handles
+		// both the literal and interpolated (MessageFn) forms.
+		return i.raiseFail(ctx, n)
+	case *dag.Result:
+		// Defensive: result(...) is only legal as the last node of an
+		// expression-mode if_cond branch. The parse-time validator
+		// (validateResultPlacement + walkValidateIfCondExpression's
+		// orphan detector, plans 02-03) rejects orphan Results. A
+		// Result reaching walkNode means the validator regressed —
+		// surface as a deterministic NonRetryableError rather than
+		// silently binding to nothing.
+		return temporal.NewNonRetryableApplicationError(
+			fmt.Sprintf("orphan result(...) at %s — must be the last node of an expression-mode if_cond branch", n.Pos),
+			"OrphanResultNode",
+			nil,
+		)
 	default:
 		return temporal.NewNonRetryableApplicationError(
 			fmt.Sprintf("unknown node kind %s at %s", node.Kind(), node.Position()),

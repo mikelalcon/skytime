@@ -39,8 +39,9 @@ flow(
         # Procedural if_cond — same shape as Phase 4 simple_check.star.
         # fail() inside a procedural-mode branch is allowed (D4.2-07);
         # the parse-time validator does NOT require output_alias here.
+        # cond reads the bool inside the script's output dict.
         if_cond(
-            cond = lambda ctx: ctx.validation,
+            cond = lambda ctx: ctx.validation.has_repo,
             then = [
                 step(
                     name = "Get ${ctx.repo}",

@@ -179,3 +179,67 @@ func TestWalkIfCond_ZeroHistoryEvents(t *testing.T) {
 	// any activity. (The Script walker also works without activity calls.)
 	env.AssertActivityNumberOfCalls(t, "ExecuteBatch", 0)
 }
+
+// TestWalkIfCond_ProceduralFail: D4.2-07 — fail() is legal as a node
+// inside a procedural-mode if_cond branch (no output_alias). The walker
+// must dispatch *dag.Fail through walkNode → raiseFail and surface a
+// NonRetryableApplicationError. Pinned by examples/skeleton/expression_if.star's
+// procedural_demo flow under TestDifferentialCorpus, but exercised here
+// at unit-test granularity so a regression in walkNode's *dag.Fail case
+// surfaces immediately.
+func TestWalkIfCond_ProceduralFail(t *testing.T) {
+	src := `
+fcond = lambda ctx: ctx.x > 0
+`
+	srcBytes := []byte(src)
+	thread := &starlark.Thread{Name: "test:proc_fail"}
+	globals, err := starlark.ExecFile(thread, "proc_fail.star", srcBytes, nil)
+	require.NoError(t, err)
+	condFn := globals["fcond"].(*starlark.Function)
+	condID := dag.ComputeLambdaID(srcBytes, condFn.Position())
+
+	filename := "proc_fail.star"
+	pos := syntax.MakePosition(&filename, 1, 1)
+
+	parsed := &ParsedFlow{
+		Flow: &dag.Flow{
+			Pos:    pos,
+			Name:   "proc_fail",
+			Inputs: map[string]string{"x": "int"},
+			Body: []dag.Node{
+				// Procedural mode (no output_alias). Else branch contains a
+				// fail() — D4.2-07 says this is legal.
+				&dag.IfCond{
+					Pos:      pos,
+					LambdaID: condID,
+					Then:     []dag.Node{},
+					Else: []dag.Node{
+						&dag.Fail{Pos: pos, Message: "x must be positive"},
+					},
+				},
+			},
+		},
+		Lambdas: map[string]*dag.CapturedLambda{
+			condID: {ID: condID, Fn: condFn, Pos: condFn.Position(), FreeVars: starlark.StringDict{}},
+		},
+	}
+
+	registry := NewRegistry()
+	require.NoError(t, registry.Register("proc_fail", "h", parsed))
+	registry.Freeze()
+
+	var ts testsuite.WorkflowTestSuite
+	env := ts.NewTestWorkflowEnvironment()
+	wf := NewWorkflow(registry)
+	env.RegisterWorkflowWithOptions(wf, workflow.RegisterOptions{Name: "SkytimeWorkflow"})
+	env.ExecuteWorkflow(wf, dag.WorkflowInput{
+		FlowName:    "proc_fail",
+		ContentHash: "h",
+		InitState:   map[string]any{"x": int64(-1)}, // falsy → else → fail()
+	})
+
+	require.True(t, env.IsWorkflowCompleted())
+	werr := env.GetWorkflowError()
+	require.Error(t, werr, "procedural-mode fail() must surface as workflow error")
+	require.Contains(t, werr.Error(), "x must be positive")
+}

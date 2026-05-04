@@ -360,3 +360,46 @@ func TestValidateIfCondExpressionShape_FixtureValid(t *testing.T) {
 	require.NoError(t, err, "ifcond_expr_valid.star must parse cleanly: %v", err)
 	require.Contains(t, flows, "happy")
 }
+
+// TestExpressionMode_OutputAliasInPostBranchSchema (D4.2-13): the
+// alias bound by an expression-mode if_cond must be visible to
+// downstream nodes — a sibling script's lambda referencing
+// ctx.<alias> must NOT trigger a "ctx.<alias> not in declared
+// state" ValidationError. Pinned by examples/skeleton/expression_if.star's
+// classify_repo_size flow, but exercised here in isolation so a
+// regression in walkBodyForCtxValidation surfaces at unit-test
+// granularity (not only at TestDifferentialCorpus).
+func TestExpressionMode_OutputAliasInPostBranchSchema(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", inputs={"n": "int"}, steps=[
+    if_cond(
+        output_alias="cls",
+        cond=lambda ctx: ctx.n > 0,
+        then=[result(value={"tier": "pos"})],
+        else_=[result(value={"tier": "nonpos"})],
+    ),
+    script(id="audit", fn=lambda ctx: {"out": ctx.cls}, output_alias="logged"),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.NoError(t, err, "downstream lambda must see ctx.cls in post-branch schema: %v", err)
+}
+
+// TestExpressionMode_OutputAliasInPostBranchSchema_FailFlowAlsoVisible:
+// the alias is added unconditionally after the if_cond — the static
+// schema cannot know whether the runtime branch was the result-side
+// or the fail-side. A downstream reader of ctx.<alias> is statically
+// legal (the fail path raises before the read at runtime).
+func TestExpressionMode_OutputAliasInPostBranchSchema_FailFlowAlsoVisible(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", inputs={"id": "string"}, steps=[
+    if_cond(
+        output_alias="user",
+        cond=lambda ctx: ctx.id != "",
+        then=[result(value={"id": "x"})],
+        else_=[fail("id required")],
+    ),
+    script(id="audit", fn=lambda ctx: {"out": ctx.user}, output_alias="logged"),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.NoError(t, err, "downstream lambda must see ctx.user in post-branch schema even with asymmetric branches: %v", err)
+}
