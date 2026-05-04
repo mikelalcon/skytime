@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 04.2-07-PLAN.md
-last_updated: "2026-05-04T20:04:53Z"
+stopped_at: Phase 04.3 context gathered
+last_updated: "2026-05-04T20:41:35.802Z"
 last_activity: 2026-05-04
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 6
   total_plans: 34
   completed_plans: 34
@@ -253,9 +253,10 @@ None yet.
 
 - Phase 04.1 inserted after Phase 4: Dynamic step kwargs — lambda-accepting `step(action_fn=...)` variant for runtime-built action kwargs (URGENT) — surfaced 2026-05-02 when Phase 4's `simple_check.star` corpus demonstrably ignored `--input` because step kwargs are static at parse time. Required before Phase 5 (E2E test harness) and Phase 6 (real example project) can land any flow that takes input.
 - Phase 04.2 inserted after Phase 4 (decimal slot taken because 04.1 already exists): if_cond as expression with strict-equality `result` binding (URGENT) — surfaced 2026-05-03 during Phase 04.1 demo verification. Replaces today's procedural if_cond with an expression-shaped variant where each branch may end with `result(value=lambda ctx: {...})`; strict structural equality required across branches; no subtype/LUB rules in v1 (explicit `float(x)` casts handle widening). Implementation is parser-side: new `result` builtin, state-schema tracking through if_cond branches in `pkg/parser/state_schema.go`, dict-literal type inference of `result`'s lambda body. Runtime semantics unchanged. Required before Phase 5 so the E2E test harness designs against the new state-propagation shape from the start.
+- Phase 04.3 inserted after Phase 4 (third decimal slot): documentation and source-driven reference generator (URGENT) — surfaced 2026-05-04 after Phase 04.2 shipped. Builds README.md as front door; `docs/` tree split into `for-flow-authors/` + `for-extension-developers/` audience guides; getting-started run-an-example tutorial against `examples/skeleton/expression_if.star`; narrative architecture and two-tier authoring docs; `cmd/skytime-docgen` Copybara-style tool that walks `pkg/parser/builtins.go` AST + parses `UnpackArgs` calls and `// skytime:doc` comment markers to render `docs/reference/` from source; `examples/README.md` indexing all skeleton fixtures. Plain markdown only (no static-site infra). Locked decisions from `/gsd:quick --discuss` exploration: format=plain markdown; audience split=two top-level guides; tutorial=run-an-example smoke; reference=source-driven via skytime-docgen. Required before Phase 5 so the E2E test harness ships with discoverable docs from day one.
 
 ## Session Continuity
 
-Last session: 2026-05-04T20:04:53Z
-Stopped at: Completed quick task 260504-m65 (skytime info table → lipgloss/v2 + firewall amendment)
-Resume file: None
+Last session: 2026-05-04T20:41:35.796Z
+Stopped at: Phase 04.3 context gathered
+Resume file: .planning/phases/04.3-documentation-and-source-driven-reference-generator/04.3-CONTEXT.md
