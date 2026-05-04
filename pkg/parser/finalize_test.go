@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -86,4 +87,45 @@ func TestFinalize_LintOrder_CallFlowResolutionShortCircuits(t *testing.T) {
 	assert.Contains(t, err.Error(), "missing_target")
 	assert.NotContains(t, err.Error(), "cannot mix idempotent",
 		"resolveCallFlows must short-circuit ahead of lintMixedIdempotency")
+}
+
+// TestValidateIfCondExpressionShape_FinalizeOrdering pins the D4.2-09
+// ordering rule: validateLambdaCtxAccesses runs BEFORE
+// validateIfCondExpressionShape so a ctx-typo error surfaces FIRST when
+// a flow contains BOTH a typo AND an expression-mode shape error. This
+// guarantees ctx-visibility errors (the more localized fix) win over
+// branch-shape errors (the broader structural fix).
+func TestValidateIfCondExpressionShape_FinalizeOrdering(t *testing.T) {
+	p := newTestParser(t)
+	// The else_ branch references `ctx.tyop` (typo of `tyop` — flow
+	// declares no such input). Independently, the then-branch ends in a
+	// step (not result/fail) which violates D4.2-09 case 2. The walker
+	// must surface the ctx-typo error, NOT the branch-shape error.
+	src := []byte(`flow(name="ord", inputs={"flag": "bool"}, steps=[
+    if_cond(
+        output_alias="X",
+        cond=lambda ctx: ctx.flag,
+        then=[step(action=fake_ext.echo(msg="x"))],
+        else_=[result(value={"x": ctx.tyop})],
+    ),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+
+	var ve *dag.ValidationError
+	require.True(t, errors.As(err, &ve), "expected *dag.ValidationError, got %T: %v", err, err)
+	assert.Contains(t, ve.Msg, "ctx.tyop",
+		"validateLambdaCtxAccesses must run BEFORE validateIfCondExpressionShape")
+	assert.Contains(t, ve.Msg, "not in declared state")
+}
+
+// TestProceduralFailGuard_StaysGreen pins the Pitfall 7 regression net:
+// procedural-mode if_cond (no output_alias) using fail() in a branch is
+// the canonical D4.2-07 procedural-guard pattern. The new
+// validateIfCondExpressionShape pass MUST skip procedural-mode if_conds
+// entirely. Parses the canonical fixture verbatim.
+func TestProceduralFailGuard_StaysGreen(t *testing.T) {
+	p := newTestParser(t)
+	_, err := p.ParseFile("../../tests/fixtures/procedural_fail_guard.star")
+	require.NoError(t, err, "procedural_fail_guard.star must parse cleanly: %v", err)
 }

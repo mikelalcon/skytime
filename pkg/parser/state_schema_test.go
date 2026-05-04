@@ -126,6 +126,36 @@ func TestTypeFromHint(t *testing.T) {
 	}
 }
 
+// TestSeedStateSchemaForFlow: seedStateSchemaForFlow seeds the schema
+// with every flow.Inputs entry typed via typeFromHint. Plan 04.2-03
+// pulled this helper out of validateLambdaCtxAccesses so the new
+// validateIfCondExpressionShape pass shares the same seed shape.
+func TestSeedStateSchemaForFlow(t *testing.T) {
+	flow := &dag.Flow{
+		Name:   "f",
+		Inputs: map[string]string{"n": "int", "r": "string", "data": "dict"},
+	}
+	p := newTestParser(t)
+	s := p.seedStateSchemaForFlow(flow)
+
+	gotN, ok := s.get("n")
+	require.True(t, ok)
+	require.True(t, Equal(gotN, TypeScalar{Kind: "int"}), "n: got %v", gotN)
+
+	gotR, ok := s.get("r")
+	require.True(t, ok)
+	require.True(t, Equal(gotR, TypeScalar{Kind: "string"}), "r: got %v", gotR)
+
+	gotData, ok := s.get("data")
+	require.True(t, ok)
+	require.True(t, Equal(gotData, TypeDict{Fields: nil}), "data: got %v", gotData)
+
+	// Empty inputs → empty schema.
+	emptyFlow := &dag.Flow{Name: "g", Inputs: map[string]string{}}
+	es := p.seedStateSchemaForFlow(emptyFlow)
+	require.Empty(t, es.sortedKeys())
+}
+
 // TestFinalize_CtxAccess_Valid is the positive case: a flow whose scripts
 // only reference declared inputs and prior output_aliases parses cleanly.
 // Stacking rules:

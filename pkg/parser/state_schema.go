@@ -89,6 +89,20 @@ func typeFromHint(hint string) TypeInfo {
 	return TypeOpaque{}
 }
 
+// seedStateSchemaForFlow constructs the initial stateSchema for the given
+// flow: every flow.Inputs entry seeded with typeFromHint. Used by every
+// finalize-pass walker that needs branch-local typed state — D4-02
+// validateLambdaCtxAccesses (visibility-only against the typed schema)
+// AND D4.2-09 validateIfCondExpressionShape (branch-equality with full
+// type info). Single helper keeps the seed shape consistent across passes.
+func (p *Parser) seedStateSchemaForFlow(flow *dag.Flow) stateSchema {
+	s := newStateSchema()
+	for k, v := range flow.Inputs {
+		s.add(k, typeFromHint(v))
+	}
+	return s
+}
+
 // validateLambdaCtxAccesses walks every flow's body sequentially. For each
 // captured lambda it computes the state set visible at the lambda's source
 // position and rejects any ctx.<name> reference that is not in the set.
@@ -112,10 +126,7 @@ func typeFromHint(hint string) TypeInfo {
 // state errors surface before kwarg-shape errors (per CONTEXT D4-01).
 func (p *Parser) validateLambdaCtxAccesses() error {
 	for _, flow := range p.flows {
-		initial := newStateSchema()
-		for k, hint := range flow.Inputs {
-			initial.add(k, typeFromHint(hint))
-		}
+		initial := p.seedStateSchemaForFlow(flow)
 		if err := p.walkBodyForCtxValidation(flow, flow.Body, initial); err != nil {
 			return err
 		}

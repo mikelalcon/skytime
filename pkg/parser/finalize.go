@@ -38,7 +38,21 @@ import (
 //     at entry, += script.OutputAlias after each script, += ItemVar
 //     inside for_each_parallel.Steps, if_cond branches see same pre-branch
 //     state.
-//  6. validateActionRefKwargs (D-11 defense in depth): cross-validate
+//  5.5. validateResultPlacement (D4.2-04): every *dag.Result MUST be the
+//     LAST node of an if_cond branch with OutputAlias set. Top-level
+//     result(), mid-branch, inside for_each — all reject with the
+//     output_alias hint. Narrow scope; complemented by the next pass.
+//  6. validateIfCondExpressionShape (D4.2-09 + D4.2-11): for every
+//     *dag.IfCond with OutputAlias set, enforce the 5 expression-mode
+//     rules — both branches present, last node Result/Fail, at-least-one-
+//     Result, key-set equality across Result branches, and per-key
+//     TypeInfo strict-equality with Opaque-defers. Re-runs inferType
+//     against the proper per-branch state schema (plan 02's builtinResult
+//     populates Result.Types against an empty placeholder). Ordering
+//     rule: AFTER validateLambdaCtxAccesses (ctx-typo errors surface
+//     first) and BEFORE validateActionRefKwargs (structural state errors
+//     before kwarg-shape errors).
+//  7. validateActionRefKwargs (D-11 defense in depth): cross-validate
 //     every dag.ActionRef.Kwargs against its registered OperationSpec via
 //     extension.DecodeKwargsFromDict. Catches hand-built ActionRefs (test
 //     fixtures, future programmatic callers) where the per-call extension
@@ -70,6 +84,9 @@ func (p *Parser) finalize() error {
 		return err
 	}
 	if err := p.validateResultPlacement(); err != nil {
+		return err
+	}
+	if err := p.validateIfCondExpressionShape(); err != nil {
 		return err
 	}
 	return p.validateActionRefKwargs()
