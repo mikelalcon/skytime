@@ -212,6 +212,30 @@ func (p *Parser) walkBodyForCtxValidation(flow *dag.Flow, body []dag.Node, state
 		case *dag.CallFlow:
 			// CallFlow inputs forbid lambdas (D-19). Nothing to validate.
 			_ = n
+		case *dag.Result:
+			// D4.2-02: per-key value lambdas were synthesized from
+			// user-source value expressions. Each one references
+			// ctx.<name> via the same shape as if_cond/script lambdas.
+			// Walk in Keys order (replay-deterministic).
+			for _, k := range n.Keys {
+				captured := n.Values[k]
+				if captured == nil {
+					continue
+				}
+				if err := p.checkLambdaCtx(flow, captured.ID, state); err != nil {
+					return err
+				}
+			}
+		case *dag.Fail:
+			// D4.2-05/06: top-level fail("...${ctx.x}...") may carry a
+			// MessageFn synthesized from interpolation. The walker
+			// honors its BodyPos so the desugared body is the source
+			// of truth (the synthetic <interp:...> file).
+			if n.MessageFn != nil {
+				if err := p.checkLambdaCtx(flow, n.MessageFn.ID, state); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return nil
@@ -262,13 +286,15 @@ func (p *Parser) checkLambdaCtx(flow *dag.Flow, lambdaID string, state stateSche
 	}
 	for _, acc := range accesses {
 		if !state.has(acc.AttrName) {
-			// D4.1-01 RESEARCH §Pitfall 1: when the access lives in a
-			// synthetic interpolation file, remap the error position back
-			// to the user's source (the opening ${ in captured.Pos) so
-			// users never see "<interp:...>" leaked into ValidationError
-			// output.
+			// D4.1-01 RESEARCH §Pitfall 1 + D4.2-02 Pitfall 3: when the
+			// access lives in a synthetic interpolation OR result-value
+			// file, remap the error position back to the user's source
+			// (captured.Pos — opening ${ for interp, value-expr start
+			// for result) so users never see "<interp:..>" or
+			// "<result:..>" leaked into ValidationError output.
 			errPos := acc.Pos
-			if strings.HasPrefix(errPos.Filename(), "<interp:") {
+			if strings.HasPrefix(errPos.Filename(), "<interp:") ||
+				strings.HasPrefix(errPos.Filename(), "<result:") {
 				errPos = captured.Pos
 			}
 			return &dag.ValidationError{

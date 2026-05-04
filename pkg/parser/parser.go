@@ -67,6 +67,14 @@ type Parser struct {
 	// uses this map at workflow start to resolve LambdaIDs back to the
 	// *starlark.Function values.
 	lambdas map[string]*dag.CapturedLambda
+
+	// preBuiltResults caches *dag.Result objects built by the pre-exec
+	// scan in preExecBuildResults (Phase 04.2 D4.2-02). Keyed by call
+	// position string ("file:line:col"). builtinResult looks up the
+	// cached node at exec time instead of evaluating the value= dict
+	// (which is rewritten to a sentinel `0` in execSrc so Starlark
+	// never tries to resolve `ctx` at top-level).
+	preBuiltResults map[string]*dag.Result
 }
 
 // defaultMaxBlockSize is the D2-07 default cap for step(block=[...]) action
@@ -96,13 +104,14 @@ type loadCacheEntry struct {
 // an empty source, or rely on Register's own returned error.
 func NewParser(opts ...Option) (*Parser, error) {
 	p := &Parser{
-		registry:     extension.NewRegistry(),
-		maxExecSteps: bridge.DefaultMaxExecutionSteps,
-		maxBlockSize: defaultMaxBlockSize, // D2-07
-		loadCache:    make(map[string]loadCacheEntry),
-		fileBytes:    make(map[string][]byte),
-		flows:        make(map[string]*dag.Flow),
-		lambdas:      make(map[string]*dag.CapturedLambda),
+		registry:        extension.NewRegistry(),
+		maxExecSteps:    bridge.DefaultMaxExecutionSteps,
+		maxBlockSize:    defaultMaxBlockSize, // D2-07
+		loadCache:       make(map[string]loadCacheEntry),
+		fileBytes:       make(map[string][]byte),
+		flows:           make(map[string]*dag.Flow),
+		lambdas:         make(map[string]*dag.CapturedLambda),
+		preBuiltResults: make(map[string]*dag.Result),
 	}
 	for _, opt := range opts {
 		if err := opt(p); err != nil {
@@ -214,8 +223,22 @@ func (p *Parser) parse(filename string, src []byte) (result map[string]*dag.Flow
 		p.parseTimeGlobals = gs
 	}
 
-	// Cache file bytes for D-18 lambda ID hashing.
+	// Cache file bytes for D-18 lambda ID hashing. The ORIGINAL src is
+	// stored — preExecBuildResults below rewrites a separate execSrc
+	// that's only handed to starlark.ExecFileOptions; lambda IDs and
+	// AST re-parse paths still see the user's original bytes.
 	p.fileBytes[filename] = src
+
+	// Phase 04.2 pre-exec pass (D4.2-02): scan for `result(value={...})`
+	// calls; build *dag.Result objects from the AST upfront; rewrite
+	// each call's value= dict-literal in execSrc to a `0` sentinel
+	// (length-preserved) so Starlark can evaluate the file even when
+	// the dict references `ctx.<name>` at top-level (not in scope).
+	// builtinResult retrieves the pre-built node by call position.
+	execSrc, err := p.preExecBuildResults(filename, src)
+	if err != nil {
+		return nil, err
+	}
 
 	// FRESH thread per parse (Pitfall #1).
 	thread := &starlark.Thread{
@@ -228,7 +251,7 @@ func (p *Parser) parse(filename string, src []byte) (result map[string]*dag.Flow
 	thread.SetMaxExecutionSteps(p.maxExecSteps)
 
 	opts := defaultFileOptions()
-	if _, execErr := starlark.ExecFileOptions(opts, thread, filename, src, p.parseTimeGlobals); execErr != nil {
+	if _, execErr := starlark.ExecFileOptions(opts, thread, filename, execSrc, p.parseTimeGlobals); execErr != nil {
 		return nil, wrapStarlarkError(execErr)
 	}
 

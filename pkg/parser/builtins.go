@@ -495,23 +495,35 @@ func (p *Parser) desugarActionRefKwargs(ar *dag.ActionRef) error {
 }
 
 // =============================================================================
-// builtinIfCond — if_cond(cond=lambda ctx: ..., then=[...], else_=[...])
+// builtinIfCond — if_cond(cond=lambda ctx: ..., then=[...], else_=[...], output_alias?=...)
 // =============================================================================
 
 func (p *Parser) builtinIfCond(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var (
-		cond     starlark.Value
-		thenLst  *starlark.List
-		elseLst  *starlark.List
+		cond        starlark.Value
+		thenLst     *starlark.List
+		elseLst     *starlark.List
+		outputAlias string // D4.2-01 — empty string == procedural mode (today's behavior)
 	)
 	if err := starlark.UnpackArgs("if_cond", args, kwargs,
 		"cond", &cond,
 		"then", &thenLst,
 		"else_?", &elseLst,
+		"output_alias?", &outputAlias,
 	); err != nil {
 		return nil, p.wrapBuiltinError("if_cond", thread, err)
 	}
 	pos := callerPosition(thread)
+
+	// D4.2-01 / D3-19 idiom: distinguish "kwarg omitted" (procedural
+	// mode preserved) from "kwarg supplied as empty string" (parse
+	// error). hasKwarg lets us tell which happened.
+	if hasKwarg(kwargs, "output_alias") && outputAlias == "" {
+		return nil, &dag.ParseError{
+			Pos: pos,
+			Msg: "if_cond: output_alias must be non-empty if supplied",
+		}
+	}
 
 	captured, err := p.captureLambda(thread, "cond", cond)
 	if err != nil {
@@ -527,11 +539,401 @@ func (p *Parser) builtinIfCond(thread *starlark.Thread, fn *starlark.Builtin, ar
 	}
 
 	return wrapNode(&dag.IfCond{
-		Pos:      pos,
-		LambdaID: captured.ID,
-		Then:     thenBody,
-		Else:     elseBody,
+		Pos:         pos,
+		LambdaID:    captured.ID,
+		OutputAlias: outputAlias,
+		Then:        thenBody,
+		Else:        elseBody,
 	}), nil
+}
+
+// =============================================================================
+// builtinResult — result(value={...}) → *dag.Result (D4.2-02..04)
+// =============================================================================
+
+// builtinResult parses a `result(value={...})` call: kwarg-only signature,
+// AST-level dict-literal validation, per-key value lambda synthesis, and
+// per-key TypeInfo population via inferType. Emits *dag.Result with
+// insertion-order Keys (replay determinism per D3-23 + Pitfall 5).
+//
+// D4.2-02..04: The value= argument MUST be a Starlark dict-literal at
+// the call site (variable, lambda, function call all rejected). Every
+// dict KEY must be a STRING literal at parse time (computed keys
+// rejected). Each VALUE is captured as a per-key *dag.CapturedLambda
+// via the synthesized-source path mirroring D4.1-01 interpolation.
+//
+// Note: builtinResult does NOT reject `result()` outside an
+// expression-mode if_cond branch — that placement check is plan
+// 04.2-03's job (in validateIfCondExpressionShape, alongside the
+// branch-equality validator). For now, builtinResult always emits a
+// *dag.Result; downstream finalize passes catch misuse.
+func (p *Parser) builtinResult(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if len(args) > 0 {
+		return nil, p.wrapBuiltinError("result", thread, fmt.Errorf("kwarg-only signature; use result(value={...})"))
+	}
+	// We accept the value= kwarg but ignore the (sentinel) value — the
+	// real per-key lambdas + types are pre-built in preExecBuildResults
+	// and looked up by callPos. UnpackArgs still runs to enforce the
+	// presence of value= and reject unknown kwargs.
+	var valueArg starlark.Value
+	if err := starlark.UnpackArgs("result", args, kwargs, "value", &valueArg); err != nil {
+		return nil, p.wrapBuiltinError("result", thread, err)
+	}
+	callPos := callerPosition(thread)
+
+	// Look up the pre-built result by call position. The pre-exec scan
+	// (preExecBuildResults) populates this BEFORE Starlark evaluates
+	// any code, so by the time builtinResult runs the entry MUST be
+	// present for any well-formed call site. A miss indicates either
+	// (a) the user constructed result() programmatically through some
+	// non-standard path, or (b) an internal bug — both are rejected
+	// with a clear diagnostic.
+	pre, ok := p.preBuiltResults[posKey(callPos)]
+	if !ok {
+		return nil, &dag.ParseError{
+			Pos: callPos,
+			Msg: "result: pre-build cache miss; result() must appear directly in source (no dynamic construction)",
+		}
+	}
+	return wrapNode(pre), nil
+}
+
+// preExecBuildResults pre-scans fileBytes for `result(value=...)`
+// CallExprs, validates the AST shape, builds *dag.Result objects
+// upfront from the cached source bytes, and returns a REWRITTEN copy
+// of fileBytes where each `result(value={...})` call has its value=
+// dict-literal replaced with a length-preserving `0` sentinel. The
+// rewritten copy is what Starlark sees at exec time — the original
+// fileBytes (already cached at p.fileBytes[filename]) remain untouched
+// for AST re-parse paths (D4-02 ctx-walk, D4.1-01 interpolation).
+//
+// Why pre-build + rewrite instead of doing the work in builtinResult
+// at exec time:
+//
+//  1. The user's value= dict literal often references `ctx.<name>` at
+//     top-level (e.g., `result(value={"x": ctx.helper})`). At top-level
+//     `ctx` is not bound to anything; Starlark would error with
+//     "undefined: ctx" before our builtin runs.
+//
+//  2. The plan's design (RESEARCH §Pattern 4) treats each value
+//     expression as a per-key synthesized lambda — meaning the value
+//     should NEVER be evaluated at parse time. Source rewriting is the
+//     mechanism that makes that contract real: Starlark evaluates the
+//     sentinel `0`, our builtin retrieves the pre-built *dag.Result.
+//
+//  3. Computed keys (`{ctx.k: 1}`) need a clean "dict keys must be
+//     string literals" error at parse time. The pre-exec pass detects
+//     these via AST inspection before Starlark exec runs and surfaces
+//     the cleaner error.
+//
+// The rewrite is byte-equivalent in length: the dict-literal range
+// (Lbrace through Rbrace inclusive) is replaced byte-by-byte; the
+// first byte becomes `0`, every other non-newline byte becomes a space,
+// every newline byte stays as a newline. Token positions of every
+// other expression in the file remain stable, so lambda IDs (D-18) and
+// error attribution remain unaffected.
+//
+// Returns the rewritten source. On AST validation errors (computed
+// keys, non-dict-literal value=), returns (nil, *dag.ParseError).
+func (p *Parser) preExecBuildResults(filename string, fileBytes []byte) ([]byte, error) {
+	file, err := defaultFileOptions().Parse(filename, fileBytes, 0)
+	if err != nil {
+		// Defensive: if pre-parse fails, let starlark.ExecFile produce
+		// the user-visible error (it will hit the same parse error
+		// with identical attribution).
+		return fileBytes, nil
+	}
+
+	// Walk for `result(...)` calls. Collect (call, dictExpr) pairs.
+	type resultCall struct {
+		call *syntax.CallExpr
+		dict *syntax.DictExpr
+	}
+	var calls []resultCall
+	var firstErr error
+	syntax.Walk(file, func(n syntax.Node) bool {
+		if firstErr != nil {
+			return false
+		}
+		call, ok := n.(*syntax.CallExpr)
+		if !ok {
+			return true
+		}
+		id, ok := call.Fn.(*syntax.Ident)
+		if !ok || id.Name != "result" {
+			return true
+		}
+		// Find value= kwarg.
+		var valueExpr syntax.Expr
+		var hasValue bool
+		hasOtherKwargs := false
+		hasPositional := false
+		for _, arg := range call.Args {
+			bin, ok := arg.(*syntax.BinaryExpr)
+			if !ok || bin.Op != syntax.EQ {
+				hasPositional = true
+				continue
+			}
+			kid, ok := bin.X.(*syntax.Ident)
+			if !ok {
+				continue
+			}
+			if kid.Name == "value" {
+				valueExpr = bin.Y
+				hasValue = true
+			} else {
+				hasOtherKwargs = true
+			}
+		}
+		_ = hasOtherKwargs // builtinResult validates at exec time
+		if hasPositional {
+			firstErr = &dag.ParseError{
+				Pos: call.Lparen,
+				Msg: "result: kwarg-only signature; use result(value={...})",
+			}
+			return false
+		}
+		if !hasValue {
+			// Let builtinResult error via UnpackArgs missing-required.
+			return true
+		}
+		dictExpr, ok := valueExpr.(*syntax.DictExpr)
+		if !ok {
+			firstErr = &dag.ParseError{
+				Pos: call.Lparen,
+				Msg: "result.value must be a dict literal",
+			}
+			return false
+		}
+		// Every key must be a STRING literal at parse time.
+		for _, ent := range dictExpr.List {
+			de, ok := ent.(*syntax.DictEntry)
+			if !ok {
+				continue
+			}
+			keyLit, isLit := de.Key.(*syntax.Literal)
+			if !isLit || keyLit.Token != syntax.STRING {
+				firstErr = &dag.ParseError{
+					Pos: call.Lparen,
+					Msg: "result.value: dict keys must be string literals",
+				}
+				return false
+			}
+		}
+		calls = append(calls, resultCall{call: call, dict: dictExpr})
+		return true
+	})
+	if firstErr != nil {
+		return nil, firstErr
+	}
+
+	// Build *dag.Result for each collected call BEFORE source rewrite,
+	// because per-key value lambda capture reads the original fileBytes
+	// to slice value-expression source text.
+	for _, rc := range calls {
+		if err := p.buildPreExecResult(rc.call, rc.dict, fileBytes); err != nil {
+			return nil, err
+		}
+	}
+
+	// Rewrite the source: replace each dict-literal range with a
+	// length-preserving `0`-sentinel + spaces (newlines preserved).
+	rewritten := make([]byte, len(fileBytes))
+	copy(rewritten, fileBytes)
+	for _, rc := range calls {
+		startOff, ok := lineColToByteOffset(fileBytes, rc.dict.Lbrace.Line, rc.dict.Lbrace.Col)
+		if !ok {
+			return nil, fmt.Errorf("internal: cannot map dict Lbrace %s into bytes", rc.dict.Lbrace)
+		}
+		endOff, ok := lineColToByteOffset(fileBytes, rc.dict.Rbrace.Line, rc.dict.Rbrace.Col)
+		if !ok {
+			return nil, fmt.Errorf("internal: cannot map dict Rbrace %s into bytes", rc.dict.Rbrace)
+		}
+		// Rbrace.Col points at the `}` character itself; include it.
+		endOff++
+		if endOff > len(rewritten) || startOff < 0 || endOff < startOff {
+			return nil, fmt.Errorf("internal: invalid dict byte range [%d,%d) in %q", startOff, endOff, filename)
+		}
+		// First byte = '0' (so Starlark sees value=0 — a valid expr);
+		// remaining non-newline bytes = ' '; preserve any '\n'.
+		for i := startOff; i < endOff; i++ {
+			if rewritten[i] == '\n' {
+				continue
+			}
+			if i == startOff {
+				rewritten[i] = '0'
+			} else {
+				rewritten[i] = ' '
+			}
+		}
+	}
+	return rewritten, nil
+}
+
+// buildPreExecResult constructs a *dag.Result from a result(...) call
+// whose value= arg is a *syntax.DictExpr (already validated by the
+// pre-exec scan). Per-key value lambdas are captured via
+// captureResultValueLambda; per-key TypeInfo via inferType against an
+// empty schema (Wave-1 — plan 04.2-03 will re-run inference against
+// the proper branch-fork schema). The result is registered in
+// p.preBuiltResults keyed by the call's Lparen position; builtinResult
+// looks it up at exec time.
+func (p *Parser) buildPreExecResult(call *syntax.CallExpr, dictExpr *syntax.DictExpr, fileBytes []byte) error {
+	callPos := call.Lparen
+	keys := make([]string, 0, len(dictExpr.List))
+	values := make(map[string]*dag.CapturedLambda, len(dictExpr.List))
+	types := make(map[string]any, len(dictExpr.List))
+	for _, entry := range dictExpr.List {
+		de, ok := entry.(*syntax.DictEntry)
+		if !ok {
+			return &dag.ParseError{Pos: callPos, Msg: "result.value: internal — dict entry has unexpected AST shape"}
+		}
+		keyLit, ok := de.Key.(*syntax.Literal)
+		if !ok || keyLit.Token != syntax.STRING {
+			// pre-exec walker should have caught this, defensive.
+			return &dag.ParseError{Pos: callPos, Msg: "result.value: dict keys must be string literals"}
+		}
+		keyStr, ok := keyLit.Value.(string)
+		if !ok {
+			return &dag.ParseError{Pos: callPos, Msg: "result.value: internal — string-literal key has non-string value"}
+		}
+		captured, err := p.captureResultValueLambda(de.Value, callPos, keyStr, fileBytes)
+		if err != nil {
+			return err
+		}
+		keys = append(keys, keyStr)
+		values[keyStr] = captured
+		types[keyStr] = inferType(de.Value, newStateSchema(), "ctx")
+	}
+	res := &dag.Result{
+		Pos:    callPos,
+		Keys:   keys,
+		Values: values,
+		Types:  types,
+	}
+	p.preBuiltResults[posKey(callPos)] = res
+	return nil
+}
+
+// posKey serializes a syntax.Position into a stable string key for
+// the preBuiltResults map. Includes filename + line + col so multiple
+// result() calls on the same line (different col) don't collide.
+func posKey(pos syntax.Position) string {
+	return fmt.Sprintf("%s:%d:%d", pos.Filename(), pos.Line, pos.Col)
+}
+
+// validateResultPlacement enforces D4.2-04: every *dag.Result MUST be
+// the LAST node of an if_cond branch (then or else_) whose OutputAlias
+// is non-empty. Anywhere else — top-level body, mid-branch, inside
+// for_each_parallel — surfaces a *dag.ParseError pointing the user at
+// the missing output_alias.
+//
+// Note on responsibility split: the BRANCH-EQUALITY validator (plan
+// 04.2-03) enforces D4.2-09 (both-branches-present, last-node-Result/
+// Fail, at-least-one-Result, key/type equality). validateResultPlacement
+// is the narrower "result() can't appear here at all" gate that lands
+// in plan 02 so a top-level `result()` produces a clean error before
+// the branch-equality validator even runs.
+//
+// Rule 2 deviation (Wave-1): TestResult_RejectedOutsideExpressionMode
+// (a plan-02 RED test) requires this check; tests/fixtures/
+// result_outside_ifcond.star is the canonical fixture.
+func (p *Parser) validateResultPlacement() error {
+	for _, flow := range p.flows {
+		if err := p.walkValidateResultPlacement(flow.Body, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// walkValidateResultPlacement is the recursive helper. inExprBranch is
+// TRUE when the body being walked is the then OR else_ of an if_cond
+// whose OutputAlias is set; inside such bodies, *dag.Result IS allowed
+// at the LAST position (only). Any *dag.Result found in a body where
+// inExprBranch is false rejects with the output_alias hint.
+func (p *Parser) walkValidateResultPlacement(body []dag.Node, inExprBranch bool) error {
+	for i, node := range body {
+		switch n := node.(type) {
+		case *dag.Result:
+			isLast := i == len(body)-1
+			if !inExprBranch || !isLast {
+				return &dag.ParseError{
+					Pos: n.Pos,
+					Msg: "result(value=...) is only legal as the last node of an if_cond branch with output_alias set; remove the result() or wrap it in if_cond(output_alias=\"X\", ...)",
+				}
+			}
+		case *dag.IfCond:
+			childExprBranch := n.OutputAlias != ""
+			if err := p.walkValidateResultPlacement(n.Then, childExprBranch); err != nil {
+				return err
+			}
+			if err := p.walkValidateResultPlacement(n.Else, childExprBranch); err != nil {
+				return err
+			}
+		case *dag.ForEachParallel:
+			// Result inside a for_each body is also disallowed (the
+			// loop body has no output_alias). Walk with inExprBranch
+			// false so any *dag.Result in n.Steps rejects.
+			if err := p.walkValidateResultPlacement(n.Steps, false); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// findResultValueArg re-parses fileBytes and locates the value= kwarg
+// argument of the result(...) call whose Lparen matches callPos.
+// Returns the AST expression node (NOT evaluated); caller asserts
+// *syntax.DictExpr to enforce the dict-literal contract.
+//
+// Mirrors the re-parse approach in pkg/parser/block_fn_lint.go::
+// classifyBlockFn — the cached file bytes are walked once via
+// (*syntax.FileOptions).Parse + syntax.Walk; the matching CallExpr is
+// found by Lparen position equality.
+//
+// callPos is `thread.CallFrame(1).Pos` — points at the call's Lparen.
+// (Verified: starlark builtin invocation reports Lparen as the caller
+// position; matches the `pos := callerPosition(thread)` use across
+// every other builtin in this file.)
+func findResultValueArg(fileBytes []byte, filename string, callPos syntax.Position) (syntax.Expr, error) {
+	file, err := defaultFileOptions().Parse(filename, fileBytes, 0)
+	if err != nil {
+		return nil, fmt.Errorf("re-parse to recover result.value AST: %w", err)
+	}
+	var found *syntax.CallExpr
+	syntax.Walk(file, func(n syntax.Node) bool {
+		if found != nil {
+			return false
+		}
+		call, ok := n.(*syntax.CallExpr)
+		if !ok {
+			return true
+		}
+		if positionsEqual(call.Lparen, callPos) {
+			found = call
+			return false
+		}
+		return true
+	})
+	if found == nil {
+		return nil, fmt.Errorf("internal: cannot locate result(...) CallExpr at %s", callPos)
+	}
+	// Find the kwarg arg whose name is "value". CallExpr.Args is a
+	// slice where named args are *BinaryExpr{Op:EQ, X:*Ident, Y:expr}.
+	for _, arg := range found.Args {
+		bin, ok := arg.(*syntax.BinaryExpr)
+		if !ok || bin.Op != syntax.EQ {
+			continue
+		}
+		id, ok := bin.X.(*syntax.Ident)
+		if !ok || id.Name != "value" {
+			continue
+		}
+		return bin.Y, nil
+	}
+	return nil, fmt.Errorf("internal: result(...) call has no value= kwarg in AST")
 }
 
 // =============================================================================

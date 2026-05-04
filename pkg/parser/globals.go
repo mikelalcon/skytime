@@ -46,6 +46,11 @@ func newParseTimeGlobals(p *Parser, thread *starlark.Thread) (starlark.StringDic
 		"script":            starlark.NewBuiltin("script", p.builtinScript),
 		"for_each_parallel": starlark.NewBuiltin("for_each_parallel", p.builtinForEachParallel),
 		"call_flow":         starlark.NewBuiltin("call_flow", p.builtinCallFlow),
+
+		// D4.2-02: top-level result(value={...}) emits *dag.Result. Only
+		// legal as the LAST node of an expression-mode if_cond branch
+		// (validation lives in plan 04.2-03 finalize pass).
+		"result": starlark.NewBuiltin("result", p.builtinResult),
 	}
 
 	for name, ext := range p.registry.All() {

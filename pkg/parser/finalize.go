@@ -69,6 +69,9 @@ func (p *Parser) finalize() error {
 	if err := p.validateLambdaCtxAccesses(); err != nil {
 		return err
 	}
+	if err := p.validateResultPlacement(); err != nil {
+		return err
+	}
 	return p.validateActionRefKwargs()
 }
 

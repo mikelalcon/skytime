@@ -75,13 +75,15 @@ func findCtxAccesses(src []byte, filename string, lambdaPos syntax.Position) ([]
 
 	// Second pass: walk the matched body collecting every DotExpr whose X is
 	// the first-param Ident. Pitfall #9: dot.Name is *Ident, the string is
-	// dot.Name.Name.
+	// dot.Name.Name. Note: dot.NamePos is consistently <invalid> in
+	// go.starlark.net's current syntax tree; use dot.Name.NamePos (the
+	// Ident's position) instead — that one is properly populated.
 	var accesses []ctxAccess
 	collect := func(n syntax.Node) bool {
 		if dot, ok := n.(*syntax.DotExpr); ok {
 			if id, ok := dot.X.(*syntax.Ident); ok && id.Name == firstParamName {
 				accesses = append(accesses, ctxAccess{
-					Pos:      dot.NamePos,
+					Pos:      dot.Name.NamePos,
 					AttrName: dot.Name.Name,
 				})
 			}
