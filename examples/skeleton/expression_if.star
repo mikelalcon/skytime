@@ -29,6 +29,7 @@ gh = http.endpoint(base_url = "https://api.github.com")
 # ---------------------------------------------------------------------------
 flow(
     name = "procedural_demo",
+    description = "Procedural-mode if_cond — branches on script output, fail() in else",
     inputs = {"repo": "string"},
     steps = [
         script(
@@ -63,6 +64,7 @@ flow(
 # ---------------------------------------------------------------------------
 flow(
     name = "classify_repo_size",
+    description = "Expression-mode if_cond binding to classification — both branches return result()",
     inputs = {"size_bytes": "int"},
     steps = [
         if_cond(
@@ -100,6 +102,7 @@ flow(
 # ---------------------------------------------------------------------------
 flow(
     name = "check_user",
+    description = "Asymmetric expression-mode — then binds user, else fails with interpolated message",
     inputs = {"user_id": "string"},
     steps = [
         if_cond(
