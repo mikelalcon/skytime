@@ -5,8 +5,9 @@ import (
 	"io"
 	"sort"
 	"strings"
-	"text/tabwriter"
 
+	lipgloss "charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/table"
 	"github.com/spf13/cobra"
 
 	"github.com/mikelalcon/skytime/pkg/dag"
@@ -20,12 +21,13 @@ import (
 const emDash = "—"
 
 // newInfoCommand returns the skytime info subcommand. Quick task
-// 260504-k9c.
+// 260504-k9c (initial), 260504-m65 (lipgloss upgrade).
 //
 // Surface:
 //   - Parses a .star file (parse-time only — no Temporal connection).
-//   - Prints a 3-column aligned text table to stdout: Flow / Description
-//     / Inputs.
+//   - Prints a 3-column bordered Unicode-box-drawing table to stdout:
+//     Flow / Description / Inputs (rounded corners; bold header on TTY,
+//     auto-suppressed when stdout is not a TTY via termenv).
 //   - Source-declaration order (NOT alphabetical).
 //   - Empty description and empty inputs render as em-dash (U+2014).
 //   - Inputs cell renders `key:type, key:type` with keys sorted
@@ -69,24 +71,46 @@ func newInfoCommand(cfg *config) *cobra.Command {
 	}
 }
 
-// renderInfoTable writes a 3-column table (Flow / Description / Inputs)
-// to out via text/tabwriter, padding columns with two spaces. Empty
-// description and empty inputs render as em-dash; inputs map keys are
-// alphabetized so rendering is deterministic.
+// renderInfoTable writes a 3-column bordered table (Flow / Description /
+// Inputs) to out via charm.land/lipgloss/v2/table. Empty description
+// and empty inputs render as em-dash; inputs map keys are alphabetized
+// so rendering is deterministic.
 //
-// Column-width is governed by tabwriter (minwidth=0, tabwidth=0,
-// padding=2) — the longest cell per column drives alignment.
+// Style: rounded box-drawing border with vertical separators. Header
+// row is bold (applied via StyleFunc on row == table.HeaderRow == -1);
+// termenv auto-suppresses ANSI bold when stdout is not a TTY, so piped
+// output stays clean. Column widths auto-size to the longest cell
+// (lipgloss default).
 func renderInfoTable(out io.Writer, flows []*dag.Flow) {
-	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "Flow\tDescription\tInputs")
+	t := table.New().
+		Border(lipgloss.RoundedBorder()).
+		Headers("Flow", "Description", "Inputs").
+		StyleFunc(func(row, _ int) lipgloss.Style {
+			// Padding(0,1) gives one space of horizontal breathing room
+			// inside each cell, matching the visual feel of the previous
+			// tabwriter padding=2 (one space each side ≈ two between
+			// adjacent columns once borders are drawn). Bold is applied
+			// ONLY to the header row (row == table.HeaderRow == -1).
+			// termenv auto-suppresses ANSI on non-TTY stdout, so piped
+			// output stays clean.
+			base := lipgloss.NewStyle().Padding(0, 1)
+			if row == table.HeaderRow {
+				return base.Bold(true)
+			}
+			return base
+		})
 	for _, f := range flows {
 		desc := f.Description
 		if desc == "" {
 			desc = emDash
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", f.Name, desc, formatInputs(f.Inputs))
+		t.Row(f.Name, desc, formatInputs(f.Inputs))
 	}
-	_ = tw.Flush()
+	// Render returns the full table as a multi-line string with NO
+	// trailing newline; add one so the shell prompt lands on a fresh
+	// line, matching the prior tabwriter behavior (Fprintln after the
+	// last row provided this implicitly).
+	fmt.Fprintln(out, t.Render())
 }
 
 // formatInputs renders an Inputs map as "k:type, k:type" with keys

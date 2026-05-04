@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -93,12 +94,20 @@ func TestInfoCmd_EmptyDescription_AndEmptyInputs_RenderEmDash(t *testing.T) {
 	require.NoError(t, root.ExecuteContext(context.Background()))
 
 	out := stdout.String()
-	// Find the bare row line; assert it contains the em-dash twice.
-	bareRow := regexp.MustCompile(`(?m)^bare\b.*$`)
-	loc := bareRow.FindString(out)
-	require.NotEmpty(t, loc, "expected a row beginning with 'bare' in output:\n%s", out)
-	emDashCount := bytes.Count([]byte(loc), []byte(emDash))
-	assert.GreaterOrEqual(t, emDashCount, 2, "bare row must contain em-dash for both description and inputs; got: %q", loc)
+	// Find the line containing 'bare' (anywhere on the line, since
+	// lipgloss prefixes rows with a border character — line-anchored
+	// regex against ^bare would miss). Splitting on newlines is more
+	// robust than line-anchored regex against box-drawing output.
+	var bareLine string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "bare") {
+			bareLine = line
+			break
+		}
+	}
+	require.NotEmpty(t, bareLine, "expected a row containing 'bare' in output:\n%s", out)
+	emDashCount := strings.Count(bareLine, emDash)
+	assert.GreaterOrEqual(t, emDashCount, 2, "bare row must contain em-dash for both description and inputs; got: %q", bareLine)
 }
 
 // TestInfoCmd_InputsKeysAlphabetized — Quick 260504-k9c: a flow with
