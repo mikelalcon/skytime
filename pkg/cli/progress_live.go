@@ -260,6 +260,31 @@ func (r *liveRenderer) applyEvent(ev progressEvent) {
 				ev.Label,
 				marker, ev.DurationMs, ev.Summary)
 		}
+	case "result_bound":
+		// Phase 04.2-05 (D4.2-15 + D4.2-16): emit the result-binding leaf
+		// as a static line above the redraw region. Mirrors case "branch"
+		// — clear the redraw region, write the line, then the next event
+		// (typically step_complete{kind=if_cond}) will redraw on top.
+		//
+		// NO active-list mutation: result_bound is a tail-leaf inside
+		// the if_cond scope, not a freestanding leaf step (D-RHY-08:
+		// scopes/leaves use the active list; tail-leaves do not).
+		//
+		// Live path always wraps the ✓ marker in green (TTY is implicit
+		// — useLiveBlock is true). Verbose mode is disabled in the live
+		// path (useLiveBlock returns false when verbose is true), so we
+		// never render the keys list here — keys=[...] is a static-path
+		// feature only.
+		if ev.Alias == "" {
+			return // defensive — empty alias = malformed event
+		}
+		r.clearRedrawRegion()
+		indent := strings.Repeat(" ", 4*pathDepth(ev.Path))
+		fmt.Fprintf(r.out, "%s%s✓%s → ctx.%s\n",
+			indent,
+			ansiGreen, ansiReset,
+			ev.Alias,
+		)
 	case "branch":
 		// Quick 260503-rhy: emit if_cond HEADER as a static line above
 		// the redraw region (D-RHY-03 + D-RHY-10). Total comes from
