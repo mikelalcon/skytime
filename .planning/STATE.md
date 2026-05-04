@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.2-01-PLAN.md
-last_updated: "2026-05-04T12:22:21.738Z"
+stopped_at: Completed 04.2-02-PLAN.md
+last_updated: "2026-05-04T12:56:04.774Z"
 last_activity: 2026-05-04
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 34
-  completed_plans: 28
+  completed_plans: 29
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04.2 (if-cond-as-expression-with-strict-equality-result-binding) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-05-04
 
@@ -79,6 +79,7 @@ Progress: [██████████] 100%
 | Phase 04.1 P05b | 25m | 2 tasks | 6 files |
 | Phase 04.1 P07 | 11min | 5 tasks | 5 files |
 | Phase 04.2 P01 | 19min | 3 tasks | 27 files |
+| Phase 04.2 P02 | 27m | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -198,6 +199,11 @@ Recent decisions affecting current work:
 - [Phase 04.2]: Plan 04.2-01: Wave 0 RED scaffolding chooses 'fail loudly with deliberate plan-naming message' over t.Skip — keeps RED → GREEN signal visible in go test -run output throughout plans 02-05; messages explicitly name 'RED until plan 02 ships builtinResult' for traceability
 - [Phase 04.2]: Plan 04.2-01: inferType signature locked at (e syntax.Expr, schema stateSchema, firstParam string) TypeInfo with Wave-0 stub returning TypeOpaque{} — plan 02 drops in real body without touching parseInferExpr test helper or any call site
 - [Phase 04.2]: Plan 04.2-01: Plan referenced nodeJSONWrap discriminator wrapper; codebase uses per-type MarshalJSON dispatch (verified via grep). New *Result.MarshalJSON + *Fail.MarshalJSON integrate via Go default []Node encoder calling each element's MarshalJSON — no further wrapper. Documented as documentation-vs-codebase discrepancy
+- [Phase 04.2]: Plan 04.2-02: Pre-exec source rewriting for result(value=dict-literal) — Starlark eagerly evaluates kwarg expressions, would error on undefined ctx at top-level. Pre-exec scan validates AST + builds *dag.Result upfront + rewrites value=dict-literal to length-preserving 0-sentinel; original bytes stay cached for AST re-parse paths.
+- [Phase 04.2]: Plan 04.2-02: Compile-fallback for opaque value lambdas — synthesized 'lambda ctx: <expr>' bodies referencing user-defined helpers fail Starlark's compile resolver; fall back to 'lambda ctx: None' placeholder. Phase 3 worker re-parse provides authoritative Fn at workflow start.
+- [Phase 04.2]: Plan 04.2-02: validateResultPlacement plan-02 placement gate (Rule 2 deviation) — TestResult_RejectedOutsideExpressionMode demands early reject with output_alias hint; plan 03 keeps focus on D4.2-09 cases (last-node-Result/Fail, key/type equality).
+- [Phase 04.2]: Plan 04.2-02: ctx_walk.go dot.NamePos -> dot.Name.NamePos (Rule 1 bug fix) — go.starlark.net DotExpr.NamePos is consistently <invalid>; latent bug masked by tests asserting only ve.Msg. New TestCheckLambdaCtx_RemapsResultPrefix surfaces it.
+- [Phase 04.2]: Plan 04.2-02: Dual-name fail registration — fail is the sole sanctioned overlap between parse-time and lambda-time predeclared envs (D4.2-05); TestParseAndLambdaGlobalsAreDistinct allows fail exception; TestFail_LambdaTime_StillRaises in pkg/bridge is the regression guard.
 
 ### Pending Todos
 
@@ -224,6 +230,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-04T12:21:58.711Z
-Stopped at: Completed 04.2-01-PLAN.md
+Last session: 2026-05-04T12:55:34.685Z
+Stopped at: Completed 04.2-02-PLAN.md
 Resume file: None
