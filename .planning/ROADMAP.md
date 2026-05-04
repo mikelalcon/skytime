@@ -94,13 +94,19 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Phase 04.2: if_cond as expression with strict-equality result binding (INSERTED)
 
-**Goal:** [Urgent work - to be planned]
-**Requirements**: TBD
+**Goal:** Replace the purely procedural `if_cond` with an EXPRESSION-shaped variant where each branch may end with `result(value={...})` and the `if_cond` itself binds a typed value back into workflow state under a new `output_alias`. Strict structural equality across branches is enforced at parse time — keys must match exactly, per-key value types must match exactly (no LUB / no widening; explicit `float(x)` casts handle widening). A new top-level `fail("msg")` node-builtin is added so a branch can be parse-time-visibly fatal, enabling asymmetric branch shapes (one returns a value, the other terminates). Implementation is parser-side; runtime semantics of `walkIfCond` add minimal extension for the two new last-node cases (`*dag.Result` binds to ctx; `*dag.Fail` raises NonRetryableErr). Coexistence is ADDITIVE — `output_alias` is opt-in; existing procedural flows continue to compile and run identically.
+**Requirements**: DSL-14, DSL-15, VAL-05
 **Depends on:** Phase 4
-**Plans:** 6/7 plans executed
+**Plans:** 7/7 plans complete
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 04.2 to break down)
+- [x] 04.2-01-PLAN.md — Wave 0: type spine + RED tests + fixtures (sealed dag.Result/Fail, IfCond.OutputAlias, TypeInfo sum, stateSchema widening) (completed 2026-05-04)
+- [x] 04.2-02-PLAN.md — Wave 1: builtins result()/fail() + output_alias kwarg + parse-time globals + per-key value-lambda capture + inferType + bridge regression (completed 2026-05-04)
+- [x] 04.2-03-PLAN.md — Wave 2: validateIfCondExpressionShape finalize-pass implementing D4.2-09 + D4.2-11 (completed 2026-05-04)
+- [x] 04.2-04-PLAN.md — Wave 3: walk_result.go + walk_fail.go + walk_ifcond.go extension + replay determinism (completed 2026-05-04)
+- [x] 04.2-05-PLAN.md — Wave 3: progress.go renderer integration for result_bound + step_complete{kind=fail} (completed 2026-05-04)
+- [x] 04.2-06-PLAN.md — Wave 4: examples/skeleton/expression_if.star + differential corpus + pkg/parser/doc.go dual-fail example (completed 2026-05-04)
+- [x] 04.2-07-PLAN.md — Wave 4: registrar (DSL-14/15 + VAL-05 in REQUIREMENTS.md; ROADMAP.md populate; PROJECT.md amend) (completed 2026-05-04)
 
 ### Phase 04.1: Dynamic step kwargs — lambda-accepting step(action_fn=...) variant for runtime-built action kwargs (INSERTED)
 
