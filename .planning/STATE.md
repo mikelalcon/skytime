@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.2-02-PLAN.md
-last_updated: "2026-05-04T12:56:04.774Z"
+stopped_at: Completed 04.2-03-PLAN.md
+last_updated: "2026-05-04T13:09:06.888Z"
 last_activity: 2026-05-04
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 34
-  completed_plans: 29
+  completed_plans: 30
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04.2 (if-cond-as-expression-with-strict-equality-result-binding) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-05-04
 
@@ -80,6 +80,7 @@ Progress: [██████████] 100%
 | Phase 04.1 P07 | 11min | 5 tasks | 5 files |
 | Phase 04.2 P01 | 19min | 3 tasks | 27 files |
 | Phase 04.2 P02 | 27m | 2 tasks | 13 files |
+| Phase 04.2 P03 | 3m | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -204,6 +205,12 @@ Recent decisions affecting current work:
 - [Phase 04.2]: Plan 04.2-02: validateResultPlacement plan-02 placement gate (Rule 2 deviation) — TestResult_RejectedOutsideExpressionMode demands early reject with output_alias hint; plan 03 keeps focus on D4.2-09 cases (last-node-Result/Fail, key/type equality).
 - [Phase 04.2]: Plan 04.2-02: ctx_walk.go dot.NamePos -> dot.Name.NamePos (Rule 1 bug fix) — go.starlark.net DotExpr.NamePos is consistently <invalid>; latent bug masked by tests asserting only ve.Msg. New TestCheckLambdaCtx_RemapsResultPrefix surfaces it.
 - [Phase 04.2]: Plan 04.2-02: Dual-name fail registration — fail is the sole sanctioned overlap between parse-time and lambda-time predeclared envs (D4.2-05); TestParseAndLambdaGlobalsAreDistinct allows fail exception; TestFail_LambdaTime_StillRaises in pkg/bridge is the regression guard.
+- [Phase 04.2]: Plan 04.2-03: validateIfCondExpressionShape finalize-pass enforces D4.2-09 (5 cases) + D4.2-11 (per-key TypeInfo strict-equality with Opaque-defers); inserted between validateResultPlacement and validateActionRefKwargs per ordering rule
+- [Phase 04.2]: Plan 04.2-03: per-branch authoritative type re-inference via reinferResultTypes — re-parses synthesized <result:...> file, finds first LambdaExpr via syntax.Walk, calls inferType against proper per-branch schema; supersedes plan 02's empty-schema placeholder Types map
+- [Phase 04.2]: Plan 04.2-03: seedStateSchemaForFlow extracted as shared finalize-pass helper (Rule 2 consolidation) — both validateLambdaCtxAccesses and validateIfCondExpressionShape now use the same flow.Inputs → typeFromHint seed; eliminates inline loop in D4-02 walker
+- [Phase 04.2]: Plan 04.2-03: orphan-Result detector folded into walkValidateIfCondExpression's case *dag.Result — placement gate (plan 02) catches top-level + procedural-branch cases; this validator catches any *dag.Result reaching the orphan case after walkBranchSkippingLastResultOrFail's last-position skip
+- [Phase 04.2]: Plan 04.2-03: defensive Opaque fallback in reinferResultTypes for every failure mode (missing BodyPos, missing fileBytes, parse error, no lambda found) — surfaces as deferral, not user-facing internal error; matches plan 02's compile-fallback pattern
+- [Phase 04.2]: Plan 04.2-03 [Rule 2 deviation]: cases 4-5 implemented in Task 1 instead of stubbed — plan suggested deferring to Task 2 but Wave-0 RED tests TestValidateIfCondExpressionShape_KeysMismatch/TypeMismatch_NoLUB/OneSideOpaqueDefers required full impl to GREEN at Task 1 commit boundary; Task 2 became pure test-body addition (appropriate scope split)
 
 ### Pending Todos
 
@@ -230,6 +237,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-04T12:55:34.685Z
-Stopped at: Completed 04.2-02-PLAN.md
+Last session: 2026-05-04T13:09:06.883Z
+Stopped at: Completed 04.2-03-PLAN.md
 Resume file: None
