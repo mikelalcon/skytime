@@ -131,11 +131,16 @@ func TestWalkIfCond_ResultBoundToCtx(t *testing.T) {
 	out := runExpressionIfCondWorkflow(t, parsed, map[string]any{"n": int64(3)})
 
 	bound, ok := out["result_dict"]
-	require.True(t, ok, "RED until plan 04: ctx.result_dict must be bound after expression-mode if_cond")
+	require.True(t, ok, "ctx.result_dict must be bound after expression-mode if_cond")
 	dict, ok := bound.(map[string]any)
 	require.True(t, ok, "result_dict must be a dict; got %T", bound)
 	require.Equal(t, "positive", dict["sign"])
-	require.Equal(t, int64(3), dict["magnitude"])
+	// Numeric values round-trip through testsuite's JSON DataConverter,
+	// so int64 surfaces as float64 here. EqualValues coerces; the
+	// in-memory state map (before JSON) stores int64 — the next test
+	// (TestWalkIfCond_ResultBoundToCtx_HappyThenBranch) covers that
+	// directly via i.state.snapshot().
+	require.EqualValues(t, 3, dict["magnitude"])
 }
 
 // TestWalkIfCond_FailRaisesNonRetryable: D4.2-05 — when a branch ends
@@ -168,18 +173,9 @@ func TestWalkIfCond_FailRaisesNonRetryable(t *testing.T) {
 	require.Contains(t, env.GetWorkflowError().Error(), "boom")
 }
 
-// TestReplay_DictKeyOrderDeterministic: D4.2-04 + Pitfall 5 — the
-// walker MUST iterate Result.Keys (the source insertion order), not
-// `for k := range Values`, otherwise replay byte-equality breaks
-// because Go map iteration order is randomized. The test asserts that
-// two consecutive runs produce byte-identical bound dicts.
-// RED until plan 04 follows the Keys-not-Values iteration discipline.
-func TestReplay_DictKeyOrderDeterministic(t *testing.T) {
-	parsed := helperBuildExpressionIfCondFlow(t)
-
-	out1 := runExpressionIfCondWorkflow(t, parsed, map[string]any{"n": int64(7)})
-	out2 := runExpressionIfCondWorkflow(t, parsed, map[string]any{"n": int64(7)})
-
-	require.Equal(t, out1, out2,
-		"RED until plan 04: replay must produce byte-identical state")
-}
+// TestReplay_DictKeyOrderDeterministic and the other replay-determinism
+// tests live in replay_determinism_test.go (plan 04.2-04 Task 3). The
+// canonical Wave-0 RED stub for TestReplay_DictKeyOrderDeterministic
+// has been promoted there and given a more comprehensive scaffold
+// (slog-event capture + serializeRecords byte-equality + Pitfall 5
+// audit). See replay_determinism_test.go.
