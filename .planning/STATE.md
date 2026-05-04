@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.2-05-PLAN.md
-last_updated: "2026-05-04T13:21:23.259Z"
+stopped_at: Completed 04.2-04-PLAN.md
+last_updated: "2026-05-04T13:26:50.848Z"
 last_activity: 2026-05-04
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 34
-  completed_plans: 31
+  completed_plans: 32
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04.2 (if-cond-as-expression-with-strict-equality-result-binding) — EXECUTING
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Ready to execute
 Last activity: 2026-05-04
 
@@ -82,6 +82,7 @@ Progress: [██████████] 100%
 | Phase 04.2 P02 | 27m | 2 tasks | 13 files |
 | Phase 04.2 P03 | 3m | 2 tasks | 6 files |
 | Phase 04.2 P05 | 6m | 2 tasks | 5 files |
+| Phase 04.2 P04 | 11m | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -215,6 +216,11 @@ Recent decisions affecting current work:
 - [Phase 04.2]: Verbose-mode keys=[...] uses Go default %v formatting (preserves source-insertion order, deferred bespoke formatting)
 - [Phase 04.2]: strSlice tolerates post-Resolve []any degradation (slog API contract; capturingHandler reads after Resolve, renderer reads before)
 - [Phase 04.2]: FailLeaf rendering reuses existing renderStepComplete{status=err} path verbatim — zero new renderer code for kind=fail
+- [Phase 04.2]: Plan 04.2-04: walk_result.go::bindResultToState iterates n.Keys (Pitfall 5 — replay-deterministic source insertion order), evaluates per-key value lambdas, freezes the assembled dict, converts via bridge.FromStarlarkValue, writes via i.state.setOutput, emits one result_bound slog event
+- [Phase 04.2]: Plan 04.2-04: walk_fail.go::raiseFail resolves Message verbatim or via MessageFn (display-only fallback to literal Message on eval-error or wrong-type — failure semantics still raise); returns temporal.NewNonRetryableApplicationError with type FailNode carrying n.Pos
+- [Phase 04.2]: Plan 04.2-04 [Rule 1 deviation]: eventCapturingLogger over slog.Handler — workflow.GetLogger routes through testsuite.SetLogger (Temporal log.Logger), NOT slog.SetDefault; mirrors walk_step_namefn_test.go's captureLogger pattern with snapshot/serializeRecords/findEventRecords seams added for byte-equal replay comparison
+- [Phase 04.2]: Plan 04.2-04: parseSrcAsFlow test helper splices parser.Lambdas() into interpreter's ParsedFlow shape (pkg/parser does not export ParsedFlow type — mirrors tests/differential_test.go's worker-bootstrap convention); locked signature func parseSrcAsFlow(t, src, flowName) *ParsedFlow
+- [Phase 04.2]: Plan 04.2-04: walk_ifcond.go expression-mode dispatch splits branch into leading + last and switch-dispatches *dag.Result/*dag.Fail; defensive fallthrough for non-Result/Fail terminator (parser validator should reject; runtime fallthrough is defense-in-depth — malformed DAG behaves like procedural mode, never binds alias)
 
 ### Pending Todos
 
@@ -241,6 +247,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-04T13:21:23.255Z
-Stopped at: Completed 04.2-05-PLAN.md
+Last session: 2026-05-04T13:26:50.844Z
+Stopped at: Completed 04.2-04-PLAN.md
 Resume file: None
