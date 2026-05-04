@@ -77,6 +77,8 @@ A consultant team can take an extension catalog and a customer brief, write a `.
   - No string compilation (no CEL, no string parsers for conditionals/data mapping) — only native Starlark lambdas.
 
     > *Parser-time syntactic sugar that desugars to native Starlark lambdas (e.g., `${ctx.expr}` → `lambda ctx: str(ctx.expr)`) is not string compilation. The runtime evaluation surface remains lambda-only. This carve-out exists for ergonomic step naming and string kwargs; runtime template engines (CEL, Jinja, etc.) remain forbidden. Extending this carve-out beyond parser-time desugaring requires a new ADR.* (Phase 04.1, D4.1-22)
+
+    > *The parse-time top-level `fail("msg")` builtin (D4.2-05) is a parse-time syntactic primitive that emits a workflow-failure node — it does NOT introduce a runtime evaluation surface beyond the existing lambda contract. The MessageFn lambda (when `${ctx.expr}` interpolation is present) evaluates per the standard `CapturedLambda` + `bridge.CallLambda` path established in Phase 1; the same desugarer used by D4.1-22 is reused verbatim. See `pkg/parser/doc.go` for dual `fail()` semantics (parse-time node-emit vs. lambda-time `fail` global).* (Phase 04.2, D4.2-05)
   - No dynamic activities — extensions are plain Go functions; they never import `go.temporal.io/sdk/activity`.
   - No context bleed — never pass `workflow.Context` into a Starlark thread, never pass a Starlark `*starlark.Thread` over the network into an activity.
 - **Distribution shape:** Go library. The example project (with extensions and CLI) is the dogfooding vehicle and the proof-of-life demo, not a separate product.
@@ -137,4 +139,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-02 after Phase 04.1 completion (D4.1-22 carve-out appended to "no string compilation" rule + Out of Scope mirror)*
+*Last updated: 2026-05-04 after Phase 04.2 completion (D4.2-05 carve-out clarification appended alongside D4.1-22; documents top-level `fail()` as parse-time syntactic primitive)*
