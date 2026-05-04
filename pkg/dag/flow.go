@@ -19,6 +19,12 @@ type Flow struct {
 	// validation.
 	Inputs map[string]string
 
+	// Description is the optional free-form prose passed via
+	// flow(description="..."). Default empty. Surfaced by `skytime info`
+	// for human-friendly catalog views; no length cap, no parsing — pure
+	// data. Quick task 260504-k9c.
+	Description string
+
 	// Body is the sequence of child nodes — Step / IfCond / Script /
 	// ForEachParallel / CallFlow. Heterogeneous by design: a flow's body is
 	// a list, not a typed slice.

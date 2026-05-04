@@ -847,3 +847,84 @@ func TestBuiltinScript_IDNonString_Errors(t *testing.T) {
 	assert.Contains(t, pe.Msg, "script.id: expected string")
 	assert.Contains(t, pe.Msg, "int")
 }
+
+// =============================================================================
+// Quick 260504-k9c — flow(description=...) kwarg + FlowsInOrder() accessor
+// =============================================================================
+
+// TestBuiltinFlow_DescriptionKwarg_RoundTrips proves the new optional
+// description= kwarg flows verbatim into *dag.Flow.Description.
+func TestBuiltinFlow_DescriptionKwarg_RoundTrips(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", inputs={}, steps=[script(id="s", fn=lambda ctx: {"a":1}, output_alias="a")], description="hello world")`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	require.Contains(t, flows, "f")
+	assert.Equal(t, "hello world", flows["f"].Description)
+}
+
+// TestBuiltinFlow_DescriptionKwarg_DefaultEmpty proves omitting the
+// description kwarg yields the empty-string default.
+func TestBuiltinFlow_DescriptionKwarg_DefaultEmpty(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", inputs={}, steps=[script(id="s", fn=lambda ctx: {"a":1}, output_alias="a")])`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	require.Contains(t, flows, "f")
+	assert.Equal(t, "", flows["f"].Description, "default Description must be empty string")
+}
+
+// TestBuiltinFlow_DescriptionKwarg_AcceptsLongFreeForm proves there is no
+// length cap and free-form content (newlines, unicode) round-trips
+// byte-equal.
+func TestBuiltinFlow_DescriptionKwarg_AcceptsLongFreeForm(t *testing.T) {
+	p := newTestParser(t)
+	// Build a 1KB+ string with newlines + unicode. Starlark string literal
+	// supports backslash escapes; we use a raw string concatenation
+	// shape inside Starlark (".." + "..") to keep readable test source.
+	longStr := strings.Repeat("¡Hola, mundo!\nLine of unicode → ★\n", 40) // ~1.3KB
+	src := []byte(`flow(name="f", inputs={}, steps=[script(id="s", fn=lambda ctx: {"a":1}, output_alias="a")], description=` + starlark.String(longStr).String() + `)`)
+	flows, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+	require.Contains(t, flows, "f")
+	assert.Equal(t, longStr, flows["f"].Description, "long free-form description must round-trip byte-equal")
+}
+
+// TestBuiltinFlow_DescriptionKwarg_RejectsNonString proves UnpackArgs
+// rejects a non-string description (int) with a typed *dag.ParseError.
+func TestBuiltinFlow_DescriptionKwarg_RejectsNonString(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", inputs={}, steps=[script(id="s", fn=lambda ctx: {"a":1}, output_alias="a")], description=123)`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	var pe *dag.ParseError
+	require.True(t, errors.As(err, &pe), "expected *dag.ParseError, got %T: %v", err, err)
+	assert.Contains(t, pe.Msg, "description")
+}
+
+// TestParser_FlowsInOrder_PreservesDeclarationOrder proves FlowsInOrder()
+// returns flows in source-declaration order (NOT alphabetical).
+func TestParser_FlowsInOrder_PreservesDeclarationOrder(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="alpha",  inputs={}, steps=[script(id="s1", fn=lambda ctx: {"a":1}, output_alias="a")])
+flow(name="zeta",   inputs={}, steps=[script(id="s2", fn=lambda ctx: {"b":2}, output_alias="b")])
+flow(name="middle", inputs={}, steps=[script(id="s3", fn=lambda ctx: {"c":3}, output_alias="c")])`)
+	_, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+
+	ordered := p.FlowsInOrder()
+	require.Len(t, ordered, 3)
+	assert.Equal(t, "alpha", ordered[0].Name)
+	assert.Equal(t, "zeta", ordered[1].Name, "FlowsInOrder must preserve source order, not sort alphabetically (would put 'middle' here)")
+	assert.Equal(t, "middle", ordered[2].Name)
+}
+
+// TestParser_FlowsInOrder_EmptyBeforeParse proves FlowsInOrder() returns
+// an empty (non-nil) slice before any ParseFile/ParseSource invocation.
+func TestParser_FlowsInOrder_EmptyBeforeParse(t *testing.T) {
+	p, err := NewParser()
+	require.NoError(t, err)
+	ordered := p.FlowsInOrder()
+	require.NotNil(t, ordered, "FlowsInOrder must return non-nil even when empty")
+	assert.Empty(t, ordered)
+}

@@ -102,16 +102,18 @@ func (p *Parser) wrapBuiltinError(opName string, thread *starlark.Thread, err er
 // value.
 func (p *Parser) builtinFlow(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var (
-		name      string
-		inputs    *starlark.Dict
-		stepsLst  *starlark.List
-		taskQueue string // D3-19 — empty string == "inherit worker default"
+		name        string
+		inputs      *starlark.Dict
+		stepsLst    *starlark.List
+		taskQueue   string // D3-19 — empty string == "inherit worker default"
+		description string // Quick 260504-k9c — optional free-form prose
 	)
 	if err := starlark.UnpackArgs("flow", args, kwargs,
 		"name", &name,
 		"inputs?", &inputs,
 		"steps", &stepsLst,
 		"task_queue?", &taskQueue,
+		"description?", &description,
 	); err != nil {
 		return nil, p.wrapBuiltinError("flow", thread, err)
 	}
@@ -157,14 +159,20 @@ func (p *Parser) builtinFlow(thread *starlark.Thread, fn *starlark.Builtin, args
 	}
 
 	f := &dag.Flow{
-		Pos:       pos,
-		Name:      name,
-		NameFn:    flowNameFn,
-		Inputs:    inputsMap,
-		Body:      body,
-		TaskQueue: taskQueue,
+		Pos:         pos,
+		Name:        name,
+		NameFn:      flowNameFn,
+		Inputs:      inputsMap,
+		Description: description, // Quick 260504-k9c
+		Body:        body,
+		TaskQueue:   taskQueue,
 	}
 	p.flows[name] = f
+	// Quick 260504-k9c: append name to flowOrder AFTER the duplicate-name
+	// guard above (which returns early). Each successful registration
+	// appends exactly once, preserving source-declaration order for
+	// FlowsInOrder() / `skytime info`.
+	p.flowOrder = append(p.flowOrder, name)
 	return starlark.None, nil
 }
 

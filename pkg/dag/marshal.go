@@ -29,11 +29,12 @@ import (
 // the alias path (Body needs separate handling because []Node serializes
 // each element through its own MarshalJSON).
 type flowJSON struct {
-	Kind      string            `json:"kind"`
-	Name      string            `json:"name"`
-	Inputs    map[string]string `json:"inputs,omitempty"`
-	Body      []Node            `json:"body"`
-	TaskQueue string            `json:"task_queue,omitempty"` // D3-19 (Phase 3)
+	Kind        string            `json:"kind"`
+	Name        string            `json:"name"`
+	Inputs      map[string]string `json:"inputs,omitempty"`
+	Description string            `json:"description,omitempty"` // Quick 260504-k9c
+	Body        []Node            `json:"body"`
+	TaskQueue   string            `json:"task_queue,omitempty"` // D3-19 (Phase 3)
 }
 
 // MarshalJSON emits a Flow with a "kind":"Flow" discriminator and a body
@@ -44,11 +45,12 @@ func (f *Flow) MarshalJSON() ([]byte, error) {
 		body = []Node{}
 	}
 	return json.Marshal(flowJSON{
-		Kind:      f.Kind(),
-		Name:      f.Name,
-		Inputs:    f.Inputs,
-		Body:      body,
-		TaskQueue: f.TaskQueue,
+		Kind:        f.Kind(),
+		Name:        f.Name,
+		Inputs:      f.Inputs,
+		Description: f.Description,
+		Body:        body,
+		TaskQueue:   f.TaskQueue,
 	})
 }
 

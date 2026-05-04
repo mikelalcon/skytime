@@ -63,6 +63,12 @@ type Parser struct {
 	// populates this and rejects duplicate names.
 	flows map[string]*dag.Flow
 
+	// flowOrder records flow Names in source-declaration order — the
+	// order in which builtinFlow successfully registered each. Parallel
+	// to flows map; used by FlowsInOrder() for the `skytime info` table.
+	// Quick task 260504-k9c.
+	flowOrder []string
+
 	// lambdas indexes captured lambdas by their stable D-18 ID. Phase 3
 	// uses this map at workflow start to resolve LambdaIDs back to the
 	// *starlark.Function values.
@@ -110,6 +116,7 @@ func NewParser(opts ...Option) (*Parser, error) {
 		loadCache:       make(map[string]loadCacheEntry),
 		fileBytes:       make(map[string][]byte),
 		flows:           make(map[string]*dag.Flow),
+		flowOrder:       make([]string, 0, 4), // Quick 260504-k9c
 		lambdas:         make(map[string]*dag.CapturedLambda),
 		preBuiltResults: make(map[string]*dag.Result),
 	}
@@ -155,6 +162,25 @@ func (p *Parser) Lambdas() map[string]*dag.CapturedLambda {
 // Empty when called before any ParseFile / ParseSource invocation.
 func (p *Parser) Flows() map[string]*dag.Flow {
 	return p.flows
+}
+
+// FlowsInOrder returns the parser session's flows in source-declaration
+// order (the order in which `flow(...)` calls were evaluated). DO NOT
+// reorder. Used by `skytime info` to render the table in source order.
+// Returns the LIVE *Flow pointers — callers MUST NOT mutate.
+//
+// Returns an empty (non-nil) slice when called before any ParseFile /
+// ParseSource invocation, or when no flows have been registered.
+//
+// Quick task 260504-k9c.
+func (p *Parser) FlowsInOrder() []*dag.Flow {
+	out := make([]*dag.Flow, 0, len(p.flowOrder))
+	for _, name := range p.flowOrder {
+		if f, ok := p.flows[name]; ok {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // FileBytes returns the parser session's cached file bytes keyed by absolute

@@ -1,6 +1,7 @@
 package dag
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
@@ -68,6 +69,28 @@ func TestFlow_HasNameFn(t *testing.T) {
 // the existing Node interface contract.
 func TestFlow_KindUnchanged(t *testing.T) {
 	assert.Equal(t, "Flow", (&Flow{}).Kind())
+}
+
+// TestFlow_MarshalJSON_DescriptionOmitEmpty — Quick 260504-k9c: the new
+// Description field round-trips through MarshalJSON with json:"description,omitempty"
+// semantics. Empty Description produces NO "description" key; non-empty
+// renders as `"description":"hi"`.
+func TestFlow_MarshalJSON_DescriptionOmitEmpty(t *testing.T) {
+	pos := nodePos(t, 1, 1)
+
+	// Empty Description → key absent.
+	zero := &Flow{Pos: pos, Name: "f", Body: []Node{}}
+	b, err := json.Marshal(zero)
+	require.NoError(t, err)
+	require.False(t, bytes.Contains(b, []byte(`"description"`)),
+		"empty Description must NOT appear as 'description' key in JSON; got: %s", string(b))
+
+	// Non-empty Description → key present with verbatim value.
+	withDesc := &Flow{Pos: pos, Name: "f", Description: "hi", Body: []Node{}}
+	b2, err := json.Marshal(withDesc)
+	require.NoError(t, err)
+	require.True(t, bytes.Contains(b2, []byte(`"description":"hi"`)),
+		"non-empty Description must appear as 'description':'hi' in JSON; got: %s", string(b2))
 }
 
 func TestFlow_BodyAcceptsHeterogeneousNodes(t *testing.T) {
