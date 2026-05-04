@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.2-04-PLAN.md
-last_updated: "2026-05-04T13:26:50.848Z"
+stopped_at: Completed 04.2-06-PLAN.md
+last_updated: "2026-05-04T17:43:33.103Z"
 last_activity: 2026-05-04
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 34
-  completed_plans: 32
+  completed_plans: 33
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04.2 (if-cond-as-expression-with-strict-equality-result-binding) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Last activity: 2026-05-04
 
@@ -83,6 +83,7 @@ Progress: [██████████] 100%
 | Phase 04.2 P03 | 3m | 2 tasks | 6 files |
 | Phase 04.2 P05 | 6m | 2 tasks | 5 files |
 | Phase 04.2 P04 | 11m | 3 tasks | 6 files |
+| Phase 04.2 P06 | 8m | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -221,6 +222,9 @@ Recent decisions affecting current work:
 - [Phase 04.2]: Plan 04.2-04 [Rule 1 deviation]: eventCapturingLogger over slog.Handler — workflow.GetLogger routes through testsuite.SetLogger (Temporal log.Logger), NOT slog.SetDefault; mirrors walk_step_namefn_test.go's captureLogger pattern with snapshot/serializeRecords/findEventRecords seams added for byte-equal replay comparison
 - [Phase 04.2]: Plan 04.2-04: parseSrcAsFlow test helper splices parser.Lambdas() into interpreter's ParsedFlow shape (pkg/parser does not export ParsedFlow type — mirrors tests/differential_test.go's worker-bootstrap convention); locked signature func parseSrcAsFlow(t, src, flowName) *ParsedFlow
 - [Phase 04.2]: Plan 04.2-04: walk_ifcond.go expression-mode dispatch splits branch into leading + last and switch-dispatches *dag.Result/*dag.Fail; defensive fallthrough for non-Result/Fail terminator (parser validator should reject; runtime fallthrough is defense-in-depth — malformed DAG behaves like procedural mode, never binds alias)
+- [Phase 04.2]: Plan 04.2-06: Rule 2 fix — post-branch OutputAlias propagation in BOTH walkBodyForCtxValidation (D4-02) and walkValidateIfCondExpression (D4.2-09). Without it, downstream ctx.<alias> readers fail validation. Symmetric mutation mirrors how script.OutputAlias is added by both walkers
+- [Phase 04.2]: Plan 04.2-06: Rule 1 fix — walkNode case *dag.Fail dispatches to raiseFail (D4.2-07 procedural-mode fail() is legal). Reuses plan 04's helper. Defensive case *dag.Result returns OrphanResultNode error (validator should reject earlier; defense-in-depth)
+- [Phase 04.2]: Plan 04.2-06: tests/differential_test.go expectedErrFlows package-level map gates dryrun assertion to accept *temporal.ApplicationError for stub-driven top-level fail() flows; pre-existing fixtures keep strict NoError. pkg/validator/dryrun/dispatch.go required ZERO changes (verified empty git diff) — AlwaysOkDispatch is orthogonal to walk_result/walk_fail (which evaluate lambdas inline, never call activity.OperationDispatch)
 
 ### Pending Todos
 
@@ -247,6 +251,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-04T13:26:50.844Z
-Stopped at: Completed 04.2-04-PLAN.md
+Last session: 2026-05-04T17:43:16.828Z
+Stopped at: Completed 04.2-06-PLAN.md
 Resume file: None
