@@ -4,7 +4,7 @@ milestone: v1.42.0
 milestone_name: milestone
 status: verifying
 stopped_at: Completed 04.2-07-PLAN.md
-last_updated: "2026-05-04T18:24:22Z"
+last_updated: "2026-05-04T18:46:13Z"
 last_activity: 2026-05-04
 progress:
   total_phases: 8
@@ -246,6 +246,7 @@ None yet.
 | 260503-qx1 | Include kind + label on step_complete line — mirrors step_dispatch column shape so user-defined step names persist past dispatch onto the finalized ✓ row; fixes latent live-renderer bug that hardcoded "step" for every kind | 2026-05-03 | 70de069 + 9f4858b | [260503-qx1-include-step-kind-label-on-step-complete](./quick/260503-qx1-include-step-kind-label-on-step-complete/) |
 | 260503-rhy | Render if_cond + for_each_parallel as block scopes (header ▶ branch / ▶ open + indented children + footer ✓/✗ ms); 4-space-per-depth indent via shared pathDepth helper; replaces qkk inline branch suffix on if_cond step_complete with header on branch event | 2026-05-03 | 74797c1 + 6bc3a4d | [260503-rhy-render-if-cond-and-for-each-parallel-as-](./quick/260503-rhy-render-if-cond-and-for-each-parallel-as-/) |
 | 260504-jtr | Make root `skytime` command print proper errors — render `Error:` + cobra usage block on unknown commands; `.star`-suffix args additionally get `did you mean: skytime run/validate <file>` hint. Replaces previous silent exit 1 from `skytime path/to/flow.star ...`. New `cli.RenderRootError` helper + `cli.ErrAlreadyRendered` exported alias of errSilent; D4-18 invariant preserved verbatim | 2026-05-04 | 25f99d8 | [260504-jtr-make-root-skytime-command-print-proper-e](./quick/260504-jtr-make-root-skytime-command-print-proper-e/) |
+| 260504-k9c | Add `skytime info <file.star>` subcommand — prints 3-column Flow/Description/Inputs table in source-declaration order via `text/tabwriter`; em-dash (U+2014) for empty cells; alphabetized inputs keys for determinism; new optional `description=` kwarg on `flow()` builtin → `*dag.Flow.Description string` (json `omitempty`); `Parser.FlowsInOrder()` accessor backed by `flowOrder []string`; `examples/skeleton/expression_if.star` annotated with descriptions on all three flows | 2026-05-04 | c0a4ce2 + 9b7989f + 7ed8edf | [260504-k9c-add-skytime-info-file-star-subcommand-de](./quick/260504-k9c-add-skytime-info-file-star-subcommand-de/) |
 
 ### Roadmap Evolution
 
@@ -254,6 +255,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-04T18:24:22Z
-Stopped at: Completed quick task 260504-jtr (root cobra error rendering + .star suggestion)
+Last session: 2026-05-04T18:46:13Z
+Stopped at: Completed quick task 260504-k9c (skytime info subcommand + flow description= kwarg)
 Resume file: None
