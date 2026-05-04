@@ -21,4 +21,50 @@
 // are mutually exclusive (Starlark resolves names per the active env),
 // so re-using the name is safe by design. See D4.2-05 + Phase 04.2
 // RESEARCH §Pitfall 4.
+//
+// Example — dual fail() call sites:
+//
+// Top-level fail() (parse-time builtin → emits *dag.Fail node):
+//
+//	flow(
+//	    name = "guard",
+//	    inputs = {"user_id": "string"},
+//	    steps = [
+//	        if_cond(
+//	            cond = lambda ctx: ctx.user_id == "",
+//	            then = [fail("user_id is required")],          // <-- PARSE-TIME fail()
+//	            else_ = [step(action = api.fetch_user(id = "${ctx.user_id}"))],
+//	        ),
+//	    ],
+//	)
+//
+// Lambda-time fail() (starlark.Universe → raises *starlark.EvalError):
+//
+//	flow(
+//	    name = "guard",
+//	    inputs = {"user_id": "string"},
+//	    steps = [
+//	        script(
+//	            id = "validate",
+//	            fn = lambda ctx: (
+//	                {"ok": True} if ctx.user_id != ""
+//	                else fail("user_id is required")            // <-- LAMBDA-TIME fail()
+//	            ),
+//	            output_alias = "v",
+//	        ),
+//	    ],
+//	)
+//
+// Both produce the same observable surface: a NonRetryableError with
+// the message at the .star callsite. Choose by location:
+//
+//   - Top-level: when the failure is structural to the flow shape
+//     (procedural-guard pattern, expression-mode terminator, etc.)
+//   - Lambda-time: when the failure is data-dependent inside a
+//     lambda body (validation logic, conditional raise, etc.)
+//
+// Top-level fail() supports `${ctx.expr}` interpolation in its
+// message (via the D4.1-01 desugarer); lambda-time fail() takes a
+// literal string at the call site (interpolation must be done by
+// string concatenation: fail("missing " + ctx.repo)).
 package parser
