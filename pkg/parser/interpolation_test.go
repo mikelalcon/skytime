@@ -342,8 +342,8 @@ func TestCtxWalk_RespectsBodyPos(t *testing.T) {
 	// State only declares `repo` — `tyop` is undeclared. The walker MUST
 	// walk the synthetic file (where ctx.tyop actually lives) and reject.
 	flow := &dag.Flow{Name: "f"}
-	state := newStateSet()
-	state.add("repo")
+	state := newStateSchema()
+	state.addUntyped("repo")
 	walkErr := p.checkLambdaCtx(flow, cl.ID, state)
 	require.Error(t, walkErr, "BodyPos walker must catch ctx.tyop against state {repo}")
 	var ve *dag.ValidationError
@@ -355,8 +355,8 @@ func TestCtxWalk_RespectsBodyPos(t *testing.T) {
 	p2.fileBytes[userFilename] = userSrc
 	cl2, err := p2.desugarInterpolation("${ctx.repo}", userPosForLambda)
 	require.NoError(t, err)
-	state2 := newStateSet()
-	state2.add("repo")
+	state2 := newStateSchema()
+	state2.addUntyped("repo")
 	require.NoError(t, p2.checkLambdaCtx(flow, cl2.ID, state2),
 		"BodyPos walker must validate ctx.repo against state {repo}")
 }

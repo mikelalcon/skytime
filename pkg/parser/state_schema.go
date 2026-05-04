@@ -8,36 +8,55 @@ import (
 	"github.com/mikelalcon/skytime/pkg/dag"
 )
 
-// stateSet is the lexically-visible state-name set passed down the body
-// walk for D4-02 ctx.<name> validation. Map-of-empty-struct for O(1)
-// membership tests; clone before forking branches so add() in one branch
-// does not leak into siblings.
-type stateSet map[string]struct{}
+// stateSchema is the lexically-visible state-name → TypeInfo map passed
+// down the body walk. Visibility-only checks (D4-02) use has() and clone();
+// type-aware passes (D4.2 result-branch validator, plan 03) use get().
+//
+// The struct{}→TypeInfo widening (D4.2-13) preserves every API method
+// the D4-02 walker uses by name (has, add, clone, sortedKeys) so the
+// existing call sites in walkBodyForCtxValidation continue to compile
+// without semantic change. Untyped sources (script outputs before
+// inference, item-vars) store TypeOpaque{} via addUntyped(); flow inputs
+// map their type-hint string to the appropriate TypeInfo via typeFromHint.
+type stateSchema map[string]TypeInfo
 
-// newStateSet constructs an empty stateSet.
-func newStateSet() stateSet { return stateSet{} }
+// newStateSchema constructs an empty stateSchema.
+func newStateSchema() stateSchema { return stateSchema{} }
 
-// add inserts name into s. Idempotent — re-adding an existing name is a
-// no-op.
-func (s stateSet) add(name string) { s[name] = struct{}{} }
+// add inserts name with the given TypeInfo. Idempotent — re-adding an
+// existing name overwrites the previous TypeInfo.
+func (s stateSchema) add(name string, t TypeInfo) { s[name] = t }
+
+// addUntyped inserts name with TypeOpaque{} — the "cannot statically
+// infer" sentinel. Used for script.OutputAlias before D4.2-13 inference
+// lands and for for_each item-vars (whose element type is opaque in v1).
+func (s stateSchema) addUntyped(name string) { s[name] = TypeOpaque{} }
 
 // has reports whether name is present in s.
-func (s stateSet) has(name string) bool { _, ok := s[name]; return ok }
+func (s stateSchema) has(name string) bool { _, ok := s[name]; return ok }
+
+// get returns the TypeInfo stored under name, or (nil, false) when
+// name is not in scope. Used by plan 03's inferType when resolving
+// `ctx.<name>` references.
+func (s stateSchema) get(name string) (TypeInfo, bool) {
+	t, ok := s[name]
+	return t, ok
+}
 
 // clone returns a shallow copy of s. D4-02 if_cond branches each receive a
 // clone so any future "branch-local" additions do not leak into the parent
 // or sibling branch.
-func (s stateSet) clone() stateSet {
-	out := make(stateSet, len(s))
-	for k := range s {
-		out[k] = struct{}{}
+func (s stateSchema) clone() stateSchema {
+	out := make(stateSchema, len(s))
+	for k, v := range s {
+		out[k] = v
 	}
 	return out
 }
 
 // sortedKeys returns the names in s sorted alphabetically — used for
 // deterministic error messages ("visible: [a b c]").
-func (s stateSet) sortedKeys() []string {
+func (s stateSchema) sortedKeys() []string {
 	keys := make([]string, 0, len(s))
 	for k := range s {
 		keys = append(keys, k)
@@ -46,14 +65,39 @@ func (s stateSet) sortedKeys() []string {
 	return keys
 }
 
+// typeFromHint maps a flow.Inputs type-hint string to a TypeInfo
+// (D4.2-13). Flow declares `inputs={"name": "type"}`; this is the seed
+// of the schema. Unknown hints (or empty) collapse to TypeOpaque{} so
+// the existing visibility-only D4-02 walker keeps working unchanged
+// while the branch-equality validator (plan 03) defers strict checks
+// against opaque inputs.
+func typeFromHint(hint string) TypeInfo {
+	switch hint {
+	case "int", "integer":
+		return TypeScalar{Kind: "int"}
+	case "float", "number":
+		return TypeScalar{Kind: "float"}
+	case "bool", "boolean":
+		return TypeScalar{Kind: "bool"}
+	case "string", "str":
+		return TypeScalar{Kind: "string"}
+	case "list", "array":
+		return TypeList{Element: TypeOpaque{}}
+	case "dict", "object", "map":
+		return TypeDict{Fields: nil}
+	}
+	return TypeOpaque{}
+}
+
 // validateLambdaCtxAccesses walks every flow's body sequentially. For each
 // captured lambda it computes the state set visible at the lambda's source
 // position and rejects any ctx.<name> reference that is not in the set.
 //
 // D4-02 stacking rules (canonical reference: 04-CONTEXT.md):
-//   - At flow entry: state = keys of flow.Inputs
+//   - At flow entry: state = keys of flow.Inputs (typed via typeFromHint)
 //   - Script: validate lambda BEFORE adding OutputAlias; then state +=
-//     OutputAlias so subsequent siblings see it
+//     OutputAlias so subsequent siblings see it (untyped for now;
+//     D4.2-13 plan 02 will type via inferType on the script body)
 //   - IfCond: validate cond lambda; walk Then and Else each with a CLONE
 //     of pre-branch state — outputs added inside `then` are NOT visible in
 //     `else_` and vice versa
@@ -68,9 +112,9 @@ func (s stateSet) sortedKeys() []string {
 // state errors surface before kwarg-shape errors (per CONTEXT D4-01).
 func (p *Parser) validateLambdaCtxAccesses() error {
 	for _, flow := range p.flows {
-		initial := newStateSet()
-		for k := range flow.Inputs {
-			initial.add(k)
+		initial := newStateSchema()
+		for k, hint := range flow.Inputs {
+			initial.add(k, typeFromHint(hint))
 		}
 		if err := p.walkBodyForCtxValidation(flow, flow.Body, initial); err != nil {
 			return err
@@ -83,7 +127,7 @@ func (p *Parser) validateLambdaCtxAccesses() error {
 // validateLambdaCtxAccesses. Mirrors walkLintMixedIdempotency /
 // walkLintBlockSize / walkResolveCallFlows for grep-friendly recursion
 // uniformity.
-func (p *Parser) walkBodyForCtxValidation(flow *dag.Flow, body []dag.Node, state stateSet) error {
+func (p *Parser) walkBodyForCtxValidation(flow *dag.Flow, body []dag.Node, state stateSchema) error {
 	for _, node := range body {
 		switch n := node.(type) {
 		case *dag.Script:
@@ -92,7 +136,10 @@ func (p *Parser) walkBodyForCtxValidation(flow *dag.Flow, body []dag.Node, state
 				return err
 			}
 			if n.OutputAlias != "" {
-				state.add(n.OutputAlias)
+				// D4.2-13: untyped for now (plan 02 will type via
+				// inferType on the script's fn body). Visibility-only
+				// for D4-02 is preserved.
+				state.addUntyped(n.OutputAlias)
 			}
 		case *dag.IfCond:
 			// Validate the cond lambda first.
@@ -115,10 +162,11 @@ func (p *Parser) walkBodyForCtxValidation(flow *dag.Flow, body []dag.Node, state
 					return err
 				}
 			}
-			// Inside Steps, state += ItemVar.
+			// Inside Steps, state += ItemVar (untyped — element-of-items
+			// is opaque in v1).
 			inner := state.clone()
 			if n.ItemVar != "" {
-				inner.add(n.ItemVar)
+				inner.addUntyped(n.ItemVar)
 			}
 			if err := p.walkBodyForCtxValidation(flow, n.Steps, inner); err != nil {
 				return err
@@ -182,7 +230,7 @@ func (p *Parser) walkBodyForCtxValidation(flow *dag.Flow, body []dag.Node, state
 // Missing lambdas in p.lambdas or missing fileBytes entries are also
 // silently skipped — both indicate state that lambda-capture would have
 // errored on; we don't want a defensive nil-dereference here.
-func (p *Parser) checkLambdaCtx(flow *dag.Flow, lambdaID string, state stateSet) error {
+func (p *Parser) checkLambdaCtx(flow *dag.Flow, lambdaID string, state stateSchema) error {
 	if lambdaID == "" {
 		return nil
 	}

@@ -9,22 +9,121 @@ import (
 	"github.com/mikelalcon/skytime/pkg/dag"
 )
 
-// TestStateSchema_AccumulatesScopes pins the stateSet semantics: add/has,
-// clone-isolation, and sortedKeys ordering. Mirrors the unit-test shape used
-// for other small helper types in pkg/parser.
+// TestStateSchema_AccumulatesScopes pins the stateSchema semantics: add/has,
+// clone-isolation, and sortedKeys ordering. After D4.2-13 widening the API
+// keeps the same shape (visibility-only) but values carry TypeInfo —
+// addUntyped() is the visibility-only shortcut.
 func TestStateSchema_AccumulatesScopes(t *testing.T) {
-	s := newStateSet()
-	s.add("repo")
+	s := newStateSchema()
+	s.addUntyped("repo")
 	require.True(t, s.has("repo"))
 	require.False(t, s.has("missing"))
 
 	branch := s.clone()
-	branch.add("only_in_branch")
+	branch.addUntyped("only_in_branch")
 	require.True(t, branch.has("only_in_branch"))
 	require.False(t, s.has("only_in_branch"), "clone must not leak into parent")
 
 	require.Equal(t, []string{"repo"}, s.sortedKeys())
 	require.Equal(t, []string{"only_in_branch", "repo"}, branch.sortedKeys())
+}
+
+// TestStateSchema_VisibilityAPIPreserved pins that newStateSchema /
+// has / addUntyped / clone / sortedKeys cover the D4-02 walker's
+// pre-widening surface — the regression net for the stateSet → stateSchema
+// rename. Every call this test exercises is mirrored verbatim inside
+// walkBodyForCtxValidation.
+func TestStateSchema_VisibilityAPIPreserved(t *testing.T) {
+	initial := newStateSchema()
+	initial.addUntyped("repo_name")
+	require.True(t, initial.has("repo_name"))
+	require.False(t, initial.has("missing"))
+
+	// Mimic the if_cond branch fork: each branch sees a clone of pre-branch
+	// state; an add inside one branch must not leak.
+	thenBranch := initial.clone()
+	thenBranch.addUntyped("from_then")
+	elseBranch := initial.clone()
+	require.True(t, thenBranch.has("from_then"))
+	require.False(t, elseBranch.has("from_then"), "branches must be isolated post-clone")
+	require.False(t, initial.has("from_then"), "parent must not see branch-local additions")
+
+	// sortedKeys for deterministic error output.
+	require.Equal(t, []string{"repo_name"}, initial.sortedKeys())
+}
+
+// TestStateSchema_TypedAdd: D4.2-13 — typed add() preserves the TypeInfo
+// for plan 03's get() consumer.
+func TestStateSchema_TypedAdd(t *testing.T) {
+	s := newStateSchema()
+	s.add("x", TypeScalar{Kind: "int"})
+	require.True(t, s.has("x"))
+	got, ok := s.get("x")
+	require.True(t, ok)
+	require.True(t, Equal(got, TypeScalar{Kind: "int"}))
+}
+
+// TestStateSchema_AddUntyped: addUntyped() stores TypeOpaque{} so the
+// branch-equality validator can detect "untyped state read here, defer
+// the strict check".
+func TestStateSchema_AddUntyped(t *testing.T) {
+	s := newStateSchema()
+	s.addUntyped("y")
+	require.True(t, s.has("y"))
+	got, ok := s.get("y")
+	require.True(t, ok)
+	require.True(t, Equal(got, TypeOpaque{}))
+}
+
+// TestStateSchema_CloneIsDeep: clone returns a fresh map; adds in either
+// side stay local. (The TypeInfo values are immutable structs — a shallow
+// copy of the map is sufficient.)
+func TestStateSchema_CloneIsDeep(t *testing.T) {
+	a := newStateSchema()
+	a.add("x", TypeScalar{Kind: "int"})
+
+	b := a.clone()
+	b.add("y", TypeScalar{Kind: "string"})
+
+	require.False(t, a.has("y"), "a must not see b's additions")
+	require.True(t, b.has("x"), "b must inherit a's pre-clone entries")
+}
+
+// TestStateSchema_SortedKeys: deterministic ordering for error messages.
+func TestStateSchema_SortedKeys(t *testing.T) {
+	s := newStateSchema()
+	s.addUntyped("c")
+	s.addUntyped("a")
+	s.addUntyped("b")
+	require.Equal(t, []string{"a", "b", "c"}, s.sortedKeys())
+}
+
+// TestTypeFromHint: D4.2-13 flow.Inputs hint → TypeInfo mapping.
+func TestTypeFromHint(t *testing.T) {
+	cases := []struct {
+		hint string
+		want TypeInfo
+	}{
+		{"int", TypeScalar{Kind: "int"}},
+		{"integer", TypeScalar{Kind: "int"}},
+		{"float", TypeScalar{Kind: "float"}},
+		{"number", TypeScalar{Kind: "float"}},
+		{"bool", TypeScalar{Kind: "bool"}},
+		{"boolean", TypeScalar{Kind: "bool"}},
+		{"string", TypeScalar{Kind: "string"}},
+		{"str", TypeScalar{Kind: "string"}},
+		{"list", TypeList{Element: TypeOpaque{}}},
+		{"array", TypeList{Element: TypeOpaque{}}},
+		{"dict", TypeDict{Fields: nil}},
+		{"object", TypeDict{Fields: nil}},
+		{"map", TypeDict{Fields: nil}},
+		{"", TypeOpaque{}},
+		{"unknown_thing", TypeOpaque{}},
+	}
+	for _, c := range cases {
+		got := typeFromHint(c.hint)
+		require.True(t, Equal(got, c.want), "hint %q: got %v want %v", c.hint, got, c.want)
+	}
 }
 
 // TestFinalize_CtxAccess_Valid is the positive case: a flow whose scripts
