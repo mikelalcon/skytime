@@ -39,9 +39,14 @@ func main() {
 		os.Exit(1)
 	}
 	if err := root.ExecuteContext(ctx); err != nil {
-		// pkg/cli's renderer already printed user-visible diagnostics
-		// (D4-18 "renderer owns output, cobra owns exit status"); just
-		// exit non-zero.
+		// Per D4-18, pkg/cli owns user-visible output. Subcommands that
+		// already rendered (validate, run, dev-server) return
+		// cli.ErrAlreadyRendered and RenderRootError no-ops on it. Top-
+		// level cobra errors (unknown command, etc.) reach
+		// RenderRootError as plain errors and get a human-friendly
+		// stderr render here — see Quick 260504-jtr for the motivating
+		// `skytime path/to/flow.star ...` silent-exit-1 bug.
+		cli.RenderRootError(os.Stderr, err)
 		os.Exit(1)
 	}
 }
