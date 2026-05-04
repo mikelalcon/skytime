@@ -173,6 +173,97 @@ func TestMarshal_Stable_FlowWithBody(t *testing.T) {
 	assert.Equal(t, string(b1), string(b2))
 }
 
+// --- D4.2-01: Result + Fail marshal ------------------------------------------
+
+// TestMarshal_ResultNode: D4.2-04. Result emits {"kind":"Result","keys":[...]};
+// Values + Types are deliberately omitted (Pitfall 8: lambda IDs are unstable
+// content-hash-suffixed; TypeInfo encoding is deferred).
+func TestMarshal_ResultNode(t *testing.T) {
+	r := &Result{
+		Keys: []string{"a", "b"},
+		Values: map[string]*CapturedLambda{
+			"a": {ID: "L1"},
+			"b": {ID: "L2"},
+		},
+		Types: map[string]any{"a": struct{ Kind string }{"int"}},
+	}
+	b, err := json.Marshal(r)
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(b, &m))
+	assert.Equal(t, "Result", m["kind"])
+	keys, ok := m["keys"].([]any)
+	require.True(t, ok)
+	assert.Equal(t, []any{"a", "b"}, keys)
+	// Values + Types must be absent from the wire form.
+	_, hasValues := m["values"]
+	assert.False(t, hasValues, "Values must not marshal in v1 (lambda IDs unstable)")
+	_, hasTypes := m["types"]
+	assert.False(t, hasTypes, "Types must not marshal in v1 (TypeInfo encoding deferred)")
+}
+
+// TestMarshal_FailNode_LiteralOnly: D4.2-01. Fail with no MessageFn emits
+// {"kind":"Fail","message":"..."} and omits message_lambda_id.
+func TestMarshal_FailNode_LiteralOnly(t *testing.T) {
+	f := &Fail{Message: "missing repo"}
+	b, err := json.Marshal(f)
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(b, &m))
+	assert.Equal(t, "Fail", m["kind"])
+	assert.Equal(t, "missing repo", m["message"])
+	_, hasFn := m["message_lambda_id"]
+	assert.False(t, hasFn, "message_lambda_id must be omitted when MessageFn is nil")
+}
+
+// TestMarshal_FailNode_WithLambda: D4.2-01. Fail with MessageFn collapses
+// the lambda pointer to its stable ID under message_lambda_id; Message
+// retains the verbatim template (with ${...}).
+func TestMarshal_FailNode_WithLambda(t *testing.T) {
+	f := &Fail{
+		Message:   "missing ${ctx.x}",
+		MessageFn: &CapturedLambda{ID: "L3"},
+	}
+	b, err := json.Marshal(f)
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(b, &m))
+	assert.Equal(t, "Fail", m["kind"])
+	assert.Equal(t, "missing ${ctx.x}", m["message"])
+	assert.Equal(t, "L3", m["message_lambda_id"])
+}
+
+// TestMarshal_StableAcrossTwoRoundtrips: same value marshals to byte-identical
+// output across two invocations. Mirrors Phase 1 plan 02 stability pattern,
+// extended with a heterogeneous body containing IfCond (with OutputAlias),
+// Result, and Fail.
+func TestMarshal_StableAcrossTwoRoundtrips(t *testing.T) {
+	f := &Flow{
+		Name: "x",
+		Body: []Node{
+			&IfCond{
+				LambdaID:    "L1",
+				OutputAlias: "out",
+				Then:        []Node{&Result{Keys: []string{"sign"}}},
+				Else:        []Node{&Fail{Message: "no"}},
+			},
+		},
+	}
+	b1, err := json.Marshal(f)
+	require.NoError(t, err)
+	b2, err := json.Marshal(f)
+	require.NoError(t, err)
+	assert.Equal(t, string(b1), string(b2))
+
+	// Sanity: each child still carries its kind discriminator (regression
+	// guard in case the per-type MarshalJSON dispatch ever drifts).
+	assert.Contains(t, string(b1), `"kind":"Flow"`)
+	assert.Contains(t, string(b1), `"kind":"IfCond"`)
+	assert.Contains(t, string(b1), `"kind":"Result"`)
+	assert.Contains(t, string(b1), `"kind":"Fail"`)
+	assert.Contains(t, string(b1), `"output_alias":"out"`)
+}
+
 func TestMarshal_Stable_ActionRefWithKwargs(t *testing.T) {
 	// Even with Starlark-dict-backed kwargs, marshaling must be stable —
 	// Go's encoding/json sorts map keys, so converting Kwargs to map[string]any

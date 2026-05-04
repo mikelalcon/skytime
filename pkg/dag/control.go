@@ -11,8 +11,16 @@ import (
 type IfCond struct {
 	Pos      syntax.Position
 	LambdaID string // resolves into WorkflowInput.Lambdas (D-18 format)
-	Then     []Node // branch taken when cond evaluates truthy
-	Else     []Node // branch taken when cond evaluates falsy; empty slice (or nil — both fine) when else_= omitted
+	// OutputAlias is the parser-side mode switch for D4.2 expression-mode
+	// if_cond. Zero value (empty string) preserves today's procedural
+	// behavior verbatim — every existing fixture and downstream consumer
+	// continues to work unchanged. Non-empty value enables D4.2-09
+	// expression-mode rules: each branch must end in *Result (or *Fail at
+	// most one side); branch-result keys + types must structurally match;
+	// after the if_cond, the resolved value binds into ctx.<OutputAlias>.
+	OutputAlias string
+	Then        []Node // branch taken when cond evaluates truthy
+	Else        []Node // branch taken when cond evaluates falsy; empty slice (or nil — both fine) when else_= omitted
 }
 
 var _ Node = (*IfCond)(nil)

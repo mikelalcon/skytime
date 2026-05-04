@@ -20,6 +20,34 @@ func TestIfCond_ZeroElseDoesNotCrash(t *testing.T) {
 	}
 }
 
+// TestIfCond_OutputAliasZeroValue: D4.2-01 — zero-value OutputAlias means
+// procedural mode (today's behavior); the field is omitted from JSON via
+// `omitempty` so existing fixtures keep their current shape.
+func TestIfCond_OutputAliasZeroValue(t *testing.T) {
+	n := &IfCond{LambdaID: "L1"}
+	assert.Equal(t, "", n.OutputAlias, "zero value preserves procedural mode")
+
+	b, err := json.Marshal(n)
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(b, &m))
+	_, has := m["output_alias"]
+	assert.False(t, has, "output_alias must be omitted when empty (omitempty)")
+}
+
+// TestIfCond_OutputAliasSet: D4.2-01 — a non-empty OutputAlias serializes
+// into JSON under the `output_alias` key.
+func TestIfCond_OutputAliasSet(t *testing.T) {
+	n := &IfCond{LambdaID: "L1", OutputAlias: "X"}
+	b, err := json.Marshal(n)
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(b, &m))
+	assert.Equal(t, "X", m["output_alias"])
+	assert.Equal(t, "IfCond", m["kind"])
+	assert.Equal(t, "L1", m["lambda_id"])
+}
+
 // --- Script ------------------------------------------------------------------
 
 func TestScript_FieldsRoundTrip(t *testing.T) {

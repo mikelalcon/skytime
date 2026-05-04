@@ -78,15 +78,18 @@ func (s *Step) MarshalJSON() ([]byte, error) {
 }
 
 type ifCondJSON struct {
-	Kind     string `json:"kind"`
-	LambdaID string `json:"lambda_id"`
-	Then     []Node `json:"then"`
-	Else     []Node `json:"else"`
+	Kind        string `json:"kind"`
+	LambdaID    string `json:"lambda_id"`
+	OutputAlias string `json:"output_alias,omitempty"` // D4.2-01: expression-mode marker; zero value omitted
+	Then        []Node `json:"then"`
+	Else        []Node `json:"else"`
 }
 
 // MarshalJSON emits an IfCond with a "kind":"IfCond" discriminator. Both
 // branches always render (as `[]` when nil/empty) so the golden shape is
-// stable regardless of whether `else_=` was provided.
+// stable regardless of whether `else_=` was provided. OutputAlias is
+// emitted only when non-empty (omitempty) so existing procedural-mode
+// fixtures and golden tests keep their current shape.
 func (n *IfCond) MarshalJSON() ([]byte, error) {
 	then := n.Then
 	if then == nil {
@@ -97,11 +100,63 @@ func (n *IfCond) MarshalJSON() ([]byte, error) {
 		els = []Node{}
 	}
 	return json.Marshal(ifCondJSON{
-		Kind:     n.Kind(),
-		LambdaID: n.LambdaID,
-		Then:     then,
-		Else:     els,
+		Kind:        n.Kind(),
+		LambdaID:    n.LambdaID,
+		OutputAlias: n.OutputAlias,
+		Then:        then,
+		Else:        els,
 	})
+}
+
+// resultJSON is the marshal-time shape of *Result. Values + Types are
+// deliberately omitted in v1 golden output:
+//   - Values holds *CapturedLambda pointers whose IDs are content-hash
+//     suffixed (cosmetic edits change them); not stable for goldens.
+//   - Types holds parser.TypeInfo values via map[string]any indirection;
+//     a JSON shape with kind discriminators is out of scope for v1
+//     (Pitfall 8 deferred). Plan 02+ may extend with a stable encoding
+//     when the validator wires up.
+type resultJSON struct {
+	Kind string   `json:"kind"`
+	Keys []string `json:"keys"`
+}
+
+// MarshalJSON emits a Result with a "kind":"Result" discriminator. Keys
+// always renders (as `[]` when nil) for byte-stable golden tests.
+func (n *Result) MarshalJSON() ([]byte, error) {
+	keys := n.Keys
+	if keys == nil {
+		keys = []string{}
+	}
+	return json.Marshal(resultJSON{
+		Kind: n.Kind(),
+		Keys: keys,
+	})
+}
+
+// failJSON is the marshal-time shape of *Fail. MessageFn collapses to its
+// stable lambda ID (MessageLambdaID) — the *CapturedLambda pointer itself
+// is in-memory only.
+type failJSON struct {
+	Kind            string `json:"kind"`
+	Message         string `json:"message,omitempty"`
+	MessageLambdaID string `json:"message_lambda_id,omitempty"`
+}
+
+// MarshalJSON emits a Fail with a "kind":"Fail" discriminator. Message
+// renders verbatim (the literal template, including any ${...} markers).
+// When MessageFn != nil, the lambda's ID is emitted as message_lambda_id
+// so cross-machine goldens stay stable (the *CapturedLambda struct
+// itself is not JSON-friendly).
+func (n *Fail) MarshalJSON() ([]byte, error) {
+	out := failJSON{
+		Kind:    n.Kind(),
+		Message: n.Message,
+	}
+	if n.MessageFn != nil {
+		out.MessageLambdaID = n.MessageFn.ID
+	}
+	return json.Marshal(out)
 }
 
 type scriptJSON struct {
