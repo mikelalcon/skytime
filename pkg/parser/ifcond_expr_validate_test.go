@@ -155,3 +155,208 @@ func TestValidateIfCondExpressionShape_OneSideOpaqueDefers(t *testing.T) {
 	// plan 02/03 land, this must accept.
 	require.NoError(t, err, "RED until plan 02+03 land; one-side-opaque must DEFER (no error): %v", err)
 }
+
+// TestValidateIfCondExpressionShape_BothOpaqueDefers: BOTH branches
+// reference opaque values (different unknown helpers). Both per-key
+// types are Opaque so the validator defers — no error.
+func TestValidateIfCondExpressionShape_BothOpaqueDefers(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`def helper(n):
+    return n
+def other(m):
+    return m
+flow(name="f", inputs={}, steps=[
+    if_cond(
+        output_alias="X",
+        cond=lambda ctx: True,
+        then=[result(value={"x": helper(1)})],
+        else_=[result(value={"x": other(2)})],
+    ),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.NoError(t, err, "both-opaque must DEFER (no error): %v", err)
+}
+
+// TestValidateIfCondExpressionShape_TypeMatch: happy path — both
+// branches concrete, same type → no error.
+func TestValidateIfCondExpressionShape_TypeMatch(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", inputs={}, steps=[
+    if_cond(
+        output_alias="X",
+        cond=lambda ctx: True,
+        then=[result(value={"x": 1})],
+        else_=[result(value={"x": 2})],
+    ),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.NoError(t, err, "matching int types must accept: %v", err)
+}
+
+// TestValidateIfCondExpressionShape_NestedDictRecursion: nested
+// dict literals with identical structure across branches must accept
+// (TypeDict.Equal recurses).
+func TestValidateIfCondExpressionShape_NestedDictRecursion(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", inputs={}, steps=[
+    if_cond(
+        output_alias="X",
+        cond=lambda ctx: True,
+        then=[result(value={"x": {"a": 1, "b": "y"}})],
+        else_=[result(value={"x": {"a": 1, "b": "z"}})],
+    ),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.NoError(t, err, "matching nested dict types must accept: %v", err)
+}
+
+// TestValidateIfCondExpressionShape_NestedDictMismatch: nested dict
+// literals where one inner key's type differs across branches (string
+// vs int for "b") must reject with the outer key cited in the error.
+func TestValidateIfCondExpressionShape_NestedDictMismatch(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", inputs={}, steps=[
+    if_cond(
+        output_alias="X",
+        cond=lambda ctx: True,
+        then=[result(value={"x": {"a": 1, "b": "y"}})],
+        else_=[result(value={"x": {"a": 1, "b": 1}})],
+    ),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	var ve *dag.ValidationError
+	require.True(t, errors.As(err, &ve), "expected *dag.ValidationError, got %T: %v", err, err)
+	require.Contains(t, ve.Msg, `key "x"`,
+		"error must cite the outer key x whose nested types differ")
+	require.Contains(t, ve.Msg, "branches disagree")
+}
+
+// TestValidateIfCondExpressionShape_RespectsBranchSchema: per-branch
+// state schema flows from flow.Inputs + script outputs upstream of the
+// if_cond. Script output is added via addUntyped → both branches see
+// ctx.m as TypeOpaque so per-key inference for `k: ctx.m` is Opaque,
+// validator defers → no error.
+func TestValidateIfCondExpressionShape_RespectsBranchSchema(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", inputs={"n": "int"}, steps=[
+    script(id="x2", fn=lambda ctx: ctx.n * 2, output_alias="m"),
+    if_cond(
+        output_alias="O",
+        cond=lambda ctx: ctx.m > 10,
+        then=[result(value={"k": ctx.m})],
+        else_=[result(value={"k": 0})],
+    ),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	// then-branch: ctx.m is opaque (script output untyped) → defers.
+	// else-branch: 0 is int. One-side opaque → no error.
+	require.NoError(t, err, "branch schema must include script output (untyped → defer): %v", err)
+}
+
+// TestResultOutsideIfCond_Rejected: top-level result() (not wrapped
+// in if_cond) must reject with the placement-gate hint. The plan-02
+// validateResultPlacement gate fires first; this test verifies the
+// orphan path is wired and the message points at output_alias.
+func TestResultOutsideIfCond_Rejected(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="orphan", inputs={}, steps=[
+    result(value={"x": 1}),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "output_alias",
+		"orphan result must hint at output_alias")
+}
+
+// TestResultInProceduralBranch_Rejected: result() in a procedural-mode
+// (no output_alias) if_cond branch must reject. The placement gate
+// from plan 02 catches this; the new validator's walkValidateIfCondExpression
+// also rejects via the orphan-Result case when descending procedural
+// branches.
+func TestResultInProceduralBranch_Rejected(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", inputs={}, steps=[
+    if_cond(
+        cond=lambda ctx: True,
+        then=[result(value={"x": 1})],
+        else_=[step(action=fake_ext.echo(msg="hi"))],
+    ),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "output_alias",
+		"result in procedural branch must hint at output_alias")
+}
+
+// TestResultInLeadingBody_Rejected: result() in a leading position
+// (not the LAST node) of an expression-mode branch must reject. Only
+// the last node may be a result terminator.
+func TestResultInLeadingBody_Rejected(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", inputs={}, steps=[
+    if_cond(
+        output_alias="X",
+        cond=lambda ctx: True,
+        then=[result(value={"x": 1}), result(value={"x": 2})],
+        else_=[result(value={"x": 3})],
+    ),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err, "leading-position result must reject")
+}
+
+// TestValidateIfCondExpressionShape_FixturesReject parses each of the
+// 4 invalid fixtures from plan 01 and asserts each rejects. The fixtures
+// are the canonical reject-corpus for the validator.
+func TestValidateIfCondExpressionShape_FixturesReject(t *testing.T) {
+	cases := []struct {
+		name     string
+		fixture  string
+		mustHave string
+	}{
+		{
+			name:     "invalid_keys",
+			fixture:  "../../tests/fixtures/ifcond_expr_invalid_keys.star",
+			mustHave: "result keys",
+		},
+		{
+			name:     "invalid_types",
+			fixture:  "../../tests/fixtures/ifcond_expr_invalid_types.star",
+			mustHave: "branches disagree on key",
+		},
+		{
+			name:     "invalid_lastnode",
+			fixture:  "../../tests/fixtures/ifcond_expr_invalid_lastnode.star",
+			mustHave: "last node must be result",
+		},
+		{
+			name:     "invalid_bothfail",
+			fixture:  "../../tests/fixtures/ifcond_expr_invalid_bothfail.star",
+			mustHave: "at least one branch must end in result",
+		},
+		{
+			name:     "result_outside_ifcond",
+			fixture:  "../../tests/fixtures/result_outside_ifcond.star",
+			mustHave: "output_alias",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p := newTestParser(t)
+			_, err := p.ParseFile(c.fixture)
+			require.Error(t, err, "fixture %s must reject", c.fixture)
+			require.Contains(t, err.Error(), c.mustHave,
+				"fixture %s error must contain %q; got %v", c.fixture, c.mustHave, err)
+		})
+	}
+}
+
+// TestValidateIfCondExpressionShape_FixtureValid: the happy-path
+// fixture (matching keys + matching types) parses cleanly.
+func TestValidateIfCondExpressionShape_FixtureValid(t *testing.T) {
+	p := newTestParser(t)
+	flows, err := p.ParseFile("../../tests/fixtures/ifcond_expr_valid.star")
+	require.NoError(t, err, "ifcond_expr_valid.star must parse cleanly: %v", err)
+	require.Contains(t, flows, "happy")
+}
