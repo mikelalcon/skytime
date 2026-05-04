@@ -438,23 +438,27 @@ func TestLiveBlock_BranchAppendsToStepComplete(t *testing.T) {
 		"expected footer line with [3/3] + if_cond + cond + ✓ + 1ms (no arrow). Stripped: %q", stripped)
 }
 
-// TestLiveBlock_OrphanBranchEvent_NoOutput: a lone branch event (no
-// matching step_complete) produces no visible content — neither the →
-// glyph nor the branch name "then" appears in stripped output. Cursor
-// show/hide ANSI sequences are allowed (Close emits them).
+// TestLiveBlock_OrphanBranchEvent_NoOutput: quick 260503-rhy migration —
+// orphan branch (no preceding step_dispatch caching total) DOES emit
+// an if_cond header now (D-RHY-03). The header carries [N/0] + if_cond +
+// cond + ▶ branch. The QKK defense (no inline "→ branch" arrow) holds.
 func TestLiveBlock_OrphanBranchEvent_NoOutput(t *testing.T) {
 	out := &safeBuffer{}
 	r := newLiveRenderer(out)
 
-	r.submit(progressEvent{Kind: "branch", Idx: 99, Branch: "then"})
+	r.submit(progressEvent{Kind: "branch", Idx: 99, Path: "99", Branch: "then"})
 	time.Sleep(150 * time.Millisecond)
 	r.Close()
 
 	stripped := stripAnsiTest(out.String())
-	require.NotContains(t, stripped, "→",
-		"orphan branch must produce no visible arrow. Stripped: %q", stripped)
-	require.NotContains(t, stripped, "then",
-		"orphan branch must produce no visible branch name. Stripped: %q", stripped)
+	require.Contains(t, stripped, "if_cond",
+		"orphan branch must emit if_cond header (D-RHY-03). Stripped: %q", stripped)
+	require.Contains(t, stripped, "▶ then",
+		"orphan branch header must carry ▶ then. Stripped: %q", stripped)
+	// QKK defense preserved: the OLD inline-arrow shape "→ then" must
+	// not appear (the new header uses ▶, not →).
+	require.NotContains(t, stripped, "→ then",
+		"orphan branch must NOT emit the old qkk inline-arrow shape. Stripped: %q", stripped)
 }
 
 // TestLiveBlock_FlowFailedHasRedFailedMarker: flow_complete with

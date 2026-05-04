@@ -73,12 +73,16 @@ type progressHandler struct {
 	live     *liveRenderer
 	liveOnce sync.Once
 
-	// branchByIdx buffers `event=branch` records keyed by step idx. The
-	// entry is read+deleted by renderStepComplete for the same idx, which
-	// appends ` <colorArrow(→)> <branch>` to the rendered line. Lazy-init
-	// on first store. Quick 260503-qkk: inlines if_cond branch label onto
-	// the if_cond's step_complete line; standalone branch line removed.
-	branchByIdx map[int64]string
+	// ifCondTotalByIdx caches the `total` attr from the suppressed
+	// step_dispatch event for kind=if_cond, keyed by idx. Read+deleted
+	// by renderBranch (which uses it to render the [N/M] counter on the
+	// header line — the branch event itself does not carry `total`).
+	// Lazy-init on first store. Quick 260503-rhy: replaces branchByIdx;
+	// scope rendering means the header is now emitted by renderBranch
+	// (not buffered for later consumption by renderStepComplete) so the
+	// only thing we still need to buffer across events is the parent
+	// total.
+	ifCondTotalByIdx map[int64]int64
 }
 
 // failureContext is the per-handler record of the most recent
@@ -212,13 +216,13 @@ func (p *progressHandler) Close() {
 // handler is logically a sibling, not an alias).
 func (p *progressHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &progressHandler{
-		wrapped:     p.wrapped.WithAttrs(attrs),
-		out:         p.out,
-		ttyKnown:    p.ttyKnown,
-		tty:         p.tty,
-		verbose:     p.verbose,
-		lastErr:     p.lastErr,
-		branchByIdx: p.branchByIdx,
+		wrapped:          p.wrapped.WithAttrs(attrs),
+		out:              p.out,
+		ttyKnown:         p.ttyKnown,
+		tty:              p.tty,
+		verbose:          p.verbose,
+		lastErr:          p.lastErr,
+		ifCondTotalByIdx: p.ifCondTotalByIdx,
 	}
 }
 
@@ -227,13 +231,13 @@ func (p *progressHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 // lastErr is shallow-copied per the WithAttrs note above.
 func (p *progressHandler) WithGroup(name string) slog.Handler {
 	return &progressHandler{
-		wrapped:     p.wrapped.WithGroup(name),
-		out:         p.out,
-		ttyKnown:    p.ttyKnown,
-		tty:         p.tty,
-		verbose:     p.verbose,
-		lastErr:     p.lastErr,
-		branchByIdx: p.branchByIdx,
+		wrapped:          p.wrapped.WithGroup(name),
+		out:              p.out,
+		ttyKnown:         p.ttyKnown,
+		tty:              p.tty,
+		verbose:          p.verbose,
+		lastErr:          p.lastErr,
+		ifCondTotalByIdx: p.ifCondTotalByIdx,
 	}
 }
 

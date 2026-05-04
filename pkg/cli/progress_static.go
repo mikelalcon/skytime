@@ -38,11 +38,18 @@ func (p *progressHandler) renderFlowStart(a attrMap) error {
 	return p.println(line)
 }
 
-// renderStepDispatch: `[N/M] kind                label`
+// renderStepDispatch dispatches by kind:
+//   - kind == "if_cond": SUPPRESSED (D-RHY-01). The total attr is cached
+//     so renderBranch can render the [N/M] counter on the header line.
+//   - kind == "for_each_parallel": emit HEADER row (D-RHY-02 + D-RHY-11)
+//     `<indent>[N/M] for_each_parallel  items=K  ▶ open`.
+//   - leaf kinds (step / script / call_flow): existing dispatch shape
+//     `<indent>[N/M] kind  label`.
 //
-// When path indicates nested context (anything other than the bare
-// numeric idx), the row is indented 2 spaces and the counter uses
-// `[path/path]`.
+// Indent is depth-based via pathDepth (4 spaces per level, D-RHY-07).
+// computeCounter returns indent+counter; counter format still uses
+// "[path/path]" for nested rows (D-RHY-13 leaves the counter format
+// unchanged from qkk; only indent calculation moved to pathDepth).
 func (p *progressHandler) renderStepDispatch(a attrMap) error {
 	idx := a.int("idx")
 	total := a.int("total")
@@ -50,7 +57,33 @@ func (p *progressHandler) renderStepDispatch(a attrMap) error {
 	label := a.str("label")
 	path := a.str("path")
 
+	if kind == "if_cond" {
+		// Suppressed (D-RHY-01) — header is delegated to renderBranch.
+		// Cache total so renderBranch can emit [N/M] (the branch event
+		// itself does NOT carry total — verified in walk_ifcond.go).
+		if p.ifCondTotalByIdx == nil {
+			p.ifCondTotalByIdx = make(map[int64]int64)
+		}
+		p.ifCondTotalByIdx[idx] = total
+		return nil
+	}
+
 	indent, counter := p.computeCounter(idx, total, path)
+
+	if kind == "for_each_parallel" {
+		// D-RHY-02 + D-RHY-11 + D-RHY-12: header form
+		// "<indent>[N/M] for_each_parallel  items=K  ▶ open".
+		line := fmt.Sprintf("%s%s %s %s %s open",
+			indent,
+			p.colorCounter(counter),
+			p.colorKind(padKind(kind)),
+			label,
+			p.colorArrow("▶"),
+		)
+		return p.println(line)
+	}
+
+	// Leaf kinds — existing dispatch shape.
 	line := fmt.Sprintf("%s%s %s %s",
 		indent,
 		p.colorCounter(counter),
@@ -60,17 +93,17 @@ func (p *progressHandler) renderStepDispatch(a attrMap) error {
 	return p.println(line)
 }
 
-// renderStepComplete: `<indent><counter> <kind> <label>  <marker> <ms>ms  <summary>`
+// renderStepComplete: emits a row matching the dispatch column shape.
 //
-// Quick 260503-qx1: kind + label persist on the completion row, mirroring
-// the renderStepDispatch column shape. User-defined step names (D4.1-15
-// step(name="Get repo ${ctx.repo}")) survive past the dispatch banner
-// onto the finalized ✓ row.
+// For kind ∈ {if_cond, for_each_parallel} this is the scope FOOTER
+// (D-RHY-04) — counter + kind + label + ✓/✗ + ms + summary, with NO
+// branch suffix. Branch was already consumed by renderBranch (header).
 //
-// computeCounter returns the same indent+counter pair as renderStepDispatch
-// (top-level rows indent "" + counter "[N/M]"; nested rows indent "  " +
-// counter "[path/path]") so the dispatch row above and the completion row
-// below align column-for-column.
+// For leaf kinds {step, script, call_flow} this is the step's
+// completion row — same shape, also no branch suffix (no leaf kind
+// emits branch events today; D-RHY-05).
+//
+// Indent is depth-based via pathDepth (4 spaces per level, D-RHY-07).
 func (p *progressHandler) renderStepComplete(a attrMap) error {
 	status := a.str("status")
 	dur := a.int("duration_ms")
@@ -83,10 +116,6 @@ func (p *progressHandler) renderStepComplete(a attrMap) error {
 
 	// Quick 260502-onc Fix C: capture failure context for
 	// renderFlowComplete to attribute the failure when err_count > 0.
-	// step_complete carries idx but the renderer also wants total —
-	// best-effort fallback to a.int("total") which the dispatch event
-	// for the same step set; missing total falls back to 0 (renderer
-	// prints "step 2/0", uglier but never crashes).
 	if status == "err" {
 		p.lastErr = &failureContext{
 			idx:     idx,
@@ -108,38 +137,44 @@ func (p *progressHandler) renderStepComplete(a attrMap) error {
 		label,
 		marker, dur, summary,
 	)
-
-	// Quick 260503-qkk: if a `branch` event for this idx was buffered,
-	// read+delete it and append ` <colorArrow(→)> <branch>` to the line.
-	// The standalone branch line is no longer emitted by renderBranch.
-	if p.branchByIdx != nil {
-		if branch, ok := p.branchByIdx[idx]; ok {
-			delete(p.branchByIdx, idx)
-			if branch != "" {
-				line = fmt.Sprintf("%s %s %s", line, p.colorArrow("→"), branch)
-			}
-		}
-	}
-
 	return p.println(line)
 }
 
-// renderBranch buffers the branch name keyed by idx; renderStepComplete
-// for the same idx reads+deletes the buffer and appends a colored
-// ` → <branch>` suffix. Returns nil with NO output. Quick 260503-qkk:
-// previously emitted a standalone `     → <branch>` line; that line is
-// now inlined onto the if_cond's step_complete row.
+// renderBranch emits the if_cond scope HEADER (D-RHY-03 + D-RHY-10):
+//
+//	<indent>[N/M] if_cond  cond  ▶ <branch>
+//
+// Total comes from ifCondTotalByIdx (cached by the suppressed
+// step_dispatch); the branch event itself doesn't carry total.
+//
+// kind=if_cond is hardcoded (only walk_ifcond emits branch events
+// today). label "cond" is also literal — branch events don't carry
+// "label", and walk_ifcond's dispatch always uses "cond" (verified in
+// walk_ifcond.go).
+//
+// Empty-branch events are defensively a no-op.
 func (p *progressHandler) renderBranch(a attrMap) error {
 	branch := a.str("branch")
-	idx := a.int("idx")
 	if branch == "" {
 		return nil // defensive: empty-branch event is a no-op
 	}
-	if p.branchByIdx == nil {
-		p.branchByIdx = make(map[int64]string)
+	idx := a.int("idx")
+	path := a.str("path")
+	total := int64(0)
+	if p.ifCondTotalByIdx != nil {
+		total = p.ifCondTotalByIdx[idx]
+		delete(p.ifCondTotalByIdx, idx)
 	}
-	p.branchByIdx[idx] = branch
-	return nil
+	indent, counter := p.computeCounter(idx, total, path)
+	line := fmt.Sprintf("%s%s %s %s %s %s",
+		indent,
+		p.colorCounter(counter),
+		p.colorKind(padKind("if_cond")),
+		"cond",
+		p.colorArrow("▶"),
+		branch,
+	)
+	return p.println(line)
 }
 
 // renderFlowComplete: success → `[skytime] flow complete  <ok>/<total> steps  total <ms>ms`
@@ -181,13 +216,23 @@ func (p *progressHandler) renderFlowComplete(a attrMap) error {
 }
 
 // computeCounter picks the right counter format and indent for a row.
-// Top-level rows render `[idx/total]` and have no indent; nested rows
-// render `[path/path]` and indent 2 spaces.
+//
+// Indent is depth-based (4 spaces per pathDepth level, D-RHY-07) — the
+// renderer uses path nesting to indent rows so children of a scope sit
+// 4 spaces under the scope header. Top-level rows (depth 0) have no
+// indent.
+//
+// Counter format choice (unchanged from qkk): nested rows render
+// "[path/path]" because idx alone doesn't disambiguate a parallel
+// for_each iteration; top-level rows render "[idx/total]".
 func (p *progressHandler) computeCounter(idx, total int64, path string) (indent, counter string) {
+	indent = strings.Repeat(" ", 4*pathDepth(path))
 	if isNestedPath(idx, path) {
-		return "  ", fmt.Sprintf("[%s/%s]", path, path)
+		counter = fmt.Sprintf("[%s/%s]", path, path)
+	} else {
+		counter = fmt.Sprintf("[%d/%d]", idx, total)
 	}
-	return "", fmt.Sprintf("[%d/%d]", idx, total)
+	return indent, counter
 }
 
 // isNestedPath returns true when path indicates a nested step (anything

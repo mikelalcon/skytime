@@ -81,16 +81,28 @@ func TestProgress_BazelFormat(t *testing.T) {
 			}},
 			want: expect{"✗", "120ms", "connection refused", "gh.get(/x)"},
 		},
+		// Quick 260503-rhy: if_cond step_dispatch is now SUPPRESSED
+		// (D-RHY-01 — header is delegated to the branch event). The
+		// dispatched-only case below is covered by
+		// TestProgress_StepDispatch_IfCond_Suppressed (asserts empty
+		// output). Drive a step_dispatch + branch sequence here so the
+		// contains-style table assertions still cover the if_cond
+		// header rendering path.
 		{
-			name: "step_dispatch if_cond kind",
+			name: "step_dispatch if_cond + branch then renders header",
+			// Note: the table runner only invokes ONE call; we exercise
+			// the header by feeding the branch event directly. The
+			// branch event renders the header containing if_cond + cond
+			// + ▶ then. Counter is [3/0] because no preceding dispatch
+			// cached the total in this single-call test (defensive
+			// behavior — header still renders, just with total=0).
 			call: call{"skytime", []slog.Attr{
-				slog.String("event", "step_dispatch"),
-				slog.Int("idx", 3), slog.Int("total", 3),
-				slog.String("kind", "if_cond"),
-				slog.String("label", "ctx.health"),
+				slog.String("event", "branch"),
+				slog.Int("idx", 3),
 				slog.String("path", "3"),
+				slog.String("branch", "then"),
 			}},
-			want: expect{"[3/3]", "if_cond", "ctx.health"},
+			want: expect{"[3/", "if_cond", "cond", "▶", "then"},
 		},
 		{
 			name: "flow_complete",
@@ -269,9 +281,13 @@ func TestProgress_BranchAppendsToStepComplete(t *testing.T) {
 	})
 }
 
-// TestProgress_OrphanBranchEvent_NoStandaloneLine: a lone branch event
-// (no matching step_complete) produces zero bytes of output. Proves
-// renderBranch is buffer-only.
+// TestProgress_OrphanBranchEvent_NoStandaloneLine: quick 260503-rhy
+// migration — a lone branch event (no preceding step_dispatch caching
+// total) DOES emit an if_cond header now (D-RHY-03). The header carries
+// [N/0] (zero total since cache miss) + if_cond + cond + ▶ branch. The
+// QKK defense — "no line equals the OLD standalone shape '     → then'"
+// — remains valid: the old standalone arrow shape with 5-space indent
+// must NEVER appear.
 func TestProgress_OrphanBranchEvent_NoStandaloneLine(t *testing.T) {
 	var progressOut, passOut bytes.Buffer
 	passthrough := slog.NewTextHandler(&passOut, &slog.HandlerOptions{Level: slog.LevelInfo})
@@ -285,8 +301,21 @@ func TestProgress_OrphanBranchEvent_NoStandaloneLine(t *testing.T) {
 		slog.String("branch", "then"),
 	)
 
-	require.Equal(t, "", progressOut.String(),
-		"orphan branch event must produce zero output (renderBranch is buffer-only)")
+	got := progressOut.String()
+	// Header is emitted (rhy: branch event renders the header inline).
+	require.Contains(t, got, "if_cond",
+		"orphan branch must emit if_cond header (D-RHY-03). Output: %q", got)
+	require.Contains(t, got, "▶ then",
+		"orphan branch header must carry ▶ then. Output: %q", got)
+
+	// QKK defense preserved: the OLD standalone "     → then" shape
+	// must NEVER appear (5-space indent + arrow + branch name).
+	for _, line := range strings.Split(got, "\n") {
+		require.NotEqual(t, "     → then", line,
+			"no rendered line may match the old qkk standalone shape. Output: %q", got)
+	}
+	require.NotContains(t, got, "→ then",
+		"orphan branch must NOT emit the old qkk inline-arrow shape. Output: %q", got)
 }
 
 // TestProgress_StepCompleteWithoutBufferedBranch_NoSuffix: a step_complete

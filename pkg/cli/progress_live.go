@@ -31,6 +31,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 )
@@ -42,11 +43,18 @@ var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 // activeStep is one in-progress row in the live block's redraw region.
 // Created on step_dispatch, removed on step_complete (the completion
 // row prints as a static line above the redraw region before removal).
+//
+// Quick 260503-rhy: only LEAF kinds (step / script / call_flow) get an
+// activeStep entry — if_cond and for_each_parallel are scopes whose
+// header+footer print as static lines and never appear as in-progress
+// rows (D-RHY-08). Path is captured so redraw can indent in-flight
+// rows by depth.
 type activeStep struct {
 	Idx       int64
 	Total     int64
 	Kind      string
 	Label     string
+	Path      string
 	StartedAt time.Time
 }
 
@@ -68,12 +76,14 @@ type liveRenderer struct {
 	drawnLines int
 	spinIdx    int
 
-	// branchByIdx buffers branch events keyed by step idx; consumed by
-	// case "step_complete" which appends ` → <branch>` (yellow arrow) to
-	// the rendered Fprintf line. Owned by the render goroutine. Quick
-	// 260503-qkk: replaces the previous standalone `     → <branch>`
-	// emission to inline the suffix onto the if_cond's completion line.
-	branchByIdx map[int64]string
+	// ifCondTotalByIdx caches the parent total from the suppressed
+	// step_dispatch event for kind=if_cond. Read+deleted by case "branch"
+	// when rendering the [N/M] header counter (the branch event itself
+	// does not carry total — verified in walk_ifcond.go). Owned by the
+	// render goroutine. Quick 260503-rhy: replaces branchByIdx; scope
+	// rendering means renderBranch emits the header inline (no
+	// post-buffered consumption from step_complete).
+	ifCondTotalByIdx map[int64]int64
 }
 
 // newLiveRenderer constructs a live renderer, hides the cursor, and
@@ -82,11 +92,11 @@ type liveRenderer struct {
 // events, clears the redraw region, and restores the cursor.
 func newLiveRenderer(out io.Writer) *liveRenderer {
 	r := &liveRenderer{
-		out:         out,
-		events:      make(chan progressEvent, 64),
-		closed:      make(chan struct{}),
-		cap:         10, // D4.1-19
-		branchByIdx: make(map[int64]string),
+		out:              out,
+		events:           make(chan progressEvent, 64),
+		closed:           make(chan struct{}),
+		cap:              10, // D4.1-19
+		ifCondTotalByIdx: make(map[int64]int64),
 	}
 	// Hide cursor on activation; restored on Close().
 	fmt.Fprint(out, "\x1b[?25l")
@@ -178,57 +188,95 @@ func (r *liveRenderer) applyEvent(ev progressEvent) {
 		fmt.Fprintf(r.out, "%s[skytime]%s flow %s  %d steps  starting\n",
 			ansiDimCyan, ansiReset, ev.FlowName, ev.StepCount)
 	case "step_dispatch":
-		r.active = append(r.active, &activeStep{
-			Idx: ev.Idx, Total: ev.Total, Kind: ev.KindAttr, Label: ev.Label,
-			StartedAt: time.Now(),
-		})
-	case "step_complete":
-		// Find and remove the matching active row; emit the static
-		// ✓/✗ line above the redraw region.
-		r.clearRedrawRegion()
-		for i, s := range r.active {
-			if s.Idx == ev.Idx {
-				r.active = append(r.active[:i], r.active[i+1:]...)
-				break
-			}
+		// Quick 260503-rhy: dispatch by kind.
+		switch ev.KindAttr {
+		case "if_cond":
+			// D-RHY-01: header is delegated to case "branch". Capture
+			// total so the upcoming branch event can render the [N/M]
+			// counter (the branch event itself doesn't carry total —
+			// verified in walk_ifcond.go). No active row, no static
+			// line, no redraw mutation.
+			r.ifCondTotalByIdx[ev.Idx] = ev.Total
+		case "for_each_parallel":
+			// D-RHY-02 + D-RHY-11: emit HEADER as a static line above
+			// the redraw region. Color parity with static path:
+			// counter ansiBrightCyan, kind ansiBrightWhite, ▶ ansiYellow.
+			r.clearRedrawRegion()
+			indent := strings.Repeat(" ", 4*pathDepth(ev.Path))
+			fmt.Fprintf(r.out, "%s%s[%d/%d]%s %s%s%s %s %s▶%s open\n",
+				indent,
+				ansiBrightCyan, ev.Idx, ev.Total, ansiReset,
+				ansiBrightWhite, padKind("for_each_parallel"), ansiReset,
+				ev.Label,
+				ansiYellow, ansiReset)
+		default:
+			// Leaf kinds — append to the active list (D-RHY-08:
+			// scopes never go in active so the redraw region only
+			// renders leaves).
+			r.active = append(r.active, &activeStep{
+				Idx: ev.Idx, Total: ev.Total, Kind: ev.KindAttr, Label: ev.Label,
+				Path:      ev.Path,
+				StartedAt: time.Now(),
+			})
 		}
-		// Quick 260503-q9p: wrap counter in bright cyan, kind word
-		// "step" in bright white, and marker in green/red — full
-		// parity with static-path colorCounter/colorKind/colorOk/colorErr.
+	case "step_complete":
+		r.clearRedrawRegion()
+		// Quick 260503-rhy: scope kinds emit a FOOTER static line; leaf
+		// kinds emit the qx1 completion shape with depth-based indent.
+		indent := strings.Repeat(" ", 4*pathDepth(ev.Path))
 		marker := ansiGreen + "✓" + ansiReset
 		if ev.Status == "err" {
 			marker = ansiRed + "✗" + ansiReset
 		}
-		// Quick 260503-qkk: if a buffered branch event matches this
-		// idx, read+delete it and append ` → <branch>` (yellow arrow)
-		// as a suffix on the same step_complete line. Replaces the
-		// standalone `     → <branch>` line previously emitted by
-		// case "branch".
-		suffix := ""
-		if branch, ok := r.branchByIdx[ev.Idx]; ok {
-			delete(r.branchByIdx, ev.Idx)
-			if branch != "" {
-				suffix = fmt.Sprintf(" %s→%s %s", ansiYellow, ansiReset, branch)
+		switch ev.KindAttr {
+		case "if_cond", "for_each_parallel":
+			// D-RHY-04: scope FOOTER. NO active-list mutation (these
+			// never went into active). NO branch suffix (qkk path
+			// consumed by case "branch" above as the header).
+			fmt.Fprintf(r.out, "%s%s[%d/%d]%s %s%s%s  %s  %s %dms  %s\n",
+				indent,
+				ansiBrightCyan, ev.Idx, ev.Total, ansiReset,
+				ansiBrightWhite, padKind(ev.KindAttr), ansiReset,
+				ev.Label,
+				marker, ev.DurationMs, ev.Summary)
+		default:
+			// Leaf kind — find+remove the matching active row, emit
+			// completion line with depth-based indent. NO branch
+			// suffix (only if_cond ever emitted branch events; that
+			// suffix lives on the if_cond header now).
+			for i, s := range r.active {
+				if s.Idx == ev.Idx {
+					r.active = append(r.active[:i], r.active[i+1:]...)
+					break
+				}
 			}
+			// Quick 260503-qx1: kind from ev.KindAttr, label between
+			// the kind column and the marker. Quick 260503-rhy: indent
+			// derived from path depth.
+			fmt.Fprintf(r.out, "%s%s[%d/%d]%s %s%s%s  %s  %s %dms  %s\n",
+				indent,
+				ansiBrightCyan, ev.Idx, ev.Total, ansiReset,
+				ansiBrightWhite, padKind(ev.KindAttr), ansiReset,
+				ev.Label,
+				marker, ev.DurationMs, ev.Summary)
 		}
-		// Quick 260503-qx1: kind word now comes from ev.KindAttr (no
-		// longer hardcoded "step"), so if_cond/script/for_each_parallel/
-		// call_flow rows render with their correct kind on completion.
-		// ev.Label is inserted between the kind column and the marker so
-		// user-defined step names (D4.1-15) persist past dispatch.
-		fmt.Fprintf(r.out, "%s[%d/%d]%s %s%s%s  %s  %s %dms  %s%s\n",
-			ansiBrightCyan, ev.Idx, ev.Total, ansiReset,
-			ansiBrightWhite, padKind(ev.KindAttr), ansiReset,
-			ev.Label,
-			marker, ev.DurationMs, ev.Summary, suffix)
 	case "branch":
-		// Quick 260503-qkk: branch is now a buffer-only signal; the
-		// suffix is emitted on the matching step_complete event. No
-		// Fprintf and no clearRedrawRegion — the next tick or
-		// step_complete will redraw as needed.
-		if ev.Branch != "" {
-			r.branchByIdx[ev.Idx] = ev.Branch
+		// Quick 260503-rhy: emit if_cond HEADER as a static line above
+		// the redraw region (D-RHY-03 + D-RHY-10). Total comes from
+		// ifCondTotalByIdx (cached by the suppressed step_dispatch).
+		if ev.Branch == "" {
+			return
 		}
+		total := r.ifCondTotalByIdx[ev.Idx]
+		delete(r.ifCondTotalByIdx, ev.Idx)
+		r.clearRedrawRegion()
+		indent := strings.Repeat(" ", 4*pathDepth(ev.Path))
+		fmt.Fprintf(r.out, "%s%s[%d/%d]%s %s%s%s %s %s▶%s %s\n",
+			indent,
+			ansiBrightCyan, ev.Idx, total, ansiReset,
+			ansiBrightWhite, padKind("if_cond"), ansiReset,
+			"cond",
+			ansiYellow, ansiReset, ev.Branch)
 	case "flow_complete":
 		// Quick 260503-q9p: wrap [skytime] banner in dim cyan; on the
 		// failure path also wrap the word "failed" in red — mirrors
@@ -280,8 +328,14 @@ func (r *liveRenderer) redraw() {
 		if len(label) > 60 {
 			label = label[:57] + "..."
 		}
-		fmt.Fprintf(r.out, "  [%d/%d] %s  %s  %s %.1fs\n",
-			s.Idx, s.Total, padKind(s.Kind), label, spinnerFrames[r.spinIdx], elapsed)
+		// Quick 260503-rhy: indent in-flight rows by path depth (4
+		// spaces per level). The previous fixed 2-space indent is
+		// replaced by the depth-based indent so leaf rows inside an
+		// if_cond branch or for_each iteration align with their static
+		// completion rows.
+		indent := strings.Repeat(" ", 4*pathDepth(s.Path))
+		fmt.Fprintf(r.out, "%s[%d/%d] %s  %s  %s %.1fs\n",
+			indent, s.Idx, s.Total, padKind(s.Kind), label, spinnerFrames[r.spinIdx], elapsed)
 		drawn++
 	}
 	if n > r.cap {
