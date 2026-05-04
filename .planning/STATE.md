@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 04.2 context gathered
-last_updated: "2026-05-04T01:19:14.130Z"
-last_activity: "2026-05-03 - Completed quick task 260503-rhy: render if_cond + for_each_parallel as block scopes (header + indented children + footer; 4-space-per-depth indent via shared pathDepth)"
+status: executing
+stopped_at: Completed 04.2-01-PLAN.md
+last_updated: "2026-05-04T12:22:21.738Z"
+last_activity: 2026-05-04
 progress:
   total_phases: 8
   completed_phases: 5
-  total_plans: 27
-  completed_plans: 27
+  total_plans: 34
+  completed_plans: 28
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-26)
 
 **Core value:** A consultant team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
-**Current focus:** Phase 04.1 — dynamic-step-kwargs-lambda-accepting-step-action-fn-variant-for-runtime-built-action-kwargs
+**Current focus:** Phase 04.2 — if-cond-as-expression-with-strict-equality-result-binding
 
 ## Current Position
 
-Phase: 5
-Plan: Not started
-Status: Phase 04.1 complete — dynamic kwargs + interpolation + live block end-to-end; ready for /gsd:verify-work + /gsd:transition to Phase 5
-Last activity: 2026-05-03 - Completed quick task 260503-rhy: render if_cond + for_each_parallel as block scopes (header + indented children + footer; 4-space-per-depth indent via shared pathDepth)
+Phase: 04.2 (if-cond-as-expression-with-strict-equality-result-binding) — EXECUTING
+Plan: 2 of 7
+Status: Ready to execute
+Last activity: 2026-05-04
 
 Progress: [██████████] 100%
 
@@ -78,6 +78,7 @@ Progress: [██████████] 100%
 | Phase 04.1 P05a | 2min | 1 tasks | 2 files |
 | Phase 04.1 P05b | 25m | 2 tasks | 6 files |
 | Phase 04.1 P07 | 11min | 5 tasks | 5 files |
+| Phase 04.2 P01 | 19min | 3 tasks | 27 files |
 
 ## Accumulated Context
 
@@ -191,6 +192,12 @@ Recent decisions affecting current work:
 - [Phase 04.1]: Plan 04.1-07: 7 new requirement IDs registered (DSL-11/12/13, VAL-04, CLI-06/07, EX-FIX-01); v1 requirement count 55→62; Traceability table extended with Phase 04.1 mapping; ALL marked Complete in alignment with Phase 04.1 implementing plans (01..06)
 - [Phase 04.1]: Plan 04.1-07: Auto-fixed Rule 1 — TestE2E_SkytimeRun_Happy was hardcoded to --input '{"repo_path":...}' (Phase 4 corpus shape); rewrite renamed input to "repo" (D4.1-23). Test was failing 'struct has no .repo attribute' on every run; fixed alongside the corpus change so happy-path e2e remains green.
 - [Phase 04.1]: PHASE COMPLETE — go test -race ./... -count=1 GREEN; go vet ./... GREEN; workflowcheck unavailable in environment (documented); decision-coverage grep emits zero MISSING for D4.1-01..25 (all 25 decisions have ≥1 reference in committed code/docs)
+- [Phase 04.2]: Plan 04.2-01: *dag.Result.Types stored as map[string]any (not map[string]parser.TypeInfo) to dodge pkg/dag → pkg/parser import cycle — parser stores parser.TypeInfo values; plan 03 validator type-asserts back; interpreter never reads Types
+- [Phase 04.2]: Plan 04.2-01: TypeInfo strict no-LUB structural Equal — int ≠ float; Equal returns false on Opaque vs concrete; branch-equality validator (plan 03) detects opaque-on-either-side BEFORE calling Equal and defers; Equal stays compile-time strict
+- [Phase 04.2]: Plan 04.2-01: stateSet → stateSchema rename preserves D4-02 walker API verbatim — has/clone/sortedKeys methods stay; add() takes (name, TypeInfo); addUntyped() is the visibility-only shortcut; typeFromHint maps flow.Inputs hint string → TypeInfo seed (int/float/bool/string scalars; list/array→list[opaque]; dict/object/map→dict; otherwise opaque)
+- [Phase 04.2]: Plan 04.2-01: Wave 0 RED scaffolding chooses 'fail loudly with deliberate plan-naming message' over t.Skip — keeps RED → GREEN signal visible in go test -run output throughout plans 02-05; messages explicitly name 'RED until plan 02 ships builtinResult' for traceability
+- [Phase 04.2]: Plan 04.2-01: inferType signature locked at (e syntax.Expr, schema stateSchema, firstParam string) TypeInfo with Wave-0 stub returning TypeOpaque{} — plan 02 drops in real body without touching parseInferExpr test helper or any call site
+- [Phase 04.2]: Plan 04.2-01: Plan referenced nodeJSONWrap discriminator wrapper; codebase uses per-type MarshalJSON dispatch (verified via grep). New *Result.MarshalJSON + *Fail.MarshalJSON integrate via Go default []Node encoder calling each element's MarshalJSON — no further wrapper. Documented as documentation-vs-codebase discrepancy
 
 ### Pending Todos
 
@@ -217,6 +224,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-04T01:19:14.123Z
-Stopped at: Phase 04.2 context gathered
-Resume file: .planning/phases/04.2-if-cond-as-expression-with-strict-equality-result-binding/04.2-CONTEXT.md
+Last session: 2026-05-04T12:21:58.711Z
+Stopped at: Completed 04.2-01-PLAN.md
+Resume file: None
