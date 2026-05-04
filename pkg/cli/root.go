@@ -59,6 +59,7 @@ func NewRootCommand(opts ...Option) (*cobra.Command, error) {
 	root.AddCommand(newValidateCommand(cfg))
 	root.AddCommand(newRunCommand(cfg))
 	root.AddCommand(newDevServerCommand(cfg))
+	root.AddCommand(newInfoCommand(cfg)) // Quick 260504-k9c
 
 	return root, nil
 }
