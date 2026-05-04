@@ -39,9 +39,17 @@ func TestParseTimeGlobals_NakedPrimitives(t *testing.T) {
 }
 
 // TestParseAndLambdaGlobalsAreDistinct pins PARSE-03: parse-time globals and
-// lambda-time globals have NO overlap in keys for the DSL primitive set.
-// The parse-time env contains DSL primitives and (later) extension factories;
+// lambda-time globals have NO overlap in keys for the DSL primitive set,
+// EXCEPT for the deliberately dual-named `fail` builtin (D4.2-05). The
+// parse-time env contains DSL primitives and (later) extension factories;
 // the lambda-time env contains only the D-20 strict subset.
+//
+// `fail` is the one allowed overlap: top-level `fail("msg")` emits a
+// *dag.Fail node at parse time; lambda-time `fail("msg")` raises a
+// *starlark.EvalError at runtime. Both produce the same observable
+// surface (NonRetryableErr at the .star callsite); the two predeclared
+// envs are mutually exclusive (top-level vs inside-lambda body) so
+// Starlark resolves correctly per call site. See pkg/parser/doc.go.
 func TestParseAndLambdaGlobalsAreDistinct(t *testing.T) {
 	p, err := NewParser()
 	require.NoError(t, err)
@@ -68,9 +76,14 @@ func TestParseAndLambdaGlobalsAreDistinct(t *testing.T) {
 
 	// Conversely, every D-20 key (e.g. "len", "range") is NOT in parse-time
 	// globals — those are intrinsics Starlark provides everywhere; we don't
-	// shadow them. The two dicts have disjoint membership for the keys
-	// each is meant to host.
+	// shadow them. EXCEPT `fail` (D4.2-05 dual-name): both environments
+	// register `fail` under the same name; the parse-time entry returns a
+	// *nodeValue wrapping *dag.Fail, the lambda-time entry is the standard
+	// Starlark fail builtin from starlark.Universe.
 	for _, k := range lambdaKeys {
+		if k == "fail" {
+			continue // documented dual-name exception
+		}
 		_, inParse := parseG[k]
 		assert.False(t, inParse,
 			"parse-time globals must not include lambda-time key %q (PARSE-03 distinctness)", k)
@@ -111,6 +124,40 @@ func TestRegister_InvalidatesGlobalsCache(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, p.parseTimeGlobals,
 		"Register() must invalidate parseTimeGlobals so next parse rebuilds with the new extension")
+}
+
+// TestFailBuiltinDualEnv pins D4.2-05: the name `fail` is registered in
+// BOTH the parse-time and lambda-time predeclared environments, but as
+// DISTINCT *starlark.Builtin entries with different underlying Func
+// closures. Both share the surface name "fail" (per Builtin.Name()) so
+// Starlark resolution finds the right builtin in each scope, but the
+// parse-time entry returns a *nodeValue while the lambda-time entry
+// delegates to starlark.Universe and raises EvalError.
+func TestFailBuiltinDualEnv(t *testing.T) {
+	p, err := NewParser()
+	require.NoError(t, err)
+
+	parseG, err := newParseTimeGlobals(p, &starlark.Thread{Name: "test"})
+	require.NoError(t, err)
+	lambdaG := bridge.LambdaTimeGlobals()
+
+	parseFail, ok := parseG["fail"]
+	require.True(t, ok, "parse-time globals must register fail")
+	parseBuiltin, ok := parseFail.(*starlark.Builtin)
+	require.True(t, ok, "parse-time fail must be a *starlark.Builtin; got %T", parseFail)
+	assert.Equal(t, "fail", parseBuiltin.Name())
+
+	lambdaFail, ok := lambdaG["fail"]
+	require.True(t, ok, "lambda-time globals must register fail")
+	lambdaBuiltin, ok := lambdaFail.(*starlark.Builtin)
+	require.True(t, ok, "lambda-time fail must be a *starlark.Builtin; got %T", lambdaFail)
+	assert.Equal(t, "fail", lambdaBuiltin.Name())
+
+	// Distinct underlying functions — pointer comparison via the
+	// CallInternal method's identity is the cleanest signal that the
+	// two builtins are not the same object. Compare *Builtin pointers.
+	assert.NotSame(t, parseBuiltin, lambdaBuiltin,
+		"parse-time and lambda-time fail must be distinct *starlark.Builtin instances")
 }
 
 // keysOf is a tiny helper: returns the sorted key set of a StringDict.

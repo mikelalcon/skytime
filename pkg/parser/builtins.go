@@ -548,6 +548,65 @@ func (p *Parser) builtinIfCond(thread *starlark.Thread, fn *starlark.Builtin, ar
 }
 
 // =============================================================================
+// builtinFail — fail("msg") → *dag.Fail (D4.2-05/06)
+// =============================================================================
+
+// builtinFail emits a *dag.Fail node with literal Message and (when
+// ${...} interpolation markers are present) MessageFn populated via
+// the D4.1-01 desugarInterpolation path. Positional-only signature
+// (kwargs rejected) — `fail("oops")` mirrors Python/Starlark's bare
+// fail() shape so consultants don't have to remember a `msg=` kwarg.
+//
+// Dual-name semantics: this top-level fail() is registered in the
+// PARSE-TIME globals (newParseTimeGlobals); the LAMBDA-TIME fail
+// continues to live in pkg/bridge/lambda_globals.go via
+// starlark.Universe["fail"]. The two predeclared environments are
+// mutually exclusive (Starlark resolves names per the active env), so
+// re-using the name is safe by design and produces the same observable
+// surface — a NonRetryableErr with the user's message at the .star
+// callsite. See pkg/parser/doc.go for full documentation.
+//
+// D4.2-07: fail() is allowed anywhere a body accepts nodes —
+// procedural-mode if_cond branches (the procedural guard pattern:
+// `if_cond(cond=..., then=[fail("invalid")])`) AND as the last node of
+// an expression-mode branch.
+func (p *Parser) builtinFail(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if len(kwargs) > 0 {
+		return nil, p.wrapBuiltinError("fail", thread,
+			fmt.Errorf("positional-only signature; use fail(\"message\")"))
+	}
+	var msgVal starlark.Value
+	if err := starlark.UnpackPositionalArgs("fail", args, nil, 1, &msgVal); err != nil {
+		return nil, p.wrapBuiltinError("fail", thread, err)
+	}
+	msgStr, ok := msgVal.(starlark.String)
+	if !ok {
+		return nil, p.wrapBuiltinError("fail", thread,
+			fmt.Errorf("message must be a string, got %s", msgVal.Type()))
+	}
+	msg := string(msgStr)
+	callPos := callerPosition(thread)
+
+	// D4.1-01 interpolation reuse: when ${...} markers are present in
+	// the message, desugar into a *CapturedLambda. Empty marker (${})
+	// or unterminated ${ are rejected by the desugarer with the
+	// existing user-attribution.
+	var msgFn *dag.CapturedLambda
+	if strings.Contains(msg, "${") {
+		desugared, err := p.desugarInterpolation(msg, callPos)
+		if err != nil {
+			return nil, err
+		}
+		msgFn = desugared
+	}
+	return wrapNode(&dag.Fail{
+		Pos:       callPos,
+		Message:   msg,
+		MessageFn: msgFn,
+	}), nil
+}
+
+// =============================================================================
 // builtinResult — result(value={...}) → *dag.Result (D4.2-02..04)
 // =============================================================================
 

@@ -56,3 +56,50 @@ func TestFail_TopLevel_InterpolationDesugars(t *testing.T) {
 	require.NotNil(t, failNode.MessageFn,
 		"interpolation must produce a CapturedLambda")
 }
+
+// TestFail_TopLevel_NoArg: fail() with no positional argument is
+// rejected. The error must point users at the correct shape.
+func TestFail_TopLevel_NoArg(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", inputs={}, steps=[fail()])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fail")
+}
+
+// TestFail_TopLevel_TooManyArgs: fail("a", "b") rejects — only one
+// positional message argument is accepted.
+func TestFail_TopLevel_TooManyArgs(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", inputs={}, steps=[fail("a", "b")])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+}
+
+// TestFail_TopLevel_NonStringArg: fail(42) rejects — the message must
+// be a string. Starlark's UnpackPositionalArgs accepts the value as
+// starlark.Value; our type-check rejects with a clean error.
+func TestFail_TopLevel_NonStringArg(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", inputs={}, steps=[fail(42)])`)
+	_, err := p.ParseSource("test.star", src)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "string")
+}
+
+// TestProceduralFailGuard: an if_cond WITHOUT output_alias (procedural
+// mode) where one branch consists of a single fail() must parse cleanly.
+// This is the procedural-guard pattern (D4.2-07): top-level fail() is
+// allowed anywhere body nodes are accepted.
+func TestProceduralFailGuard(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="f", inputs={"r": "string"}, steps=[
+    if_cond(
+        cond=lambda ctx: ctx.r == "",
+        then=[fail("repo required")],
+        else_=[script(id="ok", fn=lambda ctx: {"ok": True}, output_alias="o")],
+    ),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.NoError(t, err, "procedural-mode if_cond with fail()/script() branches must parse: %v", err)
+}

@@ -197,3 +197,46 @@ func TestLambdaTimeGlobals_TimeNotAvailable(t *testing.T) {
 		strings.Contains(err.Error(), "time") || strings.Contains(err.Error(), "undefined"),
 		"got: %v", err)
 }
+
+// TestFail_LambdaTime_StillRaises is the Phase 04.2 D4.2-05 regression
+// guard (Pitfall 4): adding a parse-time fail() builtin to
+// pkg/parser/globals.go MUST NOT alter the lambda-time fail behavior.
+// The two predeclared environments are mutually exclusive — Starlark
+// resolves names per the active env — so a `lambda ctx: fail("nope")`
+// body uses starlark.Universe["fail"] (re-exported via lambdaTimeGlobals)
+// and raises a *starlark.EvalError immediately when called.
+//
+// This test pins lambda-time fail by:
+//  1. Compiling `f = lambda ctx: fail("nope")` against LambdaTimeGlobals().
+//  2. Calling the resulting lambda via standard Starlark machinery.
+//  3. Asserting the call returns *starlark.EvalError with "nope" in
+//     the message.
+//
+// If a future change to pkg/parser/globals.go accidentally re-bound the
+// lambda-time fail (e.g., by sharing the same builtin instance), the
+// returned error type or message would diverge and this test would fail.
+func TestFail_LambdaTime_StillRaises(t *testing.T) {
+	thread := &starlark.Thread{Name: "test-init"}
+	opts := &syntax.FileOptions{}
+	globals, err := starlark.ExecFileOptions(opts, thread, "test.star",
+		`f = lambda ctx: fail("nope")`, LambdaTimeGlobals())
+	require.NoError(t, err, "init exec must compile lambda body")
+
+	fn, ok := globals["f"].(*starlark.Function)
+	require.True(t, ok, "globals[f] must be *starlark.Function; got %T", globals["f"])
+
+	callThread := &starlark.Thread{Name: "test-call"}
+	// ctx isn't used inside the lambda body, but we still pass a valid
+	// dummy positional arg.
+	_, callErr := starlark.Call(callThread, fn, starlark.Tuple{starlark.None}, nil)
+	require.Error(t, callErr, "lambda-time fail must raise an error when called")
+
+	// Concrete type must be *starlark.EvalError — the lambda-time fail
+	// path's contract. If parse-time fail wiring leaks, the type would
+	// drift to *dag.ParseError or similar.
+	var evalErr *starlark.EvalError
+	require.ErrorAs(t, callErr, &evalErr,
+		"lambda-time fail must raise *starlark.EvalError; got %T: %v", callErr, callErr)
+	assert.Contains(t, evalErr.Error(), "nope",
+		"error message must include the user's fail() argument")
+}

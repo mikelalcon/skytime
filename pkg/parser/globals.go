@@ -51,6 +51,15 @@ func newParseTimeGlobals(p *Parser, thread *starlark.Thread) (starlark.StringDic
 		// legal as the LAST node of an expression-mode if_cond branch
 		// (validation lives in plan 04.2-03 finalize pass).
 		"result": starlark.NewBuiltin("result", p.builtinResult),
+
+		// D4.2-05: top-level fail("msg") emits *dag.Fail. SAME NAME as
+		// the lambda-time fail (pkg/bridge/lambda_globals.go:73 →
+		// starlark.Universe["fail"]) — predeclared envs are mutually
+		// exclusive (top-level vs inside-lambda body), so Starlark
+		// resolves correctly. Both produce the same observable surface
+		// (NonRetryableErr at the .star callsite). See pkg/parser/doc.go
+		// for full dual-semantics documentation.
+		"fail": starlark.NewBuiltin("fail", p.builtinFail),
 	}
 
 	for name, ext := range p.registry.All() {
