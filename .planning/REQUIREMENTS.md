@@ -22,6 +22,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **DSL-11**: A flow can dynamically build a single action via `step(action_fn=lambda ctx: ext.op(...))` returning a single `ActionRef`; the lambda evaluates inside the workflow with the locked predeclared globals (D-20) and cancellation watchdog (D3-21)
 - [x] **DSL-12**: A flow can dynamically build a batch via `step(block_fn=lambda ctx: [ext.op(...) for ...])` returning a Starlark list of `ActionRef`; empty results short-circuit (no activity dispatch); mixed-idempotency batches reject at parse time (best-effort, D4.1-11) or at runtime (defense-in-depth, D4.1-12)
 - [x] **DSL-13**: String kwargs accept `${ctx.expr}` interpolation that desugars at parse time into `lambda ctx: "..." + str(ctx.expr) + "..."`; honors `$$` escape, single-line only, empty `${}` is a parse error; the synthesized lambda flows through the existing D4-02 ctx.<name> walker so typos surface as `*dag.ValidationError` at parse time
+- [x] **DSL-14**: A flow can use `if_cond` as a value-producing expression by supplying `output_alias="X"`; both branches must end in `result(value={...})` or `fail(...)`; the bound value lands at `ctx.X` post-branch and is type-checked at parse time. Procedural-mode (no `output_alias`) is preserved verbatim
+- [x] **DSL-15**: Two new top-level parse-time builtins: `result(value={...})` (kwarg-only, dict-literal value, string-literal keys, per-key expression captured as synthesized lambda) and `fail("msg")` (top-level node-emit; same name as lambda-time `fail` global, different predeclared environment; supports `${ctx.expr}` interpolation in messages via Message/MessageFn pattern)
 
 ### Extension SDK
 
@@ -72,6 +74,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **VAL-02**: Static validation and runtime parsing share the same parser code path — a CI corpus test runs every `.star` file in `examples/` through both static `validate` and a dry-run interpreter (all actions mocked) and asserts they agree on accept/reject
 - [x] **VAL-03**: Validation errors are formatted `<file>:<line>:<col> [flow > step > action]: <message>` and exit non-zero; `--debug` reveals Go internals only
 - [x] **VAL-04**: `block_fn` lambdas pass best-effort static idempotency analysis at parse time via `pkg/parser/block_fn_lint.go::classifyBlockFn`; opaque shapes (helper functions, indirect dispatch) defer to the runtime fallback in `pkg/activity/validate_batch.go`
+- [x] **VAL-05**: Strict-equality branch validation across `if_cond` expression-mode branches with permissive type inference: parser walks each result-value AST expression, infers TypeInfo (sealed sum: Scalar/Dict/List/Tuple/Opaque); typed-typed mismatches reject (no LUB; explicit casts widen); typed-Opaque or Opaque-Opaque defer. State schema widens from name-set to typed map; visibility-only D4-02 walker behavior preserved
 
 ### E2E Test Harness (Tier 3)
 
@@ -215,10 +218,13 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CLI-06 | Phase 04.1 | Complete |
 | CLI-07 | Phase 04.1 | Complete |
 | EX-FIX-01 | Phase 04.1 | Complete |
+| DSL-14 | Phase 04.2 | Complete |
+| DSL-15 | Phase 04.2 | Complete |
+| VAL-05 | Phase 04.2 | Complete |
 
 **Coverage:**
-- v1 requirements: 62 total (55 original + 7 added in Phase 04.1: DSL-11/12/13, VAL-04, CLI-06/07, EX-FIX-01)
-- Mapped to phases: 62 ✓
+- v1 requirements: 65 total (55 original + 7 added in Phase 04.1: DSL-11/12/13, VAL-04, CLI-06/07, EX-FIX-01 + 3 added in Phase 04.2: DSL-14/15, VAL-05)
+- Mapped to phases: 65 ✓
 - Unmapped: 0
 
 **Phase summary:**
@@ -227,9 +233,10 @@ Which phases cover which requirements. Populated during roadmap creation.
 - Phase 3 (Lambda-Serialization Decision + Interpreter + Worker): 10 requirements (INTRP-01..07, WORK-01..03)
 - Phase 4 (Static Validation Tier + CLI Skeleton): 7 requirements (VAL-01..03, CLI-01, CLI-02, CLI-04, CLI-05)
 - Phase 04.1 (Dynamic step kwargs + interpolation + live progress block): 7 requirements (DSL-11/12/13, VAL-04, CLI-06/07, EX-FIX-01)
+- Phase 04.2 (if_cond as expression with strict-equality result binding): 3 requirements (DSL-14, DSL-15, VAL-05)
 - Phase 5 (Tier-3 E2E Test Harness): 6 requirements (TEST-01..05, CLI-03)
 - Phase 6 (Example Project): 4 requirements (EX-01..04)
 
 ---
 *Requirements defined: 2026-04-26*
-*Last updated: 2026-05-02 — Phase 04.1 added DSL-11/12/13, VAL-04, CLI-06/07, EX-FIX-01 (7 new requirements; v1 total 55→62)*
+*Last updated: 2026-05-04 — Phase 04.2 added DSL-14, DSL-15, VAL-05 (3 new requirements; v1 total 62→65)*
