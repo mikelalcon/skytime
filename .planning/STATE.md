@@ -4,7 +4,7 @@ milestone: v1.42.0
 milestone_name: milestone
 status: verifying
 stopped_at: Completed 04.2-07-PLAN.md
-last_updated: "2026-05-04T17:58:37.689Z"
+last_updated: "2026-05-04T18:24:22Z"
 last_activity: 2026-05-04
 progress:
   total_phases: 8
@@ -245,6 +245,7 @@ None yet.
 | 260503-qkk | Inline if_cond branch label (` → then`/` → else`) onto step_complete line; drop standalone branch row on both static + live renderers | 2026-05-03 | b58bffc + 9d95b49 | [260503-qkk-inline-if-cond-branch-label-then-else-on](./quick/260503-qkk-inline-if-cond-branch-label-then-else-on/) |
 | 260503-qx1 | Include kind + label on step_complete line — mirrors step_dispatch column shape so user-defined step names persist past dispatch onto the finalized ✓ row; fixes latent live-renderer bug that hardcoded "step" for every kind | 2026-05-03 | 70de069 + 9f4858b | [260503-qx1-include-step-kind-label-on-step-complete](./quick/260503-qx1-include-step-kind-label-on-step-complete/) |
 | 260503-rhy | Render if_cond + for_each_parallel as block scopes (header ▶ branch / ▶ open + indented children + footer ✓/✗ ms); 4-space-per-depth indent via shared pathDepth helper; replaces qkk inline branch suffix on if_cond step_complete with header on branch event | 2026-05-03 | 74797c1 + 6bc3a4d | [260503-rhy-render-if-cond-and-for-each-parallel-as-](./quick/260503-rhy-render-if-cond-and-for-each-parallel-as-/) |
+| 260504-jtr | Make root `skytime` command print proper errors — render `Error:` + cobra usage block on unknown commands; `.star`-suffix args additionally get `did you mean: skytime run/validate <file>` hint. Replaces previous silent exit 1 from `skytime path/to/flow.star ...`. New `cli.RenderRootError` helper + `cli.ErrAlreadyRendered` exported alias of errSilent; D4-18 invariant preserved verbatim | 2026-05-04 | 25f99d8 | [260504-jtr-make-root-skytime-command-print-proper-e](./quick/260504-jtr-make-root-skytime-command-print-proper-e/) |
 
 ### Roadmap Evolution
 
@@ -253,6 +254,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-04T17:51:35.820Z
-Stopped at: Completed 04.2-07-PLAN.md
+Last session: 2026-05-04T18:24:22Z
+Stopped at: Completed quick task 260504-jtr (root cobra error rendering + .star suggestion)
 Resume file: None
