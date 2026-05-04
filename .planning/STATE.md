@@ -213,6 +213,7 @@ None yet.
 ### Roadmap Evolution
 
 - Phase 04.1 inserted after Phase 4: Dynamic step kwargs — lambda-accepting `step(action_fn=...)` variant for runtime-built action kwargs (URGENT) — surfaced 2026-05-02 when Phase 4's `simple_check.star` corpus demonstrably ignored `--input` because step kwargs are static at parse time. Required before Phase 5 (E2E test harness) and Phase 6 (real example project) can land any flow that takes input.
+- Phase 04.2 inserted after Phase 4 (decimal slot taken because 04.1 already exists): if_cond as expression with strict-equality `result` binding (URGENT) — surfaced 2026-05-03 during Phase 04.1 demo verification. Replaces today's procedural if_cond with an expression-shaped variant where each branch may end with `result(value=lambda ctx: {...})`; strict structural equality required across branches; no subtype/LUB rules in v1 (explicit `float(x)` casts handle widening). Implementation is parser-side: new `result` builtin, state-schema tracking through if_cond branches in `pkg/parser/state_schema.go`, dict-literal type inference of `result`'s lambda body. Runtime semantics unchanged. Required before Phase 5 so the E2E test harness designs against the new state-propagation shape from the start.
 
 ## Session Continuity
 

@@ -92,6 +92,16 @@ Decimal phases appear between their surrounding integers in numeric order.
   - [x] 04-07-PLAN.md — Wave 4: HTTP extension implementation (5 ops, D4-14 idempotence) + cmd/skytime binary + examples/skeleton/ corpus + docs/cli-binary.md + differential test wiring
 **UI hint**: no
 
+### Phase 04.2: if_cond as expression with strict-equality result binding (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 4
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 04.2 to break down)
+
 ### Phase 04.1: Dynamic step kwargs — lambda-accepting step(action_fn=...) variant for runtime-built action kwargs (INSERTED)
 
 **Goal:** [Urgent work - to be planned]
