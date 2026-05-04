@@ -2,16 +2,14 @@ package interpreter
 
 // Test helpers for plan 04.2-04 (and later) — parseSrcAsFlow drives a
 // real parser session over an in-memory .star source and returns the
-// interpreter-level *ParsedFlow. Other helpers in this file (slog
-// capture, env wiring) are reused across walk_ifcond_expression_test.go
-// and replay_determinism_test.go.
+// interpreter-level *ParsedFlow. Other helpers in this file (event
+// capture via Temporal's log.Logger interface, env wiring) are reused
+// across walk_ifcond_expression_test.go and replay_determinism_test.go.
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.temporal.io/sdk/log"
 
 	"github.com/mikelalcon/skytime/pkg/parser"
 )
@@ -72,72 +71,75 @@ func contentHashForSrc(src string) string {
 }
 
 // ----------------------------------------------------------------------
-// Slog capture infrastructure (used by tests that assert slog event
+// Event capture infrastructure (used by tests that assert event
 // sequences — TestWalkIfCond_ResultBoundToCtx_SlogEvent and the
 // replay-determinism tests).
+//
+// We use the same shape as walk_step_namefn_test.go's captureLogger
+// (Temporal's log.Logger interface) since workflow.GetLogger(ctx)
+// routes through ts.SetLogger, NOT slog.SetDefault. The records here
+// extend that pattern with snapshot()/serialize() seams for byte-equal
+// replay comparison.
 // ----------------------------------------------------------------------
 
-// capturedRecord is a minimal snapshot of a slog.Record's fields that
-// matter for replay determinism: level, message, and resolved attrs.
+// capturedRecord is a snapshot of one logger.Info call. Msg holds the
+// log message ("skytime"); Attrs is a flat map of resolved
+// k1=v1, k2=v2 pairs.
 type capturedRecord struct {
-	Level slog.Level
 	Msg   string
 	Attrs map[string]any
 }
 
-// capturingHandler is a slog.Handler that appends every record it sees
-// to a goroutine-safe slice. Temporal's replay machinery may invoke
-// logger.Info from multiple goroutines; the mutex makes -race happy.
-type capturingHandler struct {
+// eventCapturingLogger implements go.temporal.io/sdk/log.Logger and
+// records every Info call. Mutex-guarded so -race accepts concurrent
+// emission from Temporal's replay machinery (workflow goroutines may
+// invoke logger.Info via deterministic-runner scheduling).
+type eventCapturingLogger struct {
 	mu      sync.Mutex
 	records []capturedRecord
 }
 
-// newCapturingHandler returns a fresh handler with an empty record list.
-func newCapturingHandler() *capturingHandler {
-	return &capturingHandler{}
+// newEventCapturingLogger returns a fresh logger with an empty record list.
+func newEventCapturingLogger() *eventCapturingLogger { return &eventCapturingLogger{} }
+
+// appendInfo converts a flat keyvals slice into a capturedRecord and
+// stores it under lock.
+func (c *eventCapturingLogger) appendInfo(msg string, kvs []any) {
+	attrs := make(map[string]any, len(kvs)/2)
+	for k := 0; k+1 < len(kvs); k += 2 {
+		ks, ok := kvs[k].(string)
+		if !ok {
+			continue
+		}
+		attrs[ks] = kvs[k+1]
+	}
+	rec := capturedRecord{Msg: msg, Attrs: attrs}
+	c.mu.Lock()
+	c.records = append(c.records, rec)
+	c.mu.Unlock()
 }
 
-// Enabled accepts every level — tests want full visibility.
-func (h *capturingHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (c *eventCapturingLogger) Debug(msg string, kvs ...any) { c.appendInfo(msg, kvs) }
+func (c *eventCapturingLogger) Info(msg string, kvs ...any)  { c.appendInfo(msg, kvs) }
+func (c *eventCapturingLogger) Warn(msg string, kvs ...any)  { c.appendInfo(msg, kvs) }
+func (c *eventCapturingLogger) Error(msg string, kvs ...any) { c.appendInfo(msg, kvs) }
 
-// Handle copies the record's level/msg/attrs into the records slice
-// under lock. attrs are resolved (LogValuer chains evaluated) so the
-// captured value is a stable snapshot, not a lazy reference.
-func (h *capturingHandler) Handle(_ context.Context, r slog.Record) error {
-	attrs := make(map[string]any, r.NumAttrs())
-	r.Attrs(func(a slog.Attr) bool {
-		attrs[a.Key] = a.Value.Resolve().Any()
-		return true
-	})
-	rec := capturedRecord{Level: r.Level, Msg: r.Message, Attrs: attrs}
-	h.mu.Lock()
-	h.records = append(h.records, rec)
-	h.mu.Unlock()
-	return nil
-}
-
-// WithAttrs returns the same handler — we don't want to fork into a
-// child handler with bound attrs because that would split the record
-// stream across handlers and break the replay-equality assertion.
-func (h *capturingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
-
-// WithGroup returns the same handler for the same reason.
-func (h *capturingHandler) WithGroup(string) slog.Handler { return h }
+// Compile-time guarantee: *eventCapturingLogger satisfies log.Logger.
+var _ log.Logger = (*eventCapturingLogger)(nil)
 
 // snapshot returns a defensive copy of the captured records under lock.
-// Tests use the returned slice without holding the handler's lock.
-func (h *capturingHandler) snapshot() []capturedRecord {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	out := make([]capturedRecord, len(h.records))
-	copy(out, h.records)
+// Tests use the returned slice without holding the logger's lock.
+func (c *eventCapturingLogger) snapshot() []capturedRecord {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]capturedRecord, len(c.records))
+	copy(out, c.records)
 	return out
 }
 
 // findEventRecords returns the subset of records whose Attrs["event"]
-// matches eventName (after string conversion). Used by tests asserting
-// e.g. exactly one "result_bound" event was emitted.
+// equals eventName. Used by tests asserting e.g. exactly one
+// "result_bound" event was emitted.
 func findEventRecords(recs []capturedRecord, eventName string) []capturedRecord {
 	var out []capturedRecord
 	for _, r := range recs {
@@ -154,14 +156,15 @@ func findEventRecords(recs []capturedRecord, eventName string) []capturedRecord 
 // captured records for byte-equal comparison across replay runs. Caller
 // passes a snapshot (from .snapshot()) so the iteration is mutex-free.
 //
-// Attr keys are sorted alphabetically — Go map iteration order is
-// randomized, so without the sort, two runs can produce identical
-// records but different serialized forms.
+// Attr keys are sorted alphabetically per record — Go map iteration
+// order is randomized, so without the sort, two runs can produce
+// identical records but different serialized forms (false-positive
+// non-determinism).
+//
+// Slice values render via reflect-based Sprintf(%v) which is stable.
 func serializeRecords(recs []capturedRecord) string {
 	var b strings.Builder
 	for _, r := range recs {
-		b.WriteString(r.Level.String())
-		b.WriteByte(' ')
 		b.WriteString(r.Msg)
 		keys := make([]string, 0, len(r.Attrs))
 		for k := range r.Attrs {

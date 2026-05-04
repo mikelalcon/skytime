@@ -16,9 +16,9 @@ import (
 // workflow state.
 //
 // n.Keys provides source-insertion order — we iterate the slice, NOT
-// `for k := range n.Values`. Go map iteration order is randomized;
-// Temporal replay requires byte-equal command histories on a second
-// execution; therefore the dict's SetKey order MUST be deterministic
+// the n.Values map (Go map iteration is randomized). Temporal replay
+// requires byte-equal command histories on a second execution;
+// therefore the dict's SetKey order MUST be deterministic
 // (D3-23 + Phase 04.2 RESEARCH §Pitfall 5).
 //
 // Emits a single `result_bound` slog event before returning (the
@@ -34,7 +34,7 @@ import (
 // INTRP-03: ZERO Temporal history events. evalLambda runs the per-key
 // value lambda inline (CPU-only). bridge.FromStarlarkValue is a pure
 // function. i.state.setOutput mutates the in-memory state map. No
-// workflow.ExecuteActivity, no SideEffect, no Sleep.
+// activity dispatches, no side effects, no sleeps.
 func (i *interpreter) bindResultToState(ctx workflow.Context, outputAlias string, n *dag.Result) error {
 	logger := workflow.GetLogger(ctx)
 
