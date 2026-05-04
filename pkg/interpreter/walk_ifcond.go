@@ -85,12 +85,11 @@ func (i *interpreter) walkIfCond(ctx workflow.Context, n *dag.IfCond) (err error
 	defer func() { i.stepPath = savedPath }()
 
 	// EXPRESSION MODE (D4.2-15): when n.OutputAlias is set, the chosen
-	// branch's last node is *dag.Result (binds value) per plan 03's
-	// parse-time validator. Plan 04.2-04 Task 2 will add the *dag.Fail
-	// case to dispatch fail() at branch terminator. Walk the leading
-	// body normally then dispatch on the last node. Procedural-mode
-	// (OutputAlias == "") falls through to the existing walkBody call
-	// below — verbatim today's behavior.
+	// branch's last node is *dag.Result (binds value) or *dag.Fail
+	// (raises NonRetryableErr) per plan 03's parse-time validator.
+	// Walk the leading body normally then dispatch on the last node.
+	// Procedural-mode (OutputAlias == "") falls through to the
+	// existing walkBody call below — verbatim today's behavior.
 	//
 	// Defensive: if the validator regressed and the last node is
 	// neither Result nor Fail, fall through to walkBody (the runtime
@@ -104,15 +103,17 @@ func (i *interpreter) walkIfCond(ctx workflow.Context, n *dag.IfCond) (err error
 		if werr := i.walkBody(ctx, leading); werr != nil {
 			return fmt.Errorf("if_cond at %s: %w", n.Pos, werr)
 		}
-		if lastNode, ok := last.(*dag.Result); ok {
+		switch lastNode := last.(type) {
+		case *dag.Result:
 			if berr := i.bindResultToState(ctx, n.OutputAlias, lastNode); berr != nil {
 				return fmt.Errorf("if_cond at %s: %w", n.Pos, berr)
 			}
 			return nil
+		case *dag.Fail:
+			return i.raiseFail(ctx, lastNode)
 		}
 		// Defensive fallthrough — parse-time validator should reject
 		// non-Result/Fail terminators; walk the entire branch as procedural.
-		// *dag.Fail dispatch lands in Task 2.
 	}
 
 	// PROCEDURAL MODE (existing — unchanged).
