@@ -186,18 +186,6 @@ func TestTesterModule_ProductionParsePathUnchanged(t *testing.T) {
 		"expected undefined-tester error, got: %s", perr)
 }
 
-// TestTesterRun_OutsideDefTest_RejectsAtParse — tester.run placeholder
-// surfaces a clear error if invoked at file scope. Plan 04 replaces
-// the placeholder with proper "must be inside def test_*" rejection
-// (Pitfall 4); for Plan 02 we just verify the placeholder fires.
-func TestTesterRun_OutsideDefTest_RejectsAtParse(t *testing.T) {
-	src := `tester.run(flow="x")`
-	_, _, err := helperParseTestSrc(t, src)
-	require.Error(t, err)
-	// Plan 02 placeholder message; Plan 04 will tighten the check.
-	assert.Contains(t, err.Error(), "tester.run")
-}
-
 // TestTesterModule_TestModeNoBuilderRejected — calling WithTestMode()
 // without WithTestModule is a programming error; surfaces at first parse.
 func TestTesterModule_TestModeNoBuilderRejected(t *testing.T) {

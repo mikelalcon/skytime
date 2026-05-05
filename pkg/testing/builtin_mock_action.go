@@ -3,6 +3,7 @@ package testing
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
@@ -114,13 +115,17 @@ func makeBuiltinTesterMockAction(reg *MockRegistry) func(*starlark.Thread, *star
 }
 
 // callerPosFromThread extracts the deepest user-frame position from
-// thread.CallStack so MockEntry.RegisterPos points at the .star file's
-// tester.mock_action(...) line, not the builtin internals. Mirrors
-// Phase 04.1's fail()-callsite preservation pattern.
+// thread.CallStack so the result points at the .star file's tester.*
+// callsite, not the builtin internals. Mirrors Phase 04.1's
+// fail()-callsite preservation pattern.
+//
+// Skips any frame whose name starts with "tester." (workflow,
+// mock_action, run) and any <builtin> frame; the first remaining
+// frame is the user's .star line.
 func callerPosFromThread(thread *starlark.Thread) syntax.Position {
 	depth := thread.CallStackDepth()
 	// Walk innermost (depth-1) toward outermost (0); skip <builtin>
-	// and tester.mock_action frames so RegisterPos lands on the user's
+	// and any tester.* frames so the position lands on the user's
 	// .star line. CallFrame indexing matches Starlark's convention:
 	// CallFrame(0) is the innermost frame.
 	for i := 0; i < depth; i++ {
@@ -129,7 +134,7 @@ func callerPosFromThread(thread *starlark.Thread) syntax.Position {
 		if fname == "" || fname == "<builtin>" {
 			continue
 		}
-		if fr.Name == "tester.mock_action" {
+		if strings.HasPrefix(fr.Name, "tester.") {
 			continue
 		}
 		return fr.Pos
