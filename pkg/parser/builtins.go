@@ -612,6 +612,15 @@ func (p *Parser) builtinIfCond(thread *starlark.Thread, fn *starlark.Builtin, ar
 // builtinFail — fail("msg") → *dag.Fail (D4.2-05/06)
 // =============================================================================
 
+// skytime:doc summary="Top-level builtin that emits a failure node — runtime raises a NonRetryableApplicationError at the .star callsite."
+// skytime:doc summary="Top-level fail() (parse-time builtin) is distinct from lambda-time fail() (starlark.Universe builtin); they share the name across two predeclared environments (D4.2-05)."
+// skytime:doc summary="Supports ${ctx.expr} interpolation in the message (D4.1-01)."
+// skytime:doc returns="A *dag.Fail node."
+// skytime:doc since="phase-04.2"
+// skytime:doc example="if_cond(\n    cond = lambda ctx: ctx.user_id != \"\",\n    then = [step(action = api.fetch_user(id = ctx.user_id))],\n    else_ = [fail(\"user_id is required\")],\n)"
+// skytime:doc see="result, if_cond"
+// skytime:doc param_message="string"
+// skytime:doc desc_message="Single positional argument; runtime renders the message at the .star callsite, with ${ctx.expr} interpolation evaluated inside the workflow."
 // builtinFail emits a *dag.Fail node with literal Message and (when
 // ${...} interpolation markers are present) MessageFn populated via
 // the D4.1-01 desugarInterpolation path. Positional-only signature
@@ -671,6 +680,15 @@ func (p *Parser) builtinFail(thread *starlark.Thread, fn *starlark.Builtin, args
 // builtinResult — result(value={...}) → *dag.Result (D4.2-02..04)
 // =============================================================================
 
+// skytime:doc summary="Branch terminator that binds a typed dict-literal value to ctx.<output_alias> in the enclosing if_cond expression-mode."
+// skytime:doc summary="Only legal as the LAST node of an expression-mode if_cond branch (i.e., if_cond(output_alias=\"X\", ...))."
+// skytime:doc summary="Each value is captured as a per-key parse-time lambda, so ctx-references inside the dict are evaluated inside the workflow at branch-execute time."
+// skytime:doc returns="A *dag.Result node (LEAF — no body, no children)."
+// skytime:doc since="phase-04.2"
+// skytime:doc example="if_cond(\n    output_alias = \"classification\",\n    cond = lambda ctx: ctx.size_bytes > 1000000,\n    then = [result(value = {\"tier\": \"large\", \"label\": \"needs sharding\"})],\n    else_ = [result(value = {\"tier\": \"small\", \"label\": \"single host fine\"})],\n)"
+// skytime:doc see="if_cond, fail"
+// skytime:doc param_value="dict (string-literal keys)"
+// skytime:doc desc_value="Dict-literal at the call site; keys must be string literals; values are captured per-key as parse-time lambdas."
 // builtinResult parses a `result(value={...})` call: kwarg-only signature,
 // AST-level dict-literal validation, per-key value lambda synthesis, and
 // per-key TypeInfo population via inferType. Emits *dag.Result with
