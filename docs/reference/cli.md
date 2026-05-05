@@ -211,6 +211,83 @@ $ skytime info examples/skeleton/expression_if.star
 
 ---
 
+## skytime test
+
+### Synopsis
+
+    skytime test <dir> [--run <regex>] [--format human|json] [persistent flags]
+
+Source: `pkg/cli/test.go` (`RunE`) → `pkg/testing.RunCLI` (the Tier-3 driver).
+
+### Motivation
+
+`skytime test <dir>` runs `.star`-defined Tier-3 tests (TEST-01..05) — the end-to-end harness that mocks the single generic `ExecuteBatch` activity inside `testsuite.TestWorkflowEnvironment` and routes per-action calls back to Starlark mock lambdas. Each test runs twice (D5-D1 always-on replay) and any divergence in Temporal event history fails the test with a Starlark-callsite-aware diff (D5-D2).
+
+`skytime test` is the *runner-level* equivalent of `pkgtesting.Run(t, dir)` — the Go-level foundation API that imports cleanly into your example project's `*_test.go`. Use the CLI for ad-hoc + CI runs; use `pkgtesting.Run` when you want Go-side `*testing.T` integration (e.g., `go test ./examples/http-github-slack/...`).
+
+For the per-flow-author surface (`tester.workflow`, `tester.mock_action`, `tester.run`, `assert.*`), see [`docs/for-flow-authors/testing.md`](../for-flow-authors/testing.md).
+
+`<dir>` is walked recursively (`filepath.WalkDir`); only files matching `*_test.star` are picked up (D5-A2). A single-file path (`foo_test.star`) is also accepted.
+
+### Flags
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--run <regex>` | (empty — run all) | Filter tests by Go-regex against `<file_basename_without_ext>.<test_name>` (D5-E3). E.g. `^users_test\.test_existing` matches `users_test.test_existing_user`. Bad patterns surface at option-parse time wrapping `pkg/testing.ErrBadFilter`. |
+| `--format <human\|json>` | `human` | Output format. `human` (default) is static line-per-test Go-test-style (D5-E1: `--- PASS: <test> (<elapsed:.2f>s)`). `json` mirrors stdlib `cmd/test2json` schema (D5-E2) — one JSON record per line, compatible with `gotestsum`, `tparse`, GitHub Actions test annotations. Unknown values fail loudly at option-parse time. |
+
+Plus all persistent flags. Notably:
+
+- `--debug` — when set, RunE writes a brief `skytime test: N failed, M passed` diagnostic to stderr after the human output. Default human format renders Starlark callsites only (CLI-03 explicit: NO Go stack traces in default output).
+
+### Exit Codes
+
+- `0` — every test passed (or no `*_test.star` files found under `<dir>`; an advisory line is printed).
+- `1` — one or more tests failed; failures rendered to stdout as `--- FAIL:` lines with indented Starlark assertion detail. Also returned for option-time errors (bad `--run` regex, unknown `--format` value at the runner layer).
+- `2` — usage error (zero or multiple positional args; cobra `ExactArgs(1)` surfaces this before `RunE`).
+
+### Example
+
+```
+skytime test examples/http-github-slack/
+```
+
+Output (default human format):
+
+```
+--- PASS: test_existing_user (0.04s)
+--- FAIL: test_default_user (0.03s)
+    assertion failed at users_test.star:31:5
+      expected: "octocat"
+      got:      "default-user"
+--- PASS: test_create_issue (0.06s)
+PASS  users_test.star  3 tests  1 failed (0.13s)
+FAIL  1 files  3 tests  1 failed  (0.13s)
+```
+
+JSON format (`--format=json`) emits one record per event:
+
+```json
+{"Time":"2026-05-05T10:00:00.123456789Z","Action":"start","Package":"users_test.star","Test":"test_existing_user"}
+{"Time":"2026-05-05T10:00:00.124000000Z","Action":"run","Package":"users_test.star","Test":"test_existing_user"}
+{"Time":"2026-05-05T10:00:00.164000000Z","Action":"pass","Package":"users_test.star","Test":"test_existing_user","Elapsed":0.04}
+```
+
+Filtering with `--run`:
+
+```
+skytime test examples/http-github-slack/ --run '^users_test\.test_existing'
+```
+
+### See Also
+
+- Flow-author guide: [`docs/for-flow-authors/testing.md`](../for-flow-authors/testing.md) — `tester.workflow`, `tester.mock_action`, `tester.run`, `assert.*`, `*_test.star` convention. (Manual reference; `tester.*` is NOT in the auto-generated [`docs/reference/builtins.md`](builtins.md) per Plan 06 deviation D5-docs-builtins-marker-location.)
+- Production builtin reference: [`docs/reference/builtins.md`](builtins.md) — production-only auto-generated reference (`flow`, `step`, `if_cond`, ...).
+- Architecture: [`docs/architecture.md`](../architecture.md) — how the harness intercepts `ExecuteBatch` inside `testsuite.TestWorkflowEnvironment` and routes per-action calls back to Starlark mocks.
+- Production execution: [`skytime run`](#skytime-run) — the production sibling that targets a real Temporal cluster instead of the in-process test environment.
+
+---
+
 ## skytime dev-server
 
 ### Synopsis
