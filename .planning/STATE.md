@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.3-04-PLAN.md (CLI reference doc)
-last_updated: "2026-05-05T00:15:57.836Z"
+stopped_at: Completed 04.3-01-PLAN.md
+last_updated: "2026-05-05T00:18:39.970Z"
 last_activity: 2026-05-05
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 43
-  completed_plans: 39
+  completed_plans: 40
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04.3 (documentation-and-source-driven-reference-generator) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9
 Status: Ready to execute
 Last activity: 2026-05-05
 
@@ -90,6 +90,7 @@ Progress: [██████████] 100%
 | Phase 04.3 P05 | 2min | 1 tasks | 1 files |
 | Phase 04.3 P04 | 13min | 1 tasks | 1 files |
 | Phase 04.3 P03 | 4min | 1 tasks | 1 files |
+| Phase 04.3 P01 | 6 min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -241,6 +242,10 @@ Recent decisions affecting current work:
 - [Phase 04.3]: Plan 04.3-04: mTLS documented as cert+key pair (with optional --server-ca), not triplet — pkg/cli/connect.go::connectClientWithFactory rejects only when ONE of --client-cert / --client-key is set without the other; --server-ca is optional and supplies a custom RootCAs pool
 - [Phase 04.3]: Plan 04.3-04: docs/reference/cli.md cross-links to builtins.md, architecture.md, getting-started.md, for-flow-authors/, for-extension-developers/ (sibling plans 01-09) — links resolve as siblings ship; cli.md reads coherently in isolation, dead links serve as TODO anchors for parallel agents
 - [Phase 04.3]: Plan 04.3-03: docs/architecture.md is the required-reading architecture page (D-15) — parse/execute split prosaically + ASCII diagram verbatim from CONTEXT.md; D4.1-22 + D4.2-05 carve-outs quoted verbatim from PROJECT.md; cites pkg/parser/globals.go, pkg/dag/lambda.go (CapturedLambda + ComputeLambdaID), pkg/interpreter/workflow.go (SkytimeWorkflow factory), pkg/activity/execute_batch.go (ExecuteBatch), pkg/bridge/lambda_call.go (CallLambda), pkg/interpreter/registry.go (FlowRegistry), pkg/interpreter/cancel_watchdog.go
+- [Phase 04.3]: Plan 01: cmd/skytime-docgen uses stdlib flag (not cobra) — single-command go-generate tool, ~3MB cobra deps unjustified; library-root firewall stays unchanged because cmd/ is outside pkg/ AND deliberately stdlib-only
+- [Phase 04.3]: Plan 01: testdata/*.go.txt fixtures (extension dodges Go compile path; tests rewrite to tempdir/*.go before parsing) — decouples unit tests from live-source evolution; live-source smokes assert walker works on actual pkg/parser/{globals,builtins}.go
+- [Phase 04.3]: Plan 01: Order-preserving registry via paired (map[name]funcName, []order) return — Go map iteration is randomized; preserving newParseTimeGlobals' source-insertion order keeps the renderer's natural top-to-bottom shape (alphabetical sort would scramble flow/step/if_cond before result/fail)
+- [Phase 04.3]: Plan 01: ParseMarkers warn-and-skip via fmt.Fprintln(os.Stderr) — keeps API minimal; captureStderr test helper handles assertion paths via os.Pipe + os.Stderr swap; refactor to io.Writer reserved for plan 02 if more tests need to assert warning content
 
 ### Pending Todos
 
@@ -271,6 +276,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-05T00:15:08.561Z
-Stopped at: Completed 04.3-04-PLAN.md (CLI reference doc)
+Last session: 2026-05-05T00:18:39.966Z
+Stopped at: Completed 04.3-01-PLAN.md
 Resume file: None
