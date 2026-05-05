@@ -37,7 +37,13 @@ func TestNoTemporalImportsOutsideAllowList(t *testing.T) {
 	// Order is irrelevant; kept in phase-introduction order for readability.
 	// Phase 4 plan 04-05 added "cli" — pkg/cli's run subcommand is the
 	// legitimate consumer of client.ExecuteWorkflow / WorkflowRun.Get.
-	allowedPkgs := []string{"activity", "interpreter", "worker", "cli"}
+	// Phase 5 (D5-firewall-q8 deviation; RESEARCH.md Open Q8): pkg/testing
+	// is the Tier-3 E2E test harness; it imports go.temporal.io/sdk/testsuite
+	// + go.temporal.io/sdk/activity (for activity.RegisterOptions). The
+	// "no activity import" rule applies to extension packages, not to
+	// the harness. See .planning/phases/05-tier-3-e2e-test-harness-temporal-test/
+	// 05-RESEARCH.md Investigation 11 + Open Question 8.
+	allowedPkgs := []string{"activity", "interpreter", "worker", "cli", "testing"}
 	sep := string(filepath.Separator)
 
 	fset := token.NewFileSet()
@@ -72,7 +78,7 @@ func TestNoTemporalImportsOutsideAllowList(t *testing.T) {
 		for _, imp := range f.Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
 			if strings.HasPrefix(importPath, "go.temporal.io/sdk") {
-				t.Errorf("FIREWALL VIOLATION: %s imports %q — only pkg/{activity,interpreter,worker} may import go.temporal.io/sdk/*", path, importPath)
+				t.Errorf("FIREWALL VIOLATION: %s imports %q — only pkg/{activity,interpreter,worker,cli,testing} may import go.temporal.io/sdk/*", path, importPath)
 			}
 			checked++
 		}
