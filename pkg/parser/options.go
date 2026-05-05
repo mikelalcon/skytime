@@ -3,6 +3,8 @@ package parser
 import (
 	"fmt"
 
+	"go.starlark.net/starlark"
+
 	"github.com/mikelalcon/skytime/pkg/extension"
 )
 
@@ -68,6 +70,40 @@ func WithMaxBlockSize(n int) Option {
 			return fmt.Errorf("WithMaxBlockSize: invalid max block size %d: must be >= 1", n)
 		}
 		p.maxBlockSize = n
+		return nil
+	}
+}
+
+// WithTestMode enables Phase 5's test-file parse path. When set, the
+// parser's parse-time globals include the `tester`
+// *starlarkstruct.Module and the assert.* globals from
+// go.starlark.net/starlarktest. The production parse path
+// (`parser.NewParser()` with no test options) is unchanged.
+//
+// Phase 5 D5-A1..A4 + TEST-01.
+func WithTestMode() Option {
+	return func(p *Parser) error {
+		p.testMode = true
+		return nil
+	}
+}
+
+// WithTestModule wires the function that builds the `tester`
+// *starlarkstruct.Module value bound under the global name "tester"
+// in test-mode parses. Splitting this from WithTestMode breaks the
+// parser→pkg/testing import cycle: pkg/cli/test.go (Phase 5 Plan 06)
+// imports pkg/testing, constructs the builder, and supplies it via
+// this option.
+//
+// Returns an error if builderFn is nil — defensive against the
+// programming error of calling WithTestMode() but forgetting
+// WithTestModule.
+func WithTestModule(builderFn func(p *Parser, thread *starlark.Thread) starlark.Value) Option {
+	return func(p *Parser) error {
+		if builderFn == nil {
+			return fmt.Errorf("WithTestModule: builder must not be nil")
+		}
+		p.testModuleBuilder = builderFn
 		return nil
 	}
 }

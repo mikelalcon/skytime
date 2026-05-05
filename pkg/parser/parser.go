@@ -81,6 +81,22 @@ type Parser struct {
 	// (which is rewritten to a sentinel `0` in execSrc so Starlark
 	// never tries to resolve `ctx` at top-level).
 	preBuiltResults map[string]*dag.Result
+
+	// Phase 5: test-mode opt-in. WithTestMode() flips testMode true.
+	// WithTestModule(builderFn) wires a builder that newParseTimeGlobals
+	// (extended in Plan 02) calls to inject the `tester` *starlarkstruct.Module
+	// + starlarktest.LoadAssertModule() globals when testMode is true.
+	//
+	// Splitting "flag" from "module builder" breaks the parser→testing
+	// import cycle: parser stays test-package-agnostic; pkg/cli/test.go
+	// (Plan 06) supplies the builder via the option.
+	//
+	// testGlobals is reserved for Plan 05 (def test_* discovery). Plan 02
+	// populates parseTimeGlobals; Plan 05 populates testGlobals[filename]
+	// with the StringDict returned from starlark.ExecFileOptions.
+	testMode          bool
+	testModuleBuilder func(p *Parser, thread *starlark.Thread) starlark.Value
+	testGlobals       map[string]starlark.StringDict
 }
 
 // defaultMaxBlockSize is the D2-07 default cap for step(block=[...]) action
