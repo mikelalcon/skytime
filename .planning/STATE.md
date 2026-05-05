@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-05-05T18:26:00.382Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-05-05T19:37:57.913Z"
 last_activity: 2026-05-05
 progress:
   total_phases: 9
   completed_phases: 7
   total_plans: 49
-  completed_plans: 44
+  completed_plans: 45
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 05 (tier-3-e2e-test-harness-temporal-test) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-05-05
 
@@ -95,6 +95,7 @@ Progress: [██████████] 100%
 | Phase 04.3 P09 | 3min | 2 tasks | 2 files |
 | Phase 04.3 P08 | 3min | 2 tasks | 1 files |
 | Phase 05 P01 | 25min | 3 tasks | 10 files |
+| Phase 05 P02 | 35min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -259,6 +260,10 @@ Recent decisions affecting current work:
 - [Phase 05]: Plan 05-01: MockOperationOutput.MarshalJSON returns []byte("{}") for nil Value — wire shape is always a JSON object, mirrors RawOperationOutput shape and avoids null-pointer surprises in Plan 02 router (Open Q4 acceptance with defensive nil handling)
 - [Phase 05]: Plan 05-01: WithTestMode/WithTestModule split (flag + builder pattern) breaks parser→pkg/testing import cycle — pkg/cli/test.go (Plan 06) imports pkg/testing, constructs the tester builder, supplies via WithTestModule(builder) so parser stays test-package-agnostic
 - [Phase 05]: Plan 05-01: Firewall allow-list expansion paired with non-vacuous meta-test convention — adding 'testing' to pkg/activity/firewall_test.go allowedPkgs is paired with tests/firewall_testsuite_test.go::TestPkgTesting_ImportsTestsuite that skips on empty package with forward-pointing 'Plan 02 lands router.go' message; activates automatically once import lands
+- [Phase 05]: Plan 05-02: WithTestPredeclared parser option (Plan-02 addition) — Starlark resolver binds free variables AT PARSE-OF-FILE TIME, so ok/err/nonretryable closures must be in the parse-time predeclared dict for mock_fn lambda bodies to resolve. Production parses (testMode=false) NEVER see these names; D1-20 lambdaTimeGlobals invariant preserved. Cycle-broken: pkg/parser does NOT import pkg/testing (cli/test.go wires MockLambdaParseTimeBuilders via the new option in Plan 06).
+- [Phase 05]: Plan 05-02: fail() inside mock_fn body inherits PARSE-time builtinFail (D4.2-05 dual-semantics) — returns *dag.Fail at execute time and surfaces through D5-C4 'mock must return ok/err/nonretryable'. Documented as intentional behavior; rewrote TestRouter_MockEvalErr_NonRetryable to use integer division by zero (1 // 0) which actually raises a Starlark *EvalError.
+- [Phase 05]: Plan 05-02: AttemptCounter keys on structural (FlowName, StepIdx, ActionIdx) triple, NOT ref.Pos — content-hash IDs change with cosmetic edits but slot identity is structural; replay-equality (D5-D1) requires the structural form. Mock CapturedLambda IDs use position-based format (mock:<file>:<line>:<col>) instead of D-18 content-hash since builtin closures don't have parser-session FileBytes access — router only reads captured.Fn.
+- [Phase 05]: Plan 05-02: Pitfall-8 panic recovery template = defer-recover at top of buildExecuteBatchCallback wraps any Go panic with extension.ErrNonRetryable so workflow-side classification stays correct. D5-B2 verbatim no-mock-found message routes via per-action NonRetryableErrResult (mirrors quick-260502-onc 4xx classification): activity itself succeeds; walk_step path observes NonRetryable in slice and fails the step.
 
 ### Pending Todos
 
@@ -289,6 +294,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-05T18:26:00.378Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-05-05T19:37:57.908Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None
