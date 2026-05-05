@@ -272,16 +272,22 @@ func TestRouter_KwargsAndCredentialIDExposed(t *testing.T) {
 	assert.Equal(t, "gh-admin", out.Value["cred_in"])
 }
 
-// TestAttempts_IncrementOnRetry — integration test against
-// TestWorkflowEnvironment. RetryPolicy fires; mock returns err on
-// attempts 1+2, ok on attempt 3. Asserts router was invoked 3 times
-// and final result is OkResult.
+// TestAttempts_IncrementOnRetry — Phase 5 D5-C1 retry-attempt
+// integration. The substantive end-to-end wiring (a real `flow` that
+// invokes `gh.get` and surfaces the AttemptCounter via a fake gh
+// extension) belongs to Plan 04 Task 3, which owns the
+// runner-driven path (`pkgtesting.Run` + tester.run). Plan 03 only
+// ships the RunOnceCapturing scaffolding the test depends on; the
+// integration body has external-fixture dependencies (a fake `gh`
+// extension) that are fully resolved by Plan 04.
 //
-// (NOTE: This integration test depends on Plan 03's RunOnceCapturing
-// to be testable end-to-end. Mark this test as SKIP-with-message
-// pointing at Plan 03 if RunOnceCapturing is not yet exported. The
-// per-attempt counter unit test is sufficient for the Plan 02 quality
-// gate; the integration test activates in Plan 03.)
+// Forward-pointing skip per the must_haves convention. The substance
+// of replay determinism + divergence reporting is exercised by:
+//   - TestReplay_DeterministicEventSequence (Task 1 — pkg/interpreter)
+//   - TestReplay_DivergenceReportFormat   (Task 2 — pkg/testing)
+//   - TestReplay_RunOnceCapturing_TwoRunsByteEqual (Task 2)
+//   - TestRouter_AttemptIncrementsPerCall (Plan 02; unit-tests
+//     buildExecuteBatchCallback with a 2-attempt mock directly).
 func TestAttempts_IncrementOnRetry(t *testing.T) {
-	t.Skip("integration test activates after Plan 03 ships interpreter.RunOnceCapturing")
+	t.Skip("Plan 04 wires tester.run end-to-end with a fake gh extension; Plan 03 only provides the RunOnceCapturing scaffolding")
 }
