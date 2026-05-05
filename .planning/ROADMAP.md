@@ -150,7 +150,7 @@ Plans:
   - [x] 05-01-PLAN.md — Wave 0: pkg/testing skeleton + MockRegistry + MockOperationOutput + parser WithTestMode/WithTestModule options + temporal-SDK firewall allow-list extension
   - [x] 05-02-PLAN.md — Wave 1: tester.* parse-time builtins + mock-lambda env (ok/err/nonretryable) + mock router + per-attempt counter + parser hook (test-mode-only injection)
   - [x] 05-03-PLAN.md — Wave 2: pkg/testing.RunOnceCapturing public helper + EventCapture activity-boundary listeners + replay_diff.FirstDivergentEvent (D5-D2/D5-D3)
-  - [ ] 05-04-PLAN.md — Wave 3: assert.* parse-time injection + Parser.TestGlobals accessor + reporter.runOneTest + tester.run replay-twice driver + pkgtesting.Run(t, dir, opts...) foundation API
+  - [x] 05-04-PLAN.md — Wave 3: assert.* parse-time injection + Parser.TestGlobals accessor + reporter.runOneTest + tester.run replay-twice driver + pkgtesting.Run(t, dir, opts...) foundation API
   - [ ] 05-05-PLAN.md — Wave 4: recursive *_test.star walker + def test_*() Starlark-module enumeration + WithRunFilter regex + WithFormat=json (cmd/test2json mirror) + human-format static line-per-test
   - [ ] 05-06-PLAN.md — Wave 5: pkg/testing.RunCLI non-*testing.T adapter + pkg/cli/test.go cobra subcommand + tests/skytime_test_e2e_test.go subprocess E2E + docs/for-flow-authors/testing.md + docs/reference/cli.md `## skytime test` + // skytime:doc markers regenerating builtins.md
 **UI hint**: no

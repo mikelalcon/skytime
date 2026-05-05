@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-05-05T19:52:16.960Z"
+stopped_at: Completed 05-04-PLAN.md
+last_updated: "2026-05-05T20:13:01.363Z"
 last_activity: 2026-05-05
 progress:
   total_phases: 9
   completed_phases: 7
   total_plans: 49
-  completed_plans: 46
+  completed_plans: 47
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 05 (tier-3-e2e-test-harness-temporal-test) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-05-05
 
@@ -97,6 +97,7 @@ Progress: [██████████] 100%
 | Phase 05 P01 | 25min | 3 tasks | 10 files |
 | Phase 05 P02 | 35min | 3 tasks | 13 files |
 | Phase 05 P03 | 9min | 3 tasks | 9 files |
+| Phase 05 P04 | 30min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -269,6 +270,13 @@ Recent decisions affecting current work:
 - [Phase 05]: Plan 05-03: Per-record diff serialization sorts KV pairs alphabetically on the CONSUMER side (FirstDivergentEvent helper). Producer (logger.Info kvs) preserves source order; consumer canonical-orders for stable string equality. Eliminates Go-map-iteration-randomness false-positive divergences.
 - [Phase 05]: Plan 05-03: Activity-boundary listener pair (SetOnActivityStartedListener + SetOnActivityCompletedListener) is the canonical TestWorkflowEnvironment substitute for the missing GetWorkflowHistory accessor (Investigation 2). Both listeners attach automatically inside RunOnceCapturing; events append to the same EventCapture buffer alongside slog records.
 - [Phase 05]: Plan 05-03: step_dispatch.pos + step_dispatch.name is the universal flow-callsite attribution channel for D5-D3 — Plan 03 Task 0 extended walk_step.go's logger.Info emission with two new KV pairs; FirstDivergentEvent's lookupOriginatingStep walks backward to the nearest step_dispatch and reads them. Pattern available for any future divergence reporter / error annotator / live-renderer enrichment.
+- [Phase 05]: Plan 05-04: runOneTest takes a testReporter interface (Helper + Errorf + starlarktest.Reporter) instead of *testing.T — Go's t.Run propagates inner subtest failures to the parent, blocking unit-test isolation; *testing.T satisfies via duck-typing, recordingT shim observes per-test failures cleanly
+- [Phase 05]: Plan 05-04: starlarktest.LoadAssertModule() globals injected into parse-time predeclared dict in test mode (D5-F1, TEST-05); production parses untouched (D1-20 invariant). Library default accumulates failures within a single def test_*() — assert.eq does not raise EvalError, calls Reporter.Error directly (D5-F2 verified)
+- [Phase 05]: Plan 05-04: D5 Pitfall 4 file-scope rejection via thread.CallStack walk — isInsideDefTestStar scans for any user-Function frame whose name starts with test_; absent at file scope so tester.run surfaces the verbatim 'must be called inside a def test_*()' message at parse time
+- [Phase 05]: Plan 05-04: Parser.TestGlobals(filename) accessor exposes the captured top-level StringDict from a test-mode parse — single starlark.ExecFileOptions overload returns globals when testMode=true (production path discards). Plan 05 enumerates def test_*() symbols via this accessor
+- [Phase 05]: Plan 05-04: D5-D1 always-on replay shares AttemptCounter across run1/run2 in tester.run — fundamentally conflicts with retry-attempt mock semantics (err on attempts 1+2 + ok on attempt 3 produces 3 dispatches in run1, 1 in run2, guaranteed FirstDivergentEvent). Plan 06 introduces a non-replay assertion path; TestAttempts_IncrementOnRetry skipped with forward-pointing message; substance pinned by TestRouter_AttemptIncrementsPerCall (Plan 02)
+- [Phase 05]: Plan 05-04: pkgtesting.Run(t, dir, opts...) — Open Q7 Go-level foundation API for Phase 6 + Plan 06's cobra wrapper. Single-directory walk for v1 (Plan 05 generalizes); WithExtensions + WithRunFilter Options surface today so Plan 06's --run flag is additive. fakeGhExtension implementation inline in router_test.go removes the last panic stub from pkg/testing
+- [Phase 05]: Plan 05-04: Generalized callerPosFromThread skip-list — was tester.mock_action only; now any tester.* prefix. Both builtin_mock_action.go (RegisterPos) and builtin_run.go (test-callsite divergence + file-scope rejection position) consume the same helper; strings.HasPrefix on Frame.Name skip-list
 
 ### Pending Todos
 
@@ -299,6 +307,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-05T19:52:16.955Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-05-05T20:12:34.631Z
+Stopped at: Completed 05-04-PLAN.md
 Resume file: None
