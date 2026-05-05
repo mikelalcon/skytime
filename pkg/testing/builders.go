@@ -116,3 +116,29 @@ func AsMockResult(v starlark.Value) (MockResult, bool) {
 	}
 	return mv.Inner, true
 }
+
+// MockLambdaParseTimeBuilders returns the {ok, err, nonretryable}
+// builder triple as a starlark.StringDict suitable for the parser's
+// WithTestPredeclared option. Wiring rationale:
+//
+// Starlark's resolver binds free variables in lambda bodies AT
+// PARSE-OF-FILE TIME. mock_fn = lambda kwargs, attempt: ok(value={...})
+// references `ok` as a free variable — the resolver checks the
+// predeclared dict for `ok` and errors with "undefined: ok" if it's
+// missing.
+//
+// At workflow-execute time the same closure runs against
+// MockLambdaGlobals() (which includes the same builders, so behavior
+// is identical). Splitting parse-time and runtime registration is
+// what keeps the production lambda env (D1-20) untouched: production
+// parses don't pass these builders to the parser.
+//
+// Returns a fresh dict per call so callers can extend it without
+// affecting other parsers.
+func MockLambdaParseTimeBuilders() starlark.StringDict {
+	return starlark.StringDict{
+		"ok":           starlark.NewBuiltin("ok", builtinOk),
+		"err":          starlark.NewBuiltin("err", builtinErr),
+		"nonretryable": starlark.NewBuiltin("nonretryable", builtinNonRetryable),
+	}
+}

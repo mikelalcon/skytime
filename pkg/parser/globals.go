@@ -79,5 +79,45 @@ func newParseTimeGlobals(p *Parser, thread *starlark.Thread) (starlark.StringDic
 		}
 		g[name] = modVal
 	}
+
+	// Phase 5 (D5-A3 + RESEARCH Investigation 9): inject the `tester`
+	// namespace value when the parser is in test mode. The builder
+	// closure was wired via parser.WithTestModule (Plan 01) and is
+	// supplied by pkg/cli/test.go (Plan 06) so pkg/parser does not
+	// import pkg/testing — cleanest cycle break.
+	//
+	// Plan 04 additionally injects starlarktest.LoadAssertModule()
+	// globals here.
+	if p.testMode {
+		if p.testModuleBuilder == nil {
+			return nil, fmt.Errorf("WithTestMode set but WithTestModule was not provided; both are required")
+		}
+		if _, exists := g["tester"]; exists {
+			return nil, fmt.Errorf("test-mode global collision: %q", "tester")
+		}
+		g["tester"] = p.testModuleBuilder(p, thread)
+
+		// Phase 5 D5-C2: mock_fn lambda bodies reference
+		// ok/err/nonretryable as free variables. Starlark's resolver
+		// binds free variables at parse-of-file time, so those names
+		// MUST be visible in the parse-time predeclared env even
+		// though the builders are only INVOKED at workflow execute
+		// time. The closures themselves are stateless wrappers; they
+		// produce mockResultValue sentinels that the router unwraps.
+		//
+		// Production parses (no test mode) NEVER see these names —
+		// the production lambda env (D1-20 lambdaTimeGlobals) is
+		// unchanged.
+		//
+		// The builders live in pkg/testing.MockLambdaGlobals(); we
+		// pull them via WithTestPredeclared which avoids a parser →
+		// testing import cycle (cli/test.go wires it).
+		for name, val := range p.testPredeclared {
+			if _, collide := g[name]; collide {
+				return nil, fmt.Errorf("test-mode global collision: %q", name)
+			}
+			g[name] = val
+		}
+	}
 	return g, nil
 }

@@ -107,3 +107,23 @@ func WithTestModule(builderFn func(p *Parser, thread *starlark.Thread) starlark.
 		return nil
 	}
 }
+
+// WithTestPredeclared injects additional parse-time globals visible
+// only when testMode is active. Phase 5 Plan 02 uses this for
+// ok/err/nonretryable so mock_fn lambda bodies resolve cleanly at
+// parse time even though the builder closures are only invoked at
+// workflow execute time. The cycle break is the same as
+// WithTestModule: pkg/cli/test.go (Plan 06) imports pkg/testing and
+// passes pkg/testing.MockLambdaParseTimeBuilders() (Plan 02) here.
+//
+// Names that collide with production parse-time globals (flow, step,
+// extension namespaces, etc.) cause the first parse to fail with a
+// clear "test-mode global collision" error.
+//
+// Passing nil or an empty map is permitted and is a no-op.
+func WithTestPredeclared(globals starlark.StringDict) Option {
+	return func(p *Parser) error {
+		p.testPredeclared = globals
+		return nil
+	}
+}

@@ -97,6 +97,17 @@ type Parser struct {
 	testMode          bool
 	testModuleBuilder func(p *Parser, thread *starlark.Thread) starlark.Value
 	testGlobals       map[string]starlark.StringDict
+
+	// testPredeclared is an optional map of additional parse-time
+	// globals injected when testMode is active. Phase 5 Plan 02 uses
+	// this to bind ok/err/nonretryable so mock_fn lambda bodies (which
+	// reference these as free variables) resolve cleanly at parse
+	// time. Production parses (testMode=false) never see these names.
+	//
+	// Wired via WithTestPredeclared. The pkg/cli/test.go entry point
+	// (Plan 06) calls bridge-like helpers in pkg/testing
+	// (MockLambdaGlobals, etc.) and passes the relevant subset here.
+	testPredeclared starlark.StringDict
 }
 
 // defaultMaxBlockSize is the D2-07 default cap for step(block=[...]) action
