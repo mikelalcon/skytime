@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -31,21 +31,29 @@ func WithExtensions(exts ...extension.Extension) Option {
 	}
 }
 
-// WithRunFilter sets a Go-style substring filter that gates which
-// discovered def test_*() names execute. The full match key is
-// "<file_basename_without_ext>.<test_name>" (D5-E3). Empty pattern =
-// run all (the v1 default).
+// WithRunFilter compiles a regex (Go regexp syntax) at option-apply
+// time and gates which discovered def test_*() names execute. The
+// full match key is "<file_basename_without_ext>.<test_name>"
+// (D5-E3). Empty pattern = run all.
 //
-// Plan 05 will replace the substring match with regexp.MatchString;
-// Plan 04 ships the option signature so Plan 06's CLI can wire
-// `--run` without further surface changes.
+// Compile failures surface here (NOT at run time) wrapped in
+// ErrBadFilter; callers can detect via errors.Is(err, ErrBadFilter).
 func WithRunFilter(pattern string) Option {
-	return func(c *runConfig) error { c.runPattern = pattern; return nil }
+	return func(c *runConfig) error {
+		re, err := CompileRunFilter(pattern)
+		if err != nil {
+			return err
+		}
+		c.runPattern = pattern
+		c.runRegex = re
+		return nil
+	}
 }
 
 type runConfig struct {
 	exts       []extension.Extension
 	runPattern string
+	runRegex   *regexp.Regexp // compiled once at WithRunFilter() time
 }
 
 // Run is the Go-level foundation API for Phase 5's test harness
@@ -54,19 +62,22 @@ type runConfig struct {
 // package.
 //
 // Behavior:
-//   - Walks dir for *_test.star files. Plan 04 ships single-directory
-//     (non-recursive) discovery; Plan 05 generalizes with recursion +
-//     ignores.
+//   - Walks dir RECURSIVELY for *_test.star files (D5-A2 via
+//     DiscoverTestFiles → filepath.WalkDir). Single-file paths
+//     (foo_test.star) are also accepted.
 //   - For each test file: NewParser(WithTestMode + WithTestModule +
-//     WithExtensions) + ParseFile.
-//   - Discovers def test_*() symbols via Parser.TestGlobals(filename).
+//     WithTestPredeclared + WithExtensions) + ParseFile.
+//   - Discovers def test_*() symbols via DiscoverTests over the
+//     captured Parser.TestGlobals(filename). Top-level only;
+//     NumParams()==0 required (D5-A1, RESEARCH Pattern 4).
 //   - For each test, t.Run with name "<file_basename>/<test_name>"
-//     and invoke runOneTest(subT, fn, reg, ws). Discovery results are
-//     sorted alphabetically for replay determinism (Go map iteration
-//     is randomized).
-//
-// (Plan 05 replaces the single-directory restriction + adds --run
-// regex filtering + adds --format=json output records.)
+//     and invoke runOneTest(subT, fn, reg, ws). Discovery results
+//     are sorted alphabetically for replay determinism.
+//   - WithRunFilter(pattern) compiles regex once at option time; only
+//     tests whose `<file_basename>.<test_name>` matches the regex
+//     execute (D5-E3).
+//   - Sequential within and across files (D5-E5; cross-file
+//     parallelization deferred to v1.x per RESEARCH Open Q2).
 func Run(t *testing.T, dir string, opts ...Option) {
 	t.Helper()
 	cfg := &runConfig{}
@@ -89,35 +100,12 @@ func Run(t *testing.T, dir string, opts ...Option) {
 	}
 }
 
-// discoverTestFiles is Plan 04's stub. Plan 05 replaces with a
-// recursive walk + .gitignore-style ignores.
+// discoverTestFiles delegates to the public DiscoverTestFiles so
+// existing internal callers (runner_test.go's walkAndDriveTests) keep
+// working without churn. Plan 05: recursive walk + single-file
+// support live in DiscoverTestFiles itself.
 func discoverTestFiles(dir string) ([]string, error) {
-	info, err := os.Stat(dir)
-	if err != nil {
-		return nil, err
-	}
-	if !info.IsDir() {
-		// Single-file path: caller passed a *_test.star file directly.
-		if !strings.HasSuffix(dir, "_test.star") {
-			return nil, fmt.Errorf("path %s is not a *_test.star file", dir)
-		}
-		return []string{dir}, nil
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	var out []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		if strings.HasSuffix(e.Name(), "_test.star") {
-			out = append(out, filepath.Join(dir, e.Name()))
-		}
-	}
-	sort.Strings(out)
-	return out, nil
+	return DiscoverTestFiles(dir)
 }
 
 // runOneFile parses one *_test.star file and runs every discovered
@@ -138,7 +126,7 @@ func runOneFile(t *testing.T, file string, cfg *runConfig) {
 
 	for _, tc := range tests.Tests {
 		fullName := fileStem + "." + tc.Name
-		if !matchesRunFilter(cfg.runPattern, fullName) {
+		if !MatchRunFilter(cfg.runRegex, fullName) {
 			continue
 		}
 		fn := tc.Fn
@@ -224,31 +212,17 @@ func parseTestFile(file string, cfg *runConfig) (*parsedTestFile, error) {
 		contentHashes: hashesByName,
 	}
 
-	// Discover def test_*() functions in the captured globals.
+	// Discover def test_*() functions in the captured globals via
+	// the shared DiscoverTests helper (D5-A1, RESEARCH Pattern 4).
+	// Returns alphabetically sorted entries for replay determinism.
 	globals, ok := p.TestGlobals(file)
 	if !ok {
 		return nil, fmt.Errorf("TestGlobals not found for %s", file)
 	}
-
-	var names []string
-	for name, val := range globals {
-		if !strings.HasPrefix(name, "test_") {
-			continue
-		}
-		fn, isFn := val.(*starlark.Function)
-		if !isFn {
-			continue
-		}
-		if fn.NumParams() != 0 {
-			continue
-		}
-		names = append(names, name)
-	}
-	sort.Strings(names) // replay-deterministic order
-
-	tests := make([]discoveredTest, 0, len(names))
-	for _, n := range names {
-		tests = append(tests, discoveredTest{Name: n, Fn: globals[n].(*starlark.Function)})
+	fns := DiscoverTests(globals)
+	tests := make([]discoveredTest, 0, len(fns))
+	for _, fn := range fns {
+		tests = append(tests, discoveredTest{Name: fn.Name, Fn: fn.Fn})
 	}
 
 	return &parsedTestFile{
@@ -257,14 +231,4 @@ func parseTestFile(file string, cfg *runConfig) (*parsedTestFile, error) {
 		WS:    ws,
 		Tests: tests,
 	}, nil
-}
-
-// matchesRunFilter applies the Plan 05 regex semantics. Plan 04
-// stub: empty pattern → match all; non-empty → strings.Contains.
-// Plan 05 replaces with regexp.MatchString.
-func matchesRunFilter(pattern, fullName string) bool {
-	if pattern == "" {
-		return true
-	}
-	return strings.Contains(fullName, pattern)
 }

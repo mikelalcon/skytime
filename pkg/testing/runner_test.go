@@ -82,3 +82,72 @@ func walkAndDriveTests(t *testing.T, file string, rep testReporter) int {
 	}
 	return hits
 }
+
+// TestTestCommand_RunFilter — VALIDATION.md per-task map cite (CLI-03).
+//
+// Plan 05 owns the regex filter at the pkg/testing layer; Plan 06 will
+// add a thin pkg/cli wrapper test that exposes the same behavior
+// through the cobra `--run` flag.
+//
+// We can't directly count which subtests t.Run actually executed
+// from outside the runner (testing.T doesn't expose that). Instead
+// we use walkAndDriveTests + a recording reporter, applying the
+// filter inline against `<file_basename>.<test_name>` exactly as the
+// runner does. This pins the regex semantics that Run is contracted
+// to honor.
+func TestTestCommand_RunFilter(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "users_test.star",
+		"def test_existing_user():\n    assert.eq(1,1)\ndef test_other():\n    assert.eq(1,1)\n")
+	writeFixture(t, dir, "orders_test.star",
+		"def test_o():\n    assert.eq(1,1)\n")
+
+	// 1. Empty filter (match all): every discovered test in both
+	//    files runs. There are 3 def test_*() functions across the
+	//    two fixtures (test_existing_user, test_other, test_o) so
+	//    walkAndDriveTests returns 3 invocations total.
+	files, err := DiscoverTestFiles(dir)
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+
+	allRep := &recordingT{}
+	allHits := 0
+	for _, f := range files {
+		allHits += walkAndDriveTests(t, f, allRep)
+	}
+	assert.Equal(t, 3, allHits, "no filter must run all 3 def test_*() across both files")
+	assert.False(t, allRep.failed, "all assertions are eq(1,1); the recording reporter should not have failed")
+
+	// 2. Filter active: regex `^users_test\.test_existing` matches
+	//    only users_test.test_existing_user. Apply the filter
+	//    inline — exactly the rule MatchRunFilter applies.
+	re, err := CompileRunFilter(`^users_test\.test_existing`)
+	require.NoError(t, err)
+
+	var matched []string
+	for _, f := range files {
+		tests, perr := parseTestFile(f, &runConfig{})
+		require.NoError(t, perr)
+		fileStem := stemOf(f)
+		for _, tc := range tests.Tests {
+			full := fileStem + "." + tc.Name
+			if MatchRunFilter(re, full) {
+				matched = append(matched, full)
+			}
+		}
+	}
+	require.Len(t, matched, 1, "filter must select exactly 1 test")
+	assert.Equal(t, "users_test.test_existing_user", matched[0])
+}
+
+// stemOf returns the basename without the .star suffix
+// ("users_test.star" → "users_test"). Mirrors what runOneFile does
+// internally; lifted here so the filter test can match the runner's
+// canonical key shape without poking unexported helpers.
+func stemOf(file string) string {
+	base := filepath.Base(file)
+	if len(base) > len(".star") && base[len(base)-len(".star"):] == ".star" {
+		return base[:len(base)-len(".star")]
+	}
+	return base
+}
