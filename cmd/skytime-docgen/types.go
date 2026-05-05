@@ -12,11 +12,11 @@ package main
 // Phase 04.3 D-11). Pos is the source location ("file:line:col") of the
 // FuncDecl, suitable for diagnostic output.
 type Builtin struct {
-	Name     string              // "flow"
-	Function string              // "builtinFlow"
-	Params   []Param             // from UnpackArgs (empty for positional-only)
-	Markers  map[string][]string // skytime:doc key → values (multi-line via repeat)
-	Pos      string              // "pkg/parser/builtins.go:103"
+	Name     string              `json:"name"`             // "flow"
+	Function string              `json:"function"`         // "builtinFlow"
+	Params   []Param             `json:"params"`           // from UnpackArgs (empty for positional-only)
+	Markers  map[string][]string `json:"markers"`          // skytime:doc key → values (multi-line via repeat)
+	Pos      string              `json:"pos"`              // "pkg/parser/builtins.go:103"
 }
 
 // Param describes a single keyword argument recovered from a builtin's
@@ -29,7 +29,7 @@ type Builtin struct {
 // `&taskQueue`). Type recovery (Go type name on the target var) is deferred
 // to plan 02 — Phase 04.3 plan 01 only captures the identifier.
 type Param struct {
-	Name     string // "name", "inputs", "steps" (NO "?" suffix)
-	Required bool   // true if UnpackArgs key did NOT end with "?"
-	Target   string // identifier name, e.g. "taskQueue" — type recovery deferred to plan 02
+	Name     string `json:"name"`     // "name", "inputs", "steps" (NO "?" suffix)
+	Required bool   `json:"required"` // true if UnpackArgs key did NOT end with "?"
+	Target   string `json:"target"`   // identifier name, e.g. "taskQueue" — type recovery deferred to plan 02
 }
