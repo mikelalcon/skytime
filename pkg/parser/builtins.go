@@ -95,6 +95,22 @@ func (p *Parser) wrapBuiltinError(opName string, thread *starlark.Thread, err er
 // builtinFlow — flow(name=..., inputs=..., steps=[...]) → *dag.Flow
 // =============================================================================
 
+// skytime:doc summary="Declares a workflow — the top-level unit of orchestration."
+// skytime:doc summary="Each .star file declares one or more flows; flow names must be unique within a parser session."
+// skytime:doc returns="None (registers a *dag.Flow as a parse-time side effect)."
+// skytime:doc since="phase-01"
+// skytime:doc example="flow(\n    name = \"check_user\",\n    inputs = {\"user_id\": \"string\"},\n    steps = [\n        step(action = api.fetch_user(id = \"${ctx.user_id}\")),\n    ],\n)"
+// skytime:doc see="step, script, if_cond, for_each_parallel, call_flow"
+// skytime:doc param_name="string"
+// skytime:doc desc_name="Unique flow identifier; supports ${ctx.expr} interpolation."
+// skytime:doc param_inputs="dict[string,string]"
+// skytime:doc desc_inputs="Type-hint map (e.g. {\"repo\":\"string\"}); seeds the parse-time state schema."
+// skytime:doc param_steps="list[Node]"
+// skytime:doc desc_steps="Body — list of step/if_cond/script/for_each_parallel/call_flow nodes."
+// skytime:doc param_task_queue="string"
+// skytime:doc desc_task_queue="Optional Temporal task queue override (D3-19); empty inherits worker default."
+// skytime:doc param_description="string"
+// skytime:doc desc_description="Optional free-form description shown by `skytime info`."
 // builtinFlow constructs a *dag.Flow from kwargs, registers it in the
 // parser session's flow map (D-15: error on duplicate names), and returns
 // starlark.None. The flow is captured by name as a side effect — the .star
@@ -241,6 +257,28 @@ func convertNodeList(lst *starlark.List, callPos syntax.Position, kwargName stri
 // builtinStep — step(action=..., block=[...], retry=..., timeout=...)
 // =============================================================================
 
+// skytime:doc summary="Declares a sequential workflow step that dispatches one or more extension actions."
+// skytime:doc summary="Exactly ONE of action / block / action_fn / block_fn must be provided (D4.1-06 4-way mutual exclusion)."
+// skytime:doc returns="A *dag.Step node consumed by flow(steps=[...])."
+// skytime:doc since="phase-01"
+// skytime:doc example="step(\n    name = \"Fetch ${ctx.repo}\",\n    action = http.get(path = \"/repos/${ctx.repo}\"),\n)"
+// skytime:doc see="flow, if_cond, for_each_parallel"
+// skytime:doc param_action="ActionRef"
+// skytime:doc desc_action="Single static action (mutually exclusive with block/action_fn/block_fn)."
+// skytime:doc param_block="list[ActionRef]"
+// skytime:doc desc_block="Static batch of actions (homogeneous idempotency required, D2-05)."
+// skytime:doc param_action_fn="lambda(ctx) -> ActionRef"
+// skytime:doc desc_action_fn="Dynamic single-action lambda (D4.1-06); evaluated inside the workflow."
+// skytime:doc param_block_fn="lambda(ctx) -> list[ActionRef]"
+// skytime:doc desc_block_fn="Dynamic batch lambda (D4.1-07); empty list short-circuits without dispatch."
+// skytime:doc param_name="string"
+// skytime:doc desc_name="Display name; supports ${ctx.expr} interpolation (D4.1-15)."
+// skytime:doc param_retry="RetryPolicy"
+// skytime:doc desc_retry="Optional Temporal RetryPolicy (DSL-08)."
+// skytime:doc param_timeout="Timeout"
+// skytime:doc desc_timeout="Optional Temporal Timeout (DSL-08)."
+// skytime:doc param_task_queue="string"
+// skytime:doc desc_task_queue="Optional Temporal task queue override (D3-19); precedence: step > flow > worker."
 // builtinStep produces a *dag.Step. Exactly one of `action`, `block`,
 // `action_fn`, `block_fn` must be provided (D4.1-06 4-way mutual
 // exclusion). `retry` and `timeout` are optional DSL-08 kwargs that decode
@@ -506,6 +544,21 @@ func (p *Parser) desugarActionRefKwargs(ar *dag.ActionRef) error {
 // builtinIfCond — if_cond(cond=lambda ctx: ..., then=[...], else_=[...], output_alias?=...)
 // =============================================================================
 
+// skytime:doc summary="Conditional branch evaluated INSIDE the workflow (zero Temporal history events for the branch decision)."
+// skytime:doc summary="Procedural mode (no output_alias): branches contain procedural nodes; today's behavior."
+// skytime:doc summary="Expression mode (output_alias=\"X\"): both branches must end in result(value={...}) or fail(...); the bound value lands at ctx.X (DSL-14, D4.2-09)."
+// skytime:doc returns="A *dag.IfCond node."
+// skytime:doc since="phase-01 (procedural); phase-04.2 (expression mode)"
+// skytime:doc example="if_cond(\n    output_alias = \"user\",\n    cond = lambda ctx: ctx.user_id != \"\",\n    then = [result(value = {\"id\": ctx.user_id, \"ok\": True})],\n    else_ = [fail(\"invalid user_id: '${ctx.user_id}'\")],\n)"
+// skytime:doc see="result, fail, script"
+// skytime:doc param_cond="lambda(ctx) -> bool"
+// skytime:doc desc_cond="Predicate evaluated inside the workflow; lambda-time globals only (no time, no random, no I/O)."
+// skytime:doc param_then="list[Node]"
+// skytime:doc desc_then="Body executed when cond is truthy."
+// skytime:doc param_else_="list[Node]"
+// skytime:doc desc_else_="Body executed when cond is falsy."
+// skytime:doc param_output_alias="string"
+// skytime:doc desc_output_alias="When non-empty, switches to expression mode and binds branch result to ctx.<alias>."
 func (p *Parser) builtinIfCond(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var (
 		cond        starlark.Value
@@ -1007,6 +1060,18 @@ func findResultValueArg(fileBytes []byte, filename string, callPos syntax.Positi
 // builtinScript — script(id=..., fn=lambda ctx: ..., output_alias=...)
 // =============================================================================
 
+// skytime:doc summary="Pure state transformation evaluated INSIDE the workflow (zero Temporal history events)."
+// skytime:doc summary="The fn lambda receives ctx and returns a dict that is bound to ctx.<output_alias> for downstream nodes."
+// skytime:doc returns="A *dag.Script node."
+// skytime:doc since="phase-01"
+// skytime:doc example="script(\n    id = \"validate_${ctx.repo}\",\n    fn = lambda ctx: {\"valid\": ctx.repo != \"\"},\n    output_alias = \"validation\",\n)"
+// skytime:doc see="if_cond, flow"
+// skytime:doc param_id="string"
+// skytime:doc desc_id="Logical identifier; supports ${ctx.expr} interpolation (D4.1-02)."
+// skytime:doc param_fn="lambda(ctx) -> dict"
+// skytime:doc desc_fn="Pure transformation; lambda-time globals only."
+// skytime:doc param_output_alias="string"
+// skytime:doc desc_output_alias="ctx attribute that receives the returned dict for downstream consumers."
 func (p *Parser) builtinScript(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var (
 		idVal starlark.Value
@@ -1062,6 +1127,24 @@ func (p *Parser) builtinScript(thread *starlark.Thread, fn *starlark.Builtin, ar
 // builtinForEachParallel — for_each_parallel(items=..., item=..., steps=[...])
 // =============================================================================
 
+// skytime:doc summary="Parallel fan-out with bounded concurrency (default 10; configurable via max_concurrency)."
+// skytime:doc summary="items can be a static list literal OR a lambda producer that returns a list at workflow-execute time."
+// skytime:doc returns="A *dag.ForEachParallel node."
+// skytime:doc since="phase-01"
+// skytime:doc example="for_each_parallel(\n    items = lambda ctx: ctx.repos,\n    item = \"repo\",\n    max_concurrency = 5,\n    steps = [step(action = http.get(path = \"/repos/${ctx.repo}\"))],\n)"
+// skytime:doc see="step, call_flow, flow"
+// skytime:doc param_items="list | lambda(ctx) -> list"
+// skytime:doc desc_items="Static list literal or lambda producer; lambda evaluated once inside the workflow."
+// skytime:doc param_item="string"
+// skytime:doc desc_item="Per-iteration variable name added to ctx for the inner steps body."
+// skytime:doc param_steps="list[Node]"
+// skytime:doc desc_steps="Body executed once per item with ctx.<item> bound."
+// skytime:doc param_retry="RetryPolicy"
+// skytime:doc desc_retry="Optional inherited Temporal RetryPolicy."
+// skytime:doc param_timeout="Timeout"
+// skytime:doc desc_timeout="Optional inherited Temporal Timeout."
+// skytime:doc param_max_concurrency="int"
+// skytime:doc desc_max_concurrency="Concurrent worker.Go fan-out cap (D3-13); 0 = interpreter default 10."
 // builtinForEachParallel accepts items as either a static list literal OR a
 // lambda producer. Type switch determines which: *starlark.List → static
 // (ItemsLiteral), *starlark.Function → lambda (ItemsLambdaID). Anything
@@ -1192,6 +1275,17 @@ func starlarkLiteralToGo(v starlark.Value) (any, error) {
 // builtinCallFlow — call_flow(name=..., inputs=..., child_options=...)
 // =============================================================================
 
+// skytime:doc summary="Invoke a sub-flow as a Temporal child workflow (isolates sub-history)."
+// skytime:doc returns="A *dag.CallFlow node."
+// skytime:doc since="phase-01"
+// skytime:doc example="call_flow(\n    name = \"audit_repo\",\n    inputs = {\"repo\": ctx.repo},\n    child_options = {\"workflow_id\": \"audit-${ctx.repo}\"},\n)"
+// skytime:doc see="flow, step"
+// skytime:doc param_name="string"
+// skytime:doc desc_name="Target flow name; resolved at parse finalize against the parser session's flow map (D-16)."
+// skytime:doc param_inputs="dict[string,any]"
+// skytime:doc desc_inputs="Inputs passed to the child flow; merged with the child's declared inputs."
+// skytime:doc param_child_options="dict[string,any]"
+// skytime:doc desc_child_options="Pass-through Temporal child workflow options (workflow_id, retry policy, etc.)."
 // builtinCallFlow records a CallFlow node with Name set; cross-flow
 // resolution (matching Name against the parser session's flow map) happens
 // at finalize time per D-16. Returns *nodeValue so it can sit inside a
