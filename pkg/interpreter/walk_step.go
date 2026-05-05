@@ -37,6 +37,12 @@ func (i *interpreter) walkStep(ctx workflow.Context, step *dag.Step) (err error)
 		"event", "step_dispatch",
 		"kind", "step",
 		"label", label,
+		// D5-D3: stable `name` KV for divergence-attribution lookup;
+		// equals the resolved label by default.
+		"name", label,
+		// D5-D3: originating step's syntax.Position; surfaces via
+		// pkg/testing.lookupOriginatingStep when reporting a divergence.
+		"pos", step.Pos,
 		"idx", idx, "total", total, "path", path,
 	)
 	// deferEmit gates the success-path step_complete emission. The

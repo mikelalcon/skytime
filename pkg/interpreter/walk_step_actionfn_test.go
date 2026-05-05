@@ -425,6 +425,60 @@ func TestWalkStep_ActionFn_ReplayFrozenKwargs(t *testing.T) {
 		run1, run2)
 }
 
+// TestWalkStep_StepDispatch_CarriesPosAndName (Plan 03 Task 0; D5-D3
+// prerequisite): the step_dispatch event must carry `pos`
+// (syntax.Position from the underlying step) and `name` (string,
+// equals the resolved label) KV pairs in addition to the existing
+// `label`. Plan 03 Task 2's lookupOriginatingStep walks backward from
+// a divergent record looking for the nearest step_dispatch event and
+// reads these two attributes for D5-D3 flow-callsite attribution.
+func TestWalkStep_StepDispatch_CarriesPosAndName(t *testing.T) {
+	parsed, _, step := helperBuildActionFnFlow(t, "stepdispatch_pos_name",
+		`f = lambda ctx: _action("http.get", path = "/x")`+"\n")
+	require.NotNil(t, step.ActionFn)
+
+	registry := NewRegistry()
+	require.NoError(t, registry.Register(parsed.Flow.Name, "h", parsed))
+	registry.Freeze()
+
+	cap := newEventCapturingLogger()
+	var ts testsuite.WorkflowTestSuite
+	ts.SetLogger(cap)
+	env := ts.NewTestWorkflowEnvironment()
+	helperRegisterFakeExecuteBatch(env)
+	env.OnActivity("ExecuteBatch", mock.Anything, mock.Anything).
+		Return(dag.ActionResults{dag.OkResult{Idx: 0, Output: nil}}, nil)
+
+	wf := NewWorkflow(registry)
+	env.RegisterWorkflowWithOptions(wf, workflow.RegisterOptions{Name: "SkytimeWorkflow"})
+	env.ExecuteWorkflow(wf, dag.WorkflowInput{
+		FlowName: "stepdispatch_pos_name", ContentHash: "h", InitState: map[string]any{},
+	})
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+
+	dispatchRecords := findEventRecords(cap.snapshot(), "step_dispatch")
+	require.NotEmpty(t, dispatchRecords, "expected at least one step_dispatch event")
+	rec := dispatchRecords[0]
+
+	// `pos` must be present and carry the originating step's syntax.Position.
+	posAttr, hasPos := rec.Attrs["pos"]
+	require.True(t, hasPos, "step_dispatch must carry `pos` KV (D5-D3 prerequisite)")
+	pos, isPos := posAttr.(syntax.Position)
+	require.True(t, isPos, "step_dispatch.pos must be a syntax.Position; got %T", posAttr)
+	assert.Equal(t, step.Pos.Filename(), pos.Filename(),
+		"step_dispatch.pos.Filename must equal the originating step's filename")
+
+	// `name` must be present and equal the resolved label by default.
+	nameAttr, hasName := rec.Attrs["name"]
+	require.True(t, hasName, "step_dispatch must carry `name` KV (D5-D3 prerequisite)")
+	name, isStr := nameAttr.(string)
+	require.True(t, isStr, "step_dispatch.name must be a string; got %T", nameAttr)
+	labelAttr, _ := rec.Attrs["label"].(string)
+	assert.Equal(t, labelAttr, name,
+		"step_dispatch.name must equal the resolved label by default")
+}
+
 // TestWalkStep_StaticActionUnchanged: synthesize a Step with Actions
 // directly populated (NO ActionFn / BlockFn). ExecuteActivity must
 // receive that Actions slice unchanged. No regression on the existing
