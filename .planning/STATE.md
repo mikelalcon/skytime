@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.3-01-PLAN.md
-last_updated: "2026-05-05T00:18:39.970Z"
+stopped_at: Completed 04.3-02-PLAN.md
+last_updated: "2026-05-05T00:30:04.099Z"
 last_activity: 2026-05-05
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 43
-  completed_plans: 40
+  completed_plans: 41
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04.3 (documentation-and-source-driven-reference-generator) — EXECUTING
-Plan: 3 of 9
+Plan: 4 of 9
 Status: Ready to execute
 Last activity: 2026-05-05
 
@@ -91,6 +91,7 @@ Progress: [██████████] 100%
 | Phase 04.3 P04 | 13min | 1 tasks | 1 files |
 | Phase 04.3 P03 | 4min | 1 tasks | 1 files |
 | Phase 04.3 P01 | 6 min | 3 tasks | 10 files |
+| Phase 04.3 P02 | 7min | 4 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -246,6 +247,9 @@ Recent decisions affecting current work:
 - [Phase 04.3]: Plan 01: testdata/*.go.txt fixtures (extension dodges Go compile path; tests rewrite to tempdir/*.go before parsing) — decouples unit tests from live-source evolution; live-source smokes assert walker works on actual pkg/parser/{globals,builtins}.go
 - [Phase 04.3]: Plan 01: Order-preserving registry via paired (map[name]funcName, []order) return — Go map iteration is randomized; preserving newParseTimeGlobals' source-insertion order keeps the renderer's natural top-to-bottom shape (alphabetical sort would scramble flow/step/if_cond before result/fail)
 - [Phase 04.3]: Plan 01: ParseMarkers warn-and-skip via fmt.Fprintln(os.Stderr) — keeps API minimal; captureStderr test helper handles assertion paths via os.Pipe + os.Stderr swap; refactor to io.Writer reserved for plan 02 if more tests need to assert warning content
+- [Phase 04.3]: Plan 02: text/template stdlib over third-party templating — preserves cmd/skytime-docgen's stdlib-only stance from plan 01; firewall test stays unchanged
+- [Phase 04.3]: Plan 02: positional-only-with-markers fallback for fail() — UnpackPositionalArgs returns []Param=[] from plan 01 walker; rather than retrofit walker schema, renderer synthesizes table rows from sort.Strings-ordered param_* markers. Plan 01 walker contract preserved verbatim
+- [Phase 04.3]: Plan 02: tests/docgen_drift_test.go in package firewall_test (single external-test-package convention for tests/) — helpers suffixed Docgen to avoid collision with findModuleRootCLI / findModuleRootE2E siblings
 
 ### Pending Todos
 
@@ -276,6 +280,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-05T00:18:39.966Z
-Stopped at: Completed 04.3-01-PLAN.md
+Last session: 2026-05-05T00:30:04.095Z
+Stopped at: Completed 04.3-02-PLAN.md
 Resume file: None
