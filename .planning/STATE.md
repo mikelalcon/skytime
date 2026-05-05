@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-05-05T20:13:01.363Z"
+stopped_at: Completed 05-05-PLAN.md
+last_updated: "2026-05-05T20:28:32.379Z"
 last_activity: 2026-05-05
 progress:
   total_phases: 9
   completed_phases: 7
   total_plans: 49
-  completed_plans: 47
+  completed_plans: 48
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 05 (tier-3-e2e-test-harness-temporal-test) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-05-05
 
@@ -98,6 +98,7 @@ Progress: [██████████] 100%
 | Phase 05 P02 | 35min | 3 tasks | 13 files |
 | Phase 05 P03 | 9min | 3 tasks | 9 files |
 | Phase 05 P04 | 30min | 3 tasks | 13 files |
+| Phase 05 P05 | 11min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -277,6 +278,10 @@ Recent decisions affecting current work:
 - [Phase 05]: Plan 05-04: D5-D1 always-on replay shares AttemptCounter across run1/run2 in tester.run — fundamentally conflicts with retry-attempt mock semantics (err on attempts 1+2 + ok on attempt 3 produces 3 dispatches in run1, 1 in run2, guaranteed FirstDivergentEvent). Plan 06 introduces a non-replay assertion path; TestAttempts_IncrementOnRetry skipped with forward-pointing message; substance pinned by TestRouter_AttemptIncrementsPerCall (Plan 02)
 - [Phase 05]: Plan 05-04: pkgtesting.Run(t, dir, opts...) — Open Q7 Go-level foundation API for Phase 6 + Plan 06's cobra wrapper. Single-directory walk for v1 (Plan 05 generalizes); WithExtensions + WithRunFilter Options surface today so Plan 06's --run flag is additive. fakeGhExtension implementation inline in router_test.go removes the last panic stub from pkg/testing
 - [Phase 05]: Plan 05-04: Generalized callerPosFromThread skip-list — was tester.mock_action only; now any tester.* prefix. Both builtin_mock_action.go (RegisterPos) and builtin_run.go (test-callsite divergence + file-scope rejection position) consume the same helper; strings.HasPrefix on Frame.Name skip-list
+- [Phase 05]: [05-05] renderOneFile factored from runOneFile so format tests use a recordingT shim instead of real t.Run; production runOneFile retains t.Run-based driver
+- [Phase 05]: [05-05] JSONEvent uses capitalized json tags (Time/Action/Package/Test,omitempty/Elapsed,omitempty/Output,omitempty) exactly mirroring stdlib cmd/test2json
+- [Phase 05]: [05-05] WithRunFilter compiles regex once at option time; ErrBadFilter sentinel detected via errors.Is
+- [Phase 05]: [05-05] jsonEmitter writes time.Now().UTC() (Open Q6 RFC3339Nano UTC); replay-deterministic across hosts
 
 ### Pending Todos
 
@@ -307,6 +312,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-05T20:12:34.631Z
-Stopped at: Completed 05-04-PLAN.md
+Last session: 2026-05-05T20:28:23.177Z
+Stopped at: Completed 05-05-PLAN.md
 Resume file: None
