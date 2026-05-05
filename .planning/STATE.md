@@ -4,13 +4,13 @@ milestone: v1.42.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 04.3-04-PLAN.md (CLI reference doc)
-last_updated: "2026-05-05T00:15:08.566Z"
+last_updated: "2026-05-05T00:15:57.836Z"
 last_activity: 2026-05-05
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 43
-  completed_plans: 38
+  completed_plans: 39
   percent: 100
 ---
 
@@ -89,6 +89,7 @@ Progress: [██████████] 100%
 | Phase 04.3 P07 | 2min | 1 tasks | 1 files |
 | Phase 04.3 P05 | 2min | 1 tasks | 1 files |
 | Phase 04.3 P04 | 13min | 1 tasks | 1 files |
+| Phase 04.3 P03 | 4min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -239,6 +240,7 @@ Recent decisions affecting current work:
 - [Phase 04.3]: Plan 04.3-04: Documented 8 persistent flags (not 10): plan's interfaces table claimed --rootdir and --temporal-task-queue exist; pkg/cli/flags.go has neither. Source-of-truth fidelity (must_haves.truths in plan frontmatter) trumps interfaces table; doc reflects actual flags + SKYTIME_TEMPORAL_CLIENT_CERT/CLIENT_KEY/SERVER_CA env names
 - [Phase 04.3]: Plan 04.3-04: mTLS documented as cert+key pair (with optional --server-ca), not triplet — pkg/cli/connect.go::connectClientWithFactory rejects only when ONE of --client-cert / --client-key is set without the other; --server-ca is optional and supplies a custom RootCAs pool
 - [Phase 04.3]: Plan 04.3-04: docs/reference/cli.md cross-links to builtins.md, architecture.md, getting-started.md, for-flow-authors/, for-extension-developers/ (sibling plans 01-09) — links resolve as siblings ship; cli.md reads coherently in isolation, dead links serve as TODO anchors for parallel agents
+- [Phase 04.3]: Plan 04.3-03: docs/architecture.md is the required-reading architecture page (D-15) — parse/execute split prosaically + ASCII diagram verbatim from CONTEXT.md; D4.1-22 + D4.2-05 carve-outs quoted verbatim from PROJECT.md; cites pkg/parser/globals.go, pkg/dag/lambda.go (CapturedLambda + ComputeLambdaID), pkg/interpreter/workflow.go (SkytimeWorkflow factory), pkg/activity/execute_batch.go (ExecuteBatch), pkg/bridge/lambda_call.go (CallLambda), pkg/interpreter/registry.go (FlowRegistry), pkg/interpreter/cancel_watchdog.go
 
 ### Pending Todos
 
