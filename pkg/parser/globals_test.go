@@ -2,6 +2,7 @@ package parser
 
 import (
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -168,4 +169,70 @@ func keysOf(d starlark.StringDict) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// =============================================================================
+// Phase 5 Plan 04 Task 1 — assert.* in test mode + Parser.TestGlobals
+// =============================================================================
+
+// TestNewParseTimeGlobals_TestMode_InjectsAssert: parse-time globals in test
+// mode include assert.* from go.starlark.net/starlarktest. Without
+// WithTestMode, "assert" is undefined.
+func TestNewParseTimeGlobals_TestMode_InjectsAssert(t *testing.T) {
+	p, err := NewParser(
+		WithTestMode(),
+		WithTestModule(func(_ *Parser, _ *starlark.Thread) starlark.Value { return starlark.None }),
+	)
+	require.NoError(t, err)
+	_, err = p.ParseSource("t.star", []byte(`x = assert.eq`))
+	require.NoError(t, err, "assert.* must be defined in test mode")
+}
+
+// TestNewParseTimeGlobals_NoTestMode_AssertUndefined: production parses
+// (no test options) leave assert.* out so the production lambda env stays
+// minimal (D1-20 invariant).
+func TestNewParseTimeGlobals_NoTestMode_AssertUndefined(t *testing.T) {
+	p, err := NewParser()
+	require.NoError(t, err)
+	_, err = p.ParseSource("t.star", []byte(`x = assert.eq`))
+	require.Error(t, err)
+	msg := err.Error()
+	assert.True(t,
+		strings.Contains(msg, "undefined: assert") ||
+			strings.Contains(msg, "name assert is not defined") ||
+			strings.Contains(msg, "undefined name: assert"),
+		"expected undefined-assert error, got: %v", err)
+}
+
+// TestParser_TestGlobals_CapturesDefSymbols: in test mode the Parser
+// captures the file's top-level globals after exec so Plan 05 can
+// enumerate def test_*() symbols.
+func TestParser_TestGlobals_CapturesDefSymbols(t *testing.T) {
+	p, err := NewParser(
+		WithTestMode(),
+		WithTestModule(func(_ *Parser, _ *starlark.Thread) starlark.Value { return starlark.None }),
+	)
+	require.NoError(t, err)
+	src := "def test_a():\n    pass\ndef test_b():\n    pass\n"
+	_, err = p.ParseSource("t.star", []byte(src))
+	require.NoError(t, err)
+	g, ok := p.TestGlobals("t.star")
+	require.True(t, ok)
+	_, hasA := g["test_a"]
+	_, hasB := g["test_b"]
+	assert.True(t, hasA, "captured globals must contain test_a")
+	assert.True(t, hasB, "captured globals must contain test_b")
+}
+
+// TestParser_TestGlobals_ProductionParseReturnsFalse: a production-mode
+// parse (no WithTestMode) leaves p.testGlobals nil; lookup returns
+// (nil, false).
+func TestParser_TestGlobals_ProductionParseReturnsFalse(t *testing.T) {
+	p, err := NewParser()
+	require.NoError(t, err)
+	_, err = p.ParseSource("flow.star", []byte(`x = 1`))
+	require.NoError(t, err)
+	g, ok := p.TestGlobals("flow.star")
+	assert.False(t, ok, "production parse must not populate testGlobals")
+	assert.Nil(t, g)
 }

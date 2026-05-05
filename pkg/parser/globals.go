@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarktest"
 )
 
 // newParseTimeGlobals builds the parse-time predeclared environment.
@@ -115,6 +116,27 @@ func newParseTimeGlobals(p *Parser, thread *starlark.Thread) (starlark.StringDic
 		for name, val := range p.testPredeclared {
 			if _, collide := g[name]; collide {
 				return nil, fmt.Errorf("test-mode global collision: %q", name)
+			}
+			g[name] = val
+		}
+
+		// Phase 5 Plan 04 D5-F1 + TEST-05: inject assert.* surfaces
+		// from go.starlark.net/starlarktest. Failures land on the
+		// active starlarktest.Reporter, which the runner
+		// (pkg/testing/reporter.go::runOneTest) binds to the
+		// per-subtest *testing.T.
+		//
+		// Library default: assert.* accumulates failures within a
+		// single def test_*() (D5-F2). Reporter is per-thread, set
+		// per subtest; failures land on the active subtest's
+		// *testing.T.Error.
+		assertGlobals, assertErr := starlarktest.LoadAssertModule()
+		if assertErr != nil {
+			return nil, fmt.Errorf("starlarktest.LoadAssertModule: %w", assertErr)
+		}
+		for name, val := range assertGlobals {
+			if _, collide := g[name]; collide {
+				return nil, fmt.Errorf("test-mode global collision: %q (parse-time global already defined)", name)
 			}
 			g[name] = val
 		}

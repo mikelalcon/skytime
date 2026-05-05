@@ -210,6 +210,20 @@ func (p *Parser) FlowsInOrder() []*dag.Flow {
 	return out
 }
 
+// TestGlobals returns the top-level Starlark globals captured during a
+// test-mode parse for the given filename, plus a found-bool. Returns
+// (nil, false) for production parses or unknown filenames.
+//
+// Phase 5 (Plan 05) uses this to enumerate `def test_*` functions for
+// discovery (D5-A1). Plan 04 already populates testGlobals so the
+// runner (Plan 04 Task 3) can drive single-file tests end-to-end.
+//
+// Returns the LIVE map; callers MUST NOT mutate.
+func (p *Parser) TestGlobals(filename string) (starlark.StringDict, bool) {
+	g, ok := p.testGlobals[filename]
+	return g, ok
+}
+
 // FileBytes returns the parser session's cached file bytes keyed by absolute
 // path (the same path stored on captured lambda syntax.Position.Filename()).
 // Used by the Phase 4 AST re-parse path (pkg/parser/ctx_walk.go, plan 04-02)
@@ -304,8 +318,25 @@ func (p *Parser) parse(filename string, src []byte) (result map[string]*dag.Flow
 	thread.SetMaxExecutionSteps(p.maxExecSteps)
 
 	opts := defaultFileOptions()
-	if _, execErr := starlark.ExecFileOptions(opts, thread, filename, execSrc, p.parseTimeGlobals); execErr != nil {
-		return nil, wrapStarlarkError(execErr)
+	if p.testMode {
+		// Phase 5 Plan 04: capture the file's top-level globals so the
+		// runner (pkg/testing/runner.go) can enumerate `def test_*`
+		// functions via Parser.TestGlobals(filename). The captured
+		// StringDict includes user-defined functions, top-level
+		// variables, and the parse-time predeclared globals — Plan 05
+		// will filter for `test_`-prefixed *starlark.Function entries.
+		globals, execErr := starlark.ExecFileOptions(opts, thread, filename, execSrc, p.parseTimeGlobals)
+		if execErr != nil {
+			return nil, wrapStarlarkError(execErr)
+		}
+		if p.testGlobals == nil {
+			p.testGlobals = map[string]starlark.StringDict{}
+		}
+		p.testGlobals[filename] = globals
+	} else {
+		if _, execErr := starlark.ExecFileOptions(opts, thread, filename, execSrc, p.parseTimeGlobals); execErr != nil {
+			return nil, wrapStarlarkError(execErr)
+		}
 	}
 
 	if ferr := p.finalize(); ferr != nil {
