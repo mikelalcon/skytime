@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.3-05-PLAN.md
-last_updated: "2026-05-05T00:13:47.022Z"
-last_activity: 2026-05-05 -- Phase 04.3 execution started
+stopped_at: Completed 04.3-04-PLAN.md (CLI reference doc)
+last_updated: "2026-05-05T00:15:08.566Z"
+last_activity: 2026-05-05
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 43
-  completed_plans: 37
+  completed_plans: 38
   percent: 100
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 04.3 (documentation-and-source-driven-reference-generator) — EXECUTING
-Plan: 1 of 9
-Status: Executing Phase 04.3
-Last activity: 2026-05-05 -- Phase 04.3 execution started
+Plan: 2 of 9
+Status: Ready to execute
+Last activity: 2026-05-05
 
 Progress: [██████████] 100%
 
@@ -88,6 +88,7 @@ Progress: [██████████] 100%
 | Phase 04.3 P06 | 2min | 1 tasks | 1 files |
 | Phase 04.3 P07 | 2min | 1 tasks | 1 files |
 | Phase 04.3 P05 | 2min | 1 tasks | 1 files |
+| Phase 04.3 P04 | 13min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -235,6 +236,9 @@ Recent decisions affecting current work:
 - [Phase 04.3]: Plan 04.3-07: tutorial is the source of truth for plan 08's README verbatim embed (D-06) — single-edit-point convention, README regenerated on tutorial change. Inline carve-out citations (D4.1-22, D4.2-05) so reader gets the 'no string compilation + parser-time-only' stance from the tutorial alone
 - [Phase 04.3]: Plan 04.3-05: docs/for-flow-authors/extensions/http.md hand-written per D-17 — 440 lines, 7 H2 + 14 H3 sections, ops in SOURCE ORDER (get/head/post/put/delete) NOT alphabetical; D4-14 idempotence table with verbatim RFC-7231 PUT/DELETE divergence; 4xx ErrNonRetryable / 5xx retryable classification (quick-260502-onc); JIT credential resolution + Bearer/Basic/APIKey applyCredential routing table; future docgen extension-walker target
 - [Phase 04.3]: Plan 04.3-07: docs/getting-started.md uses examples/skeleton/expression_if.star check_user flow as canonical demo (D-05) — asymmetric expression-mode if_cond + dollar-ctx-expr fail interpolation shows headline DSL features in fewest lines; output snapshots labeled "approximately like this" to insulate against renderer drift
+- [Phase 04.3]: Plan 04.3-04: Documented 8 persistent flags (not 10): plan's interfaces table claimed --rootdir and --temporal-task-queue exist; pkg/cli/flags.go has neither. Source-of-truth fidelity (must_haves.truths in plan frontmatter) trumps interfaces table; doc reflects actual flags + SKYTIME_TEMPORAL_CLIENT_CERT/CLIENT_KEY/SERVER_CA env names
+- [Phase 04.3]: Plan 04.3-04: mTLS documented as cert+key pair (with optional --server-ca), not triplet — pkg/cli/connect.go::connectClientWithFactory rejects only when ONE of --client-cert / --client-key is set without the other; --server-ca is optional and supplies a custom RootCAs pool
+- [Phase 04.3]: Plan 04.3-04: docs/reference/cli.md cross-links to builtins.md, architecture.md, getting-started.md, for-flow-authors/, for-extension-developers/ (sibling plans 01-09) — links resolve as siblings ship; cli.md reads coherently in isolation, dead links serve as TODO anchors for parallel agents
 
 ### Pending Todos
 
@@ -265,6 +269,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-05T00:13:44.477Z
-Stopped at: Completed 04.3-05-PLAN.md
+Last session: 2026-05-05T00:15:08.561Z
+Stopped at: Completed 04.3-04-PLAN.md (CLI reference doc)
 Resume file: None
