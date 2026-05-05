@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-05-05T19:37:57.913Z"
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-05-05T19:52:16.960Z"
 last_activity: 2026-05-05
 progress:
   total_phases: 9
   completed_phases: 7
   total_plans: 49
-  completed_plans: 45
+  completed_plans: 46
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 05 (tier-3-e2e-test-harness-temporal-test) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-05-05
 
@@ -96,6 +96,7 @@ Progress: [██████████] 100%
 | Phase 04.3 P08 | 3min | 2 tasks | 1 files |
 | Phase 05 P01 | 25min | 3 tasks | 10 files |
 | Phase 05 P02 | 35min | 3 tasks | 13 files |
+| Phase 05 P03 | 9min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -264,6 +265,10 @@ Recent decisions affecting current work:
 - [Phase 05]: Plan 05-02: fail() inside mock_fn body inherits PARSE-time builtinFail (D4.2-05 dual-semantics) — returns *dag.Fail at execute time and surfaces through D5-C4 'mock must return ok/err/nonretryable'. Documented as intentional behavior; rewrote TestRouter_MockEvalErr_NonRetryable to use integer division by zero (1 // 0) which actually raises a Starlark *EvalError.
 - [Phase 05]: Plan 05-02: AttemptCounter keys on structural (FlowName, StepIdx, ActionIdx) triple, NOT ref.Pos — content-hash IDs change with cosmetic edits but slot identity is structural; replay-equality (D5-D1) requires the structural form. Mock CapturedLambda IDs use position-based format (mock:<file>:<line>:<col>) instead of D-18 content-hash since builtin closures don't have parser-session FileBytes access — router only reads captured.Fn.
 - [Phase 05]: Plan 05-02: Pitfall-8 panic recovery template = defer-recover at top of buildExecuteBatchCallback wraps any Go panic with extension.ErrNonRetryable so workflow-side classification stays correct. D5-B2 verbatim no-mock-found message routes via per-action NonRetryableErrResult (mirrors quick-260502-onc 4xx classification): activity itself succeeds; walk_step path observes NonRetryable in slice and fails the step.
+- [Phase 05]: Plan 05-03: interpreter.RunOnceCapturing lifted into a NEW non-test file (replay_helper.go) — existing private runOnceCapturing + eventCapturingLogger in replay_determinism_test.go untouched; the two coexist (legacy internal Phase 04.2 tests + new public Phase 5 surface). Avoids cascading test-file churn for zero functional gain.
+- [Phase 05]: Plan 05-03: Per-record diff serialization sorts KV pairs alphabetically on the CONSUMER side (FirstDivergentEvent helper). Producer (logger.Info kvs) preserves source order; consumer canonical-orders for stable string equality. Eliminates Go-map-iteration-randomness false-positive divergences.
+- [Phase 05]: Plan 05-03: Activity-boundary listener pair (SetOnActivityStartedListener + SetOnActivityCompletedListener) is the canonical TestWorkflowEnvironment substitute for the missing GetWorkflowHistory accessor (Investigation 2). Both listeners attach automatically inside RunOnceCapturing; events append to the same EventCapture buffer alongside slog records.
+- [Phase 05]: Plan 05-03: step_dispatch.pos + step_dispatch.name is the universal flow-callsite attribution channel for D5-D3 — Plan 03 Task 0 extended walk_step.go's logger.Info emission with two new KV pairs; FirstDivergentEvent's lookupOriginatingStep walks backward to the nearest step_dispatch and reads them. Pattern available for any future divergence reporter / error annotator / live-renderer enrichment.
 
 ### Pending Todos
 
@@ -294,6 +299,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-05T19:37:57.908Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-05-05T19:52:16.955Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
