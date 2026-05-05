@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.3-09-PLAN.md (audience landings; D-03 + D-04 satisfied)
-last_updated: "2026-05-05T00:35:28.893Z"
+stopped_at: Completed 04.3-08-PLAN.md
+last_updated: "2026-05-05T00:36:20.467Z"
 last_activity: 2026-05-05
 progress:
   total_phases: 9
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 43
-  completed_plans: 42
+  completed_plans: 43
   percent: 100
 ---
 
@@ -93,6 +93,7 @@ Progress: [██████████] 100%
 | Phase 04.3 P01 | 6 min | 3 tasks | 10 files |
 | Phase 04.3 P02 | 7min | 4 tasks | 8 files |
 | Phase 04.3 P09 | 3min | 2 tasks | 2 files |
+| Phase 04.3 P08 | 3min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -252,6 +253,7 @@ Recent decisions affecting current work:
 - [Phase 04.3]: Plan 02: positional-only-with-markers fallback for fail() — UnpackPositionalArgs returns []Param=[] from plan 01 walker; rather than retrofit walker schema, renderer synthesizes table rows from sort.Strings-ordered param_* markers. Plan 01 walker contract preserved verbatim
 - [Phase 04.3]: Plan 02: tests/docgen_drift_test.go in package firewall_test (single external-test-package convention for tests/) — helpers suffixed Docgen to avoid collision with findModuleRootCLI / findModuleRootE2E siblings
 - [Phase 04.3]: Plan 09: docs/for-flow-authors/README.md (110 lines) + docs/for-extension-developers/README.md (126 lines) hand-written landings — D-03 + D-04 satisfied; mutual cross-links (each cites the other twice) make the two-tier authoring model visible from either entry point; architecture.md cross-link present in both per D-15 required-reading rule
+- [Phase 04.3]: Plan 04.3-08: README.md as repo front door (D-02 mid-size, D-06 verbatim embed) — 430 lines, 8 own H2 + 7 verbatim-embedded tutorial H2s; LICENSE 'TBD' (no LICENSE file); tutorial body reproduced byte-equal from docs/getting-started.md with relative-path adjustments for the README's repo-root location
 
 ### Pending Todos
 
@@ -282,6 +284,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-05T00:35:28.889Z
-Stopped at: Completed 04.3-09-PLAN.md (audience landings; D-03 + D-04 satisfied)
+Last session: 2026-05-05T00:36:20.463Z
+Stopped at: Completed 04.3-08-PLAN.md
 Resume file: None
