@@ -11,7 +11,7 @@ import (
 func main() {
 	var (
 		pkgPath = flag.String("pkg", "pkg/parser", "Package directory containing globals.go and builtins.go")
-		outPath = flag.String("out", "", "Output path for rendered markdown (UNUSED; populated by Phase 04.3 plan 02)")
+		outPath = flag.String("out", "", "Output path for rendered markdown; when empty, JSON is dumped to stdout for diagnostics")
 	)
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "skytime-docgen — extract Skytime Starlark builtin docs from source")
@@ -34,16 +34,28 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Plan 02 replaces this JSON dump with markdown rendering via text/template.
-	if *outPath == "" {
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(builtins); err != nil {
-			fmt.Fprintf(os.Stderr, "encode: %v\n", err)
+	// --out renders markdown to the specified file; otherwise JSON-to-stdout
+	// for diagnostics (preserves the plan-01 transitional shape so contributors
+	// can still inspect Markers/Params via `go run ./cmd/skytime-docgen/`).
+	if *outPath != "" {
+		f, ferr := os.Create(*outPath)
+		if ferr != nil {
+			fmt.Fprintf(os.Stderr, "create %s: %v\n", *outPath, ferr)
+			os.Exit(1)
+		}
+		defer f.Close()
+		if rerr := RenderMarkdown(f, builtins); rerr != nil {
+			fmt.Fprintf(os.Stderr, "render: %v\n", rerr)
 			os.Exit(1)
 		}
 		return
 	}
-	fmt.Fprintln(os.Stderr, "skytime-docgen: --out is implemented by Phase 04.3 plan 02")
-	os.Exit(2)
+
+	// Default (no --out): JSON dump for diagnostics.
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(builtins); err != nil {
+		fmt.Fprintf(os.Stderr, "encode: %v\n", err)
+		os.Exit(1)
+	}
 }
