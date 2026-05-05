@@ -147,7 +147,7 @@ Plans:
   4. The `assert.*` builtins from `go.starlark.net/starlarktest` are available inside test `.star` files and assertion failures surface in Go's `*testing.T` so they appear in CI output
   5. `skytime test <dir>` discovers `.star` test files, runs the harness, and reports pass/fail with Starlark callsite errors — no Go stack traces in default output
 **Plans**: 6 plans
-  - [ ] 05-01-PLAN.md — Wave 0: pkg/testing skeleton + MockRegistry + MockOperationOutput + parser WithTestMode/WithTestModule options + temporal-SDK firewall allow-list extension
+  - [x] 05-01-PLAN.md — Wave 0: pkg/testing skeleton + MockRegistry + MockOperationOutput + parser WithTestMode/WithTestModule options + temporal-SDK firewall allow-list extension
   - [ ] 05-02-PLAN.md — Wave 1: tester.* parse-time builtins + mock-lambda env (ok/err/nonretryable) + mock router + per-attempt counter + parser hook (test-mode-only injection)
   - [ ] 05-03-PLAN.md — Wave 2: pkg/testing.RunOnceCapturing public helper + EventCapture activity-boundary listeners + replay_diff.FirstDivergentEvent (D5-D2/D5-D3)
   - [ ] 05-04-PLAN.md — Wave 3: assert.* parse-time injection + Parser.TestGlobals accessor + reporter.runOneTest + tester.run replay-twice driver + pkgtesting.Run(t, dir, opts...) foundation API

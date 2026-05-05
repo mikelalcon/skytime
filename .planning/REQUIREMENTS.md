@@ -78,8 +78,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### E2E Test Harness (Tier 3)
 
-- [ ] **TEST-01**: A `temporal_test` Starlark builtin module exposes `tester.workflow(...)`, `tester.mock_action(extension=..., op=..., mock_fn=...)`, and `tester.run(flow=...)` from `.star` test files
-- [ ] **TEST-02**: A Starlark mock function executes in the *same* restricted predeclared environment as production lambdas; the bridge intercepts the corresponding `ExecuteBatch` activity in `testsuite.TestWorkflowEnvironment` and routes per-action calls back to the Starlark mock
+- [x] **TEST-01**: A `temporal_test` Starlark builtin module exposes `tester.workflow(...)`, `tester.mock_action(extension=..., op=..., mock_fn=...)`, and `tester.run(flow=...)` from `.star` test files
+- [x] **TEST-02**: A Starlark mock function executes in the *same* restricted predeclared environment as production lambdas; the bridge intercepts the corresponding `ExecuteBatch` activity in `testsuite.TestWorkflowEnvironment` and routes per-action calls back to the Starlark mock
 - [ ] **TEST-03**: The `attempt` count is passed to mocks as an explicit argument so `.star` tests can simulate transient failures and assert Temporal's retry behavior without leaving Starlark
 - [ ] **TEST-04**: A replay helper runs each test twice and diffs the resulting Temporal event history; any divergence fails the test
 - [ ] **TEST-05**: The `assert.*` builtins from `go.starlark.net/starlarktest` are available inside test `.star` files; the harness reports failures into Go's `*testing.T` so they're CI-visible
@@ -202,8 +202,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CLI-03 | Phase 5 | Pending |
 | CLI-04 | Phase 4 | Complete |
 | CLI-05 | Phase 4 | Complete |
-| TEST-01 | Phase 5 | Pending |
-| TEST-02 | Phase 5 | Pending |
+| TEST-01 | Phase 5 | Complete |
+| TEST-02 | Phase 5 | Complete |
 | TEST-03 | Phase 5 | Pending |
 | TEST-04 | Phase 5 | Pending |
 | TEST-05 | Phase 5 | Pending |

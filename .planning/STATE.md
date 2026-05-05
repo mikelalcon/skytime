@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-05-05T02:37:24.703Z"
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-05-05T18:26:00.382Z"
 last_activity: 2026-05-05
 progress:
   total_phases: 9
   completed_phases: 7
-  total_plans: 43
-  completed_plans: 43
+  total_plans: 49
+  completed_plans: 44
   percent: 100
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-26)
 
 **Core value:** A consultant team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
-**Current focus:** Phase 04.3 — documentation-and-source-driven-reference-generator
+**Current focus:** Phase 05 — tier-3-e2e-test-harness-temporal-test
 
 ## Current Position
 
-Phase: 5
-Plan: Not started
+Phase: 05 (tier-3-e2e-test-harness-temporal-test) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
 Last activity: 2026-05-05
 
@@ -94,6 +94,7 @@ Progress: [██████████] 100%
 | Phase 04.3 P02 | 7min | 4 tasks | 8 files |
 | Phase 04.3 P09 | 3min | 2 tasks | 2 files |
 | Phase 04.3 P08 | 3min | 2 tasks | 1 files |
+| Phase 05 P01 | 25min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -254,6 +255,10 @@ Recent decisions affecting current work:
 - [Phase 04.3]: Plan 02: tests/docgen_drift_test.go in package firewall_test (single external-test-package convention for tests/) — helpers suffixed Docgen to avoid collision with findModuleRootCLI / findModuleRootE2E siblings
 - [Phase 04.3]: Plan 09: docs/for-flow-authors/README.md (110 lines) + docs/for-extension-developers/README.md (126 lines) hand-written landings — D-03 + D-04 satisfied; mutual cross-links (each cites the other twice) make the two-tier authoring model visible from either entry point; architecture.md cross-link present in both per D-15 required-reading rule
 - [Phase 04.3]: Plan 04.3-08: README.md as repo front door (D-02 mid-size, D-06 verbatim embed) — 430 lines, 8 own H2 + 7 verbatim-embedded tutorial H2s; LICENSE 'TBD' (no LICENSE file); tutorial body reproduced byte-equal from docs/getting-started.md with relative-path adjustments for the README's repo-root location
+- [Phase 05]: Plan 05-01: MockEntry.RegisterPos uses syntax.MakePosition (not Position{Filename:...}) — go.starlark.net/syntax.Position has unexported file *string field; tests label entries via Filename() accessor on read-back. Rule 1 deviation, test-side compile-fix only; production registry.go matches plan sketch verbatim
+- [Phase 05]: Plan 05-01: MockOperationOutput.MarshalJSON returns []byte("{}") for nil Value — wire shape is always a JSON object, mirrors RawOperationOutput shape and avoids null-pointer surprises in Plan 02 router (Open Q4 acceptance with defensive nil handling)
+- [Phase 05]: Plan 05-01: WithTestMode/WithTestModule split (flag + builder pattern) breaks parser→pkg/testing import cycle — pkg/cli/test.go (Plan 06) imports pkg/testing, constructs the tester builder, supplies via WithTestModule(builder) so parser stays test-package-agnostic
+- [Phase 05]: Plan 05-01: Firewall allow-list expansion paired with non-vacuous meta-test convention — adding 'testing' to pkg/activity/firewall_test.go allowedPkgs is paired with tests/firewall_testsuite_test.go::TestPkgTesting_ImportsTestsuite that skips on empty package with forward-pointing 'Plan 02 lands router.go' message; activates automatically once import lands
 
 ### Pending Todos
 
@@ -284,6 +289,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-05T02:37:24.689Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-tier-3-e2e-test-harness-temporal-test/05-CONTEXT.md
+Last session: 2026-05-05T18:26:00.378Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None
