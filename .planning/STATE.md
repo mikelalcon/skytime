@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 04.3 context gathered
-last_updated: "2026-05-04T20:41:35.802Z"
-last_activity: 2026-05-04
+status: executing
+stopped_at: Completed 04.3-05-PLAN.md
+last_updated: "2026-05-05T00:13:44.481Z"
+last_activity: 2026-05-05 -- Phase 04.3 execution started
 progress:
   total_phases: 9
   completed_phases: 6
-  total_plans: 34
-  completed_plans: 34
+  total_plans: 43
+  completed_plans: 37
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-26)
 
 **Core value:** A consultant team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
-**Current focus:** Phase 04.2 — if-cond-as-expression-with-strict-equality-result-binding
+**Current focus:** Phase 04.3 — documentation-and-source-driven-reference-generator
 
 ## Current Position
 
-Phase: 5
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-05-04
+Phase: 04.3 (documentation-and-source-driven-reference-generator) — EXECUTING
+Plan: 1 of 9
+Status: Executing Phase 04.3
+Last activity: 2026-05-05 -- Phase 04.3 execution started
 
 Progress: [██████████] 100%
 
@@ -85,6 +85,9 @@ Progress: [██████████] 100%
 | Phase 04.2 P04 | 11m | 3 tasks | 6 files |
 | Phase 04.2 P06 | 8m | 3 tasks | 8 files |
 | Phase 04.2 P07 | 4m | 4 tasks | 3 files |
+| Phase 04.3 P06 | 2min | 1 tasks | 1 files |
+| Phase 04.3 P07 | 2min | 1 tasks | 1 files |
+| Phase 04.3 P05 | 2min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -227,6 +230,10 @@ Recent decisions affecting current work:
 - [Phase 04.2]: Plan 04.2-06: Rule 1 fix — walkNode case *dag.Fail dispatches to raiseFail (D4.2-07 procedural-mode fail() is legal). Reuses plan 04's helper. Defensive case *dag.Result returns OrphanResultNode error (validator should reject earlier; defense-in-depth)
 - [Phase 04.2]: Plan 04.2-06: tests/differential_test.go expectedErrFlows package-level map gates dryrun assertion to accept *temporal.ApplicationError for stub-driven top-level fail() flows; pre-existing fixtures keep strict NoError. pkg/validator/dryrun/dispatch.go required ZERO changes (verified empty git diff) — AlwaysOkDispatch is orthogonal to walk_result/walk_fail (which evaluate lambdas inline, never call activity.OperationDispatch)
 - [Phase 04.2]: Plan 04.2-07 (registrar): DSL-14, DSL-15, VAL-05 registered Complete in REQUIREMENTS.md (v1 total 62→65); ROADMAP.md Phase 04.2 entry rewritten from TBD placeholder to populated post-completion shape with Goal text + 7/7 plan list; PROJECT.md amended with D4.2-05 fail() carve-out blockquote alongside D4.1-22 paragraph (parse-time top-level fail is a parse-time syntactic primitive, NOT a runtime evaluation surface); phase-completion gates GREEN (race detector + vet + decision-coverage + 23 named tests); workflowcheck unavailable (CI installs); Task 5 manual TTY demo skipped per Phase 04.1-07 precedent + gate=optional. Phase 04.2 ready for /gsd:verify-work.
+- [Phase 04.3]: Plan 06: Aligned examples/README.md run-command flow names with shipped fixtures (simple_check, parallel_fanout) — plan's <interfaces> block referenced older proposed names (check_repo, batch_repos) that did not match the .star sources
+- [Phase 04.3]: Plan 06: Documented expectedErrFlows registration step in 'Adding a New Example' section — Phase 04.2 introduced the package-level map in tests/differential_test.go; contributors adding fail()-emitting fixtures need this knowledge or hit confusing dryrun failures
+- [Phase 04.3]: Plan 04.3-07: tutorial is the source of truth for plan 08's README verbatim embed (D-06) — single-edit-point convention, README regenerated on tutorial change. Inline carve-out citations (D4.1-22, D4.2-05) so reader gets the 'no string compilation + parser-time-only' stance from the tutorial alone
+- [Phase 04.3]: Plan 04.3-05: docs/for-flow-authors/extensions/http.md hand-written per D-17 — 440 lines, 7 H2 + 14 H3 sections, ops in SOURCE ORDER (get/head/post/put/delete) NOT alphabetical; D4-14 idempotence table with verbatim RFC-7231 PUT/DELETE divergence; 4xx ErrNonRetryable / 5xx retryable classification (quick-260502-onc); JIT credential resolution + Bearer/Basic/APIKey applyCredential routing table; future docgen extension-walker target
 
 ### Pending Todos
 
@@ -257,6 +264,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-04T20:41:35.796Z
-Stopped at: Phase 04.3 context gathered
-Resume file: .planning/phases/04.3-documentation-and-source-driven-reference-generator/04.3-CONTEXT.md
+Last session: 2026-05-05T00:13:44.477Z
+Stopped at: Completed 04.3-05-PLAN.md
+Resume file: None

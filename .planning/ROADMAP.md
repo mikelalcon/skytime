@@ -97,16 +97,16 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Goal:** Ship the project's first complete documentation set + a Copybara-style source-driven reference generator. Two streams in one phase: (1) `cmd/skytime-docgen` — a stdlib-only Go binary that walks `pkg/parser/globals.go` + `pkg/parser/builtins.go` AST + `// skytime:doc` markers to render `docs/reference/builtins.md` from source (D-07..D-14); (2) hand-written narrative — README.md (with embedded getting-started tutorial), docs/architecture.md, docs/getting-started.md, docs/reference/cli.md, docs/for-flow-authors/extensions/http.md, examples/README.md, plus audience-split landings (docs/for-flow-authors/README.md, docs/for-extension-developers/README.md). Plain markdown only — no static-site infra. Coverage v1: the 8 Starlark builtins (D-10) + the 4 shipped subcommands + the bundled HTTP extension; mkdocs/extension-auto-gen/CLI-auto-gen are deferred.
 **Requirements**: D-01..D-19 (locked decisions from CONTEXT.md serve as requirements; see .planning/phases/04.3-documentation-and-source-driven-reference-generator/04.3-CONTEXT.md)
 **Depends on:** Phase 4
-**Plans:** 9 plans
+**Plans:** 3/9 plans executed
 
 Plans:
 - [ ] 04.3-01-PLAN.md — Wave 0: cmd/skytime-docgen AST walker (WalkRegistry + WalkBuiltins + ParseMarkers; stdlib-only, no cobra/charm-log/lipgloss; firewall test untouched)
 - [ ] 04.3-02-PLAN.md — Wave 0: cmd/skytime-docgen text/template renderer + 8 // skytime:doc marker blocks in pkg/parser/builtins.go + //go:generate directive + checked-in docs/reference/builtins.md + drift CI test
 - [ ] 04.3-03-PLAN.md — Wave 1: docs/architecture.md (parse/execute split + ASCII diagram + lambda capture + 3 No rules + two-tier model)
 - [ ] 04.3-04-PLAN.md — Wave 1: docs/reference/cli.md (run/validate/info/dev-server reference; persistent flags + variant routing)
-- [ ] 04.3-05-PLAN.md — Wave 1: docs/for-flow-authors/extensions/http.md (5 ops + D4-14 idempotence + 4xx/5xx classification + JIT credentials)
-- [ ] 04.3-06-PLAN.md — Wave 1: examples/README.md (3 skeleton fixtures indexed; expression_if marked canonical tutorial)
-- [ ] 04.3-07-PLAN.md — Wave 1: docs/getting-started.md (canonical 5-10 min tutorial against expression_if.star check_user)
+- [x] 04.3-05-PLAN.md — Wave 1: docs/for-flow-authors/extensions/http.md (5 ops + D4-14 idempotence + 4xx/5xx classification + JIT credentials)
+- [x] 04.3-06-PLAN.md — Wave 1: examples/README.md (3 skeleton fixtures indexed; expression_if marked canonical tutorial)
+- [x] 04.3-07-PLAN.md — Wave 1: docs/getting-started.md (canonical 5-10 min tutorial against expression_if.star check_user)
 - [ ] 04.3-08-PLAN.md — Wave 2: README.md (repo front door; mid-size; embeds getting-started tutorial verbatim per D-06)
 - [ ] 04.3-09-PLAN.md — Wave 2: docs/for-flow-authors/README.md + docs/for-extension-developers/README.md (audience landings with mutual cross-links)
 
