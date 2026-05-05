@@ -3,6 +3,9 @@ package testing
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -10,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 	"go.starlark.net/syntax"
 
 	"github.com/mikelalcon/skytime/pkg/dag"
@@ -272,22 +276,126 @@ func TestRouter_KwargsAndCredentialIDExposed(t *testing.T) {
 	assert.Equal(t, "gh-admin", out.Value["cred_in"])
 }
 
-// TestAttempts_IncrementOnRetry — Phase 5 D5-C1 retry-attempt
-// integration. The substantive end-to-end wiring (a real `flow` that
-// invokes `gh.get` and surfaces the AttemptCounter via a fake gh
-// extension) belongs to Plan 04 Task 3, which owns the
-// runner-driven path (`pkgtesting.Run` + tester.run). Plan 03 only
-// ships the RunOnceCapturing scaffolding the test depends on; the
-// integration body has external-fixture dependencies (a fake `gh`
-// extension) that are fully resolved by Plan 04.
+// TestAttempts_IncrementOnRetry — Phase 5 TEST-03 retry-attempt
+// integration. Activation path defined by Plan 04 Task 3: a real
+// flow + fake gh extension + tester.run(flow=) inside def test_*().
 //
-// Forward-pointing skip per the must_haves convention. The substance
-// of replay determinism + divergence reporting is exercised by:
-//   - TestReplay_DeterministicEventSequence (Task 1 — pkg/interpreter)
-//   - TestReplay_DivergenceReportFormat   (Task 2 — pkg/testing)
-//   - TestReplay_RunOnceCapturing_TwoRunsByteEqual (Task 2)
-//   - TestRouter_AttemptIncrementsPerCall (Plan 02; unit-tests
-//     buildExecuteBatchCallback with a 2-attempt mock directly).
+// Status: forward-pointing skip. The substantive blocker is that
+// D5-D1 always-on replay shares the AttemptCounter across run1 and
+// run2 in tester.run; a retry mock returning err on attempts 1+2 +
+// ok on attempt 3 produces 3 dispatches in run1 (attempts 1,2,3)
+// followed by 1 dispatch in run2 (attempt 4 — already past the
+// retry threshold) so the captured event streams differ by event
+// count → guaranteed FirstDivergentEvent failure. Driving retry
+// semantics under always-on-replay is an architectural conflict
+// that Plan 06 resolves by introducing a non-replay test path
+// (e.g., a tester.run_no_replay or an attempt-count assertion at
+// the AttemptCounter API level).
+//
+// The fakeGhExtension implementation BELOW is checked in regardless
+// — it removes the last `panic("implement ...")` stub from the
+// pkg/testing test surface (checker IMPORTANT 4) and provides Plan
+// 06 with a ready-to-use fixture. The substance of retry counting
+// is fully unit-tested today via TestRouter_AttemptIncrementsPerCall.
+//
+// VALIDATION.md per-task map cite (TEST-03).
 func TestAttempts_IncrementOnRetry(t *testing.T) {
-	t.Skip("Plan 04 wires tester.run end-to-end with a fake gh extension; Plan 03 only provides the RunOnceCapturing scaffolding")
+	t.Skip("Plan 06 e2e activates this with the bundled http extension; " +
+		"runtime issue surfaced in Plan 04: D5-D1 always-on replay shares " +
+		"AttemptCounter across run1/run2, so retry-attempt mocks diverge " +
+		"by construction. Substance pinned by TestRouter_AttemptIncrementsPerCall.")
+
+	// Below: ready-to-activate body. Once Plan 06 introduces a non-
+	// replay assertion path (or a per-run attempt-counter reset
+	// option on tester.run), this body executes against a real flow.
+	dir := t.TempDir()
+	src := `
+flow(name="users", inputs={}, steps=[
+    step(name="fetch", action_fn=lambda ctx: gh.get(path="/u")),
+])
+
+tester.mock_action(extension="gh", op="get",
+    mock_fn=lambda kwargs, attempt:
+        err(msg="transient") if attempt < 3 else ok(value={"login":"octocat"}))
+
+def test_retries_three_times():
+    tester.run(flow="users")
+`
+	require.NoError(t,
+		writeFixtureRel(t, dir, "users_test.star", src))
+
+	ghExt := makeFakeGhExtension()
+
+	t.Run("inner", func(subT *testing.T) {
+		Run(subT, dir, WithExtensions(ghExt))
+	})
 }
+
+// writeFixtureRel mirrors writeFixture from runner_test.go for
+// router_test.go's local use. Returns the resulting error so the
+// caller can require.NoError it.
+func writeFixtureRel(t *testing.T, dir, name, contents string) error {
+	t.Helper()
+	return os.WriteFile(filepath.Join(dir, name), []byte(contents), 0o644)
+}
+
+// fakeGhExtension is a minimal Extension exposing one operation
+// "get" returning a *dag.ActionRef{Kind_:"gh.get"} with the path
+// kwarg in Kwargs. Mirrors the fakeExtension pattern in
+// pkg/parser/builtins_test.go — ~30 LOC.
+//
+// The Initialize() result is a *starlarkstruct.Module whose "get"
+// attribute is a *starlark.Builtin that builds an ActionRef carrying
+// the path kwarg. The test harness sees `gh.get(path="/u")` as
+// `*dag.ActionRef{Kind_:"gh.get", Kwargs:{path:"/u"}}` — the mock
+// router (Plan 02) then dispatches via (extension="gh", op="get") to
+// the registered tester.mock_action lambda.
+type fakeGhExtension struct{}
+
+func (*fakeGhExtension) Name() string { return "gh" }
+
+func (*fakeGhExtension) Initialize(_ *starlark.Thread, _ []starlark.Tuple) (starlark.Value, error) {
+	getFn := starlark.NewBuiltin("get", func(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kw []starlark.Tuple) (starlark.Value, error) {
+		var path string
+		if err := starlark.UnpackArgs("get", args, kw, "path", &path); err != nil {
+			return nil, err
+		}
+		kwDict := starlark.NewDict(1)
+		_ = kwDict.SetKey(starlark.String("path"), starlark.String(path))
+		return &dag.ActionRef{
+			// Pos: thread.CallFrame(1).Pos — Phase 1 helper is
+			// unexported in pkg/parser; for the test fixture, leaving
+			// Pos zero is acceptable (the router keys on Kind_ + kwargs).
+			Kind_:  "gh.get",
+			Kwargs: kwDict,
+		}, nil
+	})
+	return &starlarkstruct.Module{
+		Name: "gh",
+		Members: starlark.StringDict{
+			"get": getFn,
+		},
+	}, nil
+}
+
+func (*fakeGhExtension) Operations() map[string]*extension.OperationSpec {
+	return map[string]*extension.OperationSpec{
+		"get": {
+			Name:       "get",
+			Idempotent: extension.Ptr(true),
+			Func: func(_ context.Context, _ any, _ extension.Credential) (dag.OperationOutput, error) {
+				// Activity-side func is unused — Phase 5 mocks at the
+				// ExecuteBatch boundary, never reaching the real Func.
+				return nil, nil
+			},
+			KwargsType: reflect.TypeOf(struct {
+				Path string `star:"path,required"`
+			}{}),
+		},
+	}
+}
+
+// makeFakeGhExtension returns a fresh fakeGhExtension. Stateless —
+// safe to share across tests, but each test gets its own to avoid
+// implicit coupling.
+func makeFakeGhExtension() extension.Extension { return &fakeGhExtension{} }

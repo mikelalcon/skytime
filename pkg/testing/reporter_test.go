@@ -107,9 +107,9 @@ type recordingT struct {
 	failed bool
 }
 
-func (r *recordingT) Helper()                                {}
-func (r *recordingT) Error(args ...any)                      { r.failed = true }
-func (r *recordingT) Errorf(format string, args ...any)      { r.failed = true }
+func (r *recordingT) Helper()                           {}
+func (r *recordingT) Error(args ...any)                 { r.failed = true }
+func (r *recordingT) Errorf(format string, args ...any) { r.failed = true }
 
 // TestRunOneTest_SubtestIsolation: test_a fails, test_b passes; verify
 // per-test reporters are independent. Each runOneTest invocation gets
