@@ -146,7 +146,13 @@ Plans:
   3. The replay helper runs each test twice and any divergence in Temporal event history fails the test with a Starlark-callsite-aware error message
   4. The `assert.*` builtins from `go.starlark.net/starlarktest` are available inside test `.star` files and assertion failures surface in Go's `*testing.T` so they appear in CI output
   5. `skytime test <dir>` discovers `.star` test files, runs the harness, and reports pass/fail with Starlark callsite errors — no Go stack traces in default output
-**Plans**: TBD
+**Plans**: 6 plans
+  - [ ] 05-01-PLAN.md — Wave 0: pkg/testing skeleton + MockRegistry + MockOperationOutput + parser WithTestMode/WithTestModule options + temporal-SDK firewall allow-list extension
+  - [ ] 05-02-PLAN.md — Wave 1: tester.* parse-time builtins + mock-lambda env (ok/err/nonretryable) + mock router + per-attempt counter + parser hook (test-mode-only injection)
+  - [ ] 05-03-PLAN.md — Wave 2: pkg/testing.RunOnceCapturing public helper + EventCapture activity-boundary listeners + replay_diff.FirstDivergentEvent (D5-D2/D5-D3)
+  - [ ] 05-04-PLAN.md — Wave 3: assert.* parse-time injection + Parser.TestGlobals accessor + reporter.runOneTest + tester.run replay-twice driver + pkgtesting.Run(t, dir, opts...) foundation API
+  - [ ] 05-05-PLAN.md — Wave 4: recursive *_test.star walker + def test_*() Starlark-module enumeration + WithRunFilter regex + WithFormat=json (cmd/test2json mirror) + human-format static line-per-test
+  - [ ] 05-06-PLAN.md — Wave 5: pkg/testing.RunCLI non-*testing.T adapter + pkg/cli/test.go cobra subcommand + tests/skytime_test_e2e_test.go subprocess E2E + docs/for-flow-authors/testing.md + docs/reference/cli.md `## skytime test` + // skytime:doc markers regenerating builtins.md
 **UI hint**: no
 
 ### Phase 6: Example Project (HTTP + GitHub + Slack)
@@ -172,7 +178,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Generic Activity + Block-Batch Dispatch + Credentials | 2/3 | In Progress|  |
 | 3. Lambda-Serialization Decision + Interpreter + Worker | 3/4 | In Progress|  |
 | 4. Static Validation Tier + CLI Skeleton | 0/7 | Not started | - |
-| 5. Tier-3 E2E Test Harness (`temporal_test`) | 0/TBD | Not started | - |
+| 5. Tier-3 E2E Test Harness (`temporal_test`) | 0/6 | Not started | - |
 | 6. Example Project (HTTP + GitHub + Slack) | 0/TBD | Not started | - |
 
 ---
