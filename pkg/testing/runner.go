@@ -4,11 +4,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"go.starlark.net/starlark"
 
@@ -50,10 +52,43 @@ func WithRunFilter(pattern string) Option {
 	}
 }
 
+// WithFormat sets the output format. Accepted values:
+//
+//   - "" or "human" → static line-per-test Go-test style (D5-E1).
+//   - "json" → cmd/test2json mirror (D5-E2 + Open Q6 RFC3339Nano UTC).
+//
+// Unknown values return an error at option-apply time; mistyped
+// formats fail loudly rather than silently falling back to human.
+func WithFormat(format string) Option {
+	return func(c *runConfig) error {
+		switch format {
+		case "", "human":
+			c.formatJSON = false
+		case "json":
+			c.formatJSON = true
+		default:
+			return fmt.Errorf("WithFormat: unknown format %q (accepted: human, json)", format)
+		}
+		return nil
+	}
+}
+
+// WithOutput sets the writer for human-format / JSON-format output.
+// Default is os.Stdout. Tests typically pass a *bytes.Buffer to
+// capture and inspect the rendered records.
+func WithOutput(w io.Writer) Option {
+	return func(c *runConfig) error {
+		c.formatOut = w
+		return nil
+	}
+}
+
 type runConfig struct {
 	exts       []extension.Extension
 	runPattern string
 	runRegex   *regexp.Regexp // compiled once at WithRunFilter() time
+	formatJSON bool           // true → emit cmd/test2json mirror
+	formatOut  io.Writer      // default os.Stdout (resolved at runOneFile)
 }
 
 // Run is the Go-level foundation API for Phase 5's test harness
@@ -95,8 +130,26 @@ func Run(t *testing.T, dir string, opts ...Option) {
 		return
 	}
 
+	// Sequential per-file iteration (D5-E5 + Open Q2 sequential v1).
+	grandStart := time.Now()
 	for _, file := range files {
 		runOneFile(t, file, cfg)
+	}
+
+	// Final summary line. JSON consumers parse per-event records and
+	// don't need a trailing summary; human consumers want one.
+	if cfg.formatJSON {
+		return
+	}
+	out := cfg.formatOut
+	if out == nil {
+		out = os.Stdout
+	}
+	elapsed := time.Since(grandStart).Seconds()
+	if t.Failed() {
+		fmt.Fprintf(out, "FAIL  %d files  (%.2fs)\n", len(files), elapsed)
+	} else {
+		fmt.Fprintf(out, "PASS  %d files  (%.2fs)\n", len(files), elapsed)
 	}
 }
 
@@ -113,7 +166,51 @@ func discoverTestFiles(dir string) ([]string, error) {
 // runContext are shared across all tests in the file (file-frame
 // mocks visible to every test; per-test frames push/pop inside
 // runOneTest).
+//
+// In JSON mode, emits one cmd/test2json-compatible record per event:
+//
+//	start → run → (output × N) → pass | fail | skip
+//
+// In human mode (default), emits `--- PASS:` / `--- FAIL:` /
+// `--- SKIP:` lines per test plus a per-file footer (D5-E1).
 func runOneFile(t *testing.T, file string, cfg *runConfig) {
+	t.Helper()
+	renderOneFile(t, file, cfg, func(name string, fn func(testReporter) (failed, skipped bool, detail string)) (bool, bool, string) {
+		var passed, skipped bool
+		var detail string
+		t.Run(name, func(subT *testing.T) {
+			rec := &capturingTReporter{T: subT}
+			fn(rec)
+			detail = rec.detail.String()
+			passed = !subT.Failed() && !subT.Skipped()
+			skipped = subT.Skipped()
+		})
+		return passed, skipped, detail
+	})
+}
+
+// driveTestFn is the per-test driver injected into renderOneFile so
+// callers can plug in either a real *testing.T (production) or a
+// recording shim (tests that observe rendered output without poisoning
+// their parent test).
+//
+//   - name: the t.Run name ("<file_stem>/<test_name>")
+//   - inner(rep): runs the def test_*() body under rep; rep can be a
+//     *testing.T-backed capturingTReporter or a pure shim.
+//
+// Returns (passed, skipped, detail) where detail is the assertion
+// failure text captured by the reporter (or empty if no failures).
+type driveTestFn func(name string, inner func(testReporter) (failed, skipped bool, detail string)) (passed, skipped bool, detail string)
+
+// renderOneFile is the format-agnostic core of runOneFile, factored
+// for testability. drive callbacks per discovered def test_*();
+// renderOneFile handles JSON-vs-human emission, per-file footer, and
+// the {start, run, pass/fail/skip, output} sequence.
+//
+// Test code drives this with a recording shim so format-test
+// observations don't propagate inner failures to the parent
+// *testing.T (Go's t.Run propagates inner failures to its parent).
+func renderOneFile(t *testing.T, file string, cfg *runConfig, drive driveTestFn) {
 	t.Helper()
 
 	tests, err := parseTestFile(file, cfg)
@@ -124,16 +221,98 @@ func runOneFile(t *testing.T, file string, cfg *runConfig) {
 	fileBase := filepath.Base(file)
 	fileStem := strings.TrimSuffix(fileBase, ".star") // e.g., "simple_test"
 
+	out := cfg.formatOut
+	if out == nil {
+		out = os.Stdout
+	}
+	var em *jsonEmitter
+	if cfg.formatJSON {
+		em = newJSONEmitter(out)
+	}
+
+	pkg := fileBase // cmd/test2json's Package field — basename per D5-E2
+	var fileTotal, fileFailed int
+	fileStart := time.Now()
+
 	for _, tc := range tests.Tests {
 		fullName := fileStem + "." + tc.Name
 		if !MatchRunFilter(cfg.runRegex, fullName) {
 			continue
 		}
+		fileTotal++
 		fn := tc.Fn
-		t.Run(fileStem+"/"+tc.Name, func(subT *testing.T) {
-			runOneTest(subT, fn, tests.Reg, tests.WS)
+
+		if em != nil {
+			em.emit("start", pkg, tc.Name, "", 0)
+			em.emit("run", pkg, tc.Name, "", 0)
+		}
+
+		testStart := time.Now()
+		passed, skipped, detail := drive(fileStem+"/"+tc.Name, func(rep testReporter) (bool, bool, string) {
+			runOneTest(rep, fn, tests.Reg, tests.WS)
+			return false, false, "" // drive callers compute these from rep
 		})
+
+		elapsed := time.Since(testStart).Seconds()
+		switch {
+		case skipped:
+			if em != nil {
+				if detail != "" {
+					em.emit("output", pkg, tc.Name, detail, 0)
+				}
+				em.emit("skip", pkg, tc.Name, "", elapsed)
+			} else {
+				fmt.Fprint(out, formatHumanLine("SKIP", tc.Name, elapsed))
+			}
+		case !passed:
+			fileFailed++
+			if em != nil {
+				if detail != "" {
+					em.emit("output", pkg, tc.Name, detail, 0)
+				}
+				em.emit("fail", pkg, tc.Name, "", elapsed)
+			} else {
+				fmt.Fprint(out, formatHumanLine("FAIL", tc.Name, elapsed))
+				if detail != "" {
+					// D5-E1 indented detail block under FAIL line.
+					fmt.Fprint(out, indentDetail(detail))
+				}
+			}
+		default:
+			if em != nil {
+				em.emit("pass", pkg, tc.Name, "", elapsed)
+			} else {
+				fmt.Fprint(out, formatHumanLine("PASS", tc.Name, elapsed))
+			}
+		}
 	}
+
+	// Per-file footer (human only); D5-E1 final example.
+	if em == nil && fileTotal > 0 {
+		fileElapsed := time.Since(fileStart).Seconds()
+		if fileFailed == 0 {
+			fmt.Fprintf(out, "PASS  %s  %d tests  (%.2fs)\n", pkg, fileTotal, fileElapsed)
+		} else {
+			fmt.Fprintf(out, "FAIL  %s  %d tests  %d failed  (%.2fs)\n", pkg, fileTotal, fileFailed, fileElapsed)
+		}
+	}
+}
+
+// indentDetail prefixes every line of detail with "    " so failures
+// render as a Go-test-style indented block under their --- FAIL line.
+// Empty input → empty output. Trailing newline preserved.
+func indentDetail(detail string) string {
+	if detail == "" {
+		return ""
+	}
+	lines := strings.Split(strings.TrimRight(detail, "\n"), "\n")
+	var b strings.Builder
+	for _, line := range lines {
+		b.WriteString("    ")
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 // parsedTestFile holds everything runOneFile / its test counterparts
@@ -231,4 +410,39 @@ func parseTestFile(file string, cfg *runConfig) (*parsedTestFile, error) {
 		WS:    ws,
 		Tests: tests,
 	}, nil
+}
+
+// capturingTReporter wraps *testing.T to BOTH propagate failures
+// (subT.Errorf / subT.Error → real test failure) AND capture the
+// rendered text so the runner can emit it as an `output` record in
+// JSON mode or an indented detail block under `--- FAIL` in human
+// mode. CLI-03 explicit requirement: surface Starlark callsite
+// without Go stack frames.
+//
+// Implements testReporter via composition: Helper / Errorf / Error.
+type capturingTReporter struct {
+	T      *testing.T
+	detail strings.Builder
+}
+
+func (c *capturingTReporter) Helper() { c.T.Helper() }
+
+func (c *capturingTReporter) Errorf(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	c.detail.WriteString(msg)
+	if !strings.HasSuffix(msg, "\n") {
+		c.detail.WriteByte('\n')
+	}
+	// Surface to *testing.T as the actual failure, but use Errorf
+	// directly to avoid double-formatting.
+	c.T.Errorf("%s", msg)
+}
+
+func (c *capturingTReporter) Error(args ...any) {
+	msg := fmt.Sprint(args...)
+	c.detail.WriteString(msg)
+	if !strings.HasSuffix(msg, "\n") {
+		c.detail.WriteByte('\n')
+	}
+	c.T.Error(args...)
 }

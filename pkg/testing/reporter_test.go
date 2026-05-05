@@ -101,15 +101,35 @@ func TestAssert_AccumulatesMultipleFailuresInSubtest(t *testing.T) {
 }
 
 // recordingT is a minimal testReporter that records whether any
-// Error/Errorf was called. Used to assert per-test isolation without
-// the propagation that real *testing.T t.Run subtests cause.
+// Error/Errorf was called and accumulates the rendered detail. Used
+// to assert per-test isolation without the propagation that real
+// *testing.T t.Run subtests cause.
+//
+// Plan 05 extends this with `detail strings.Builder` so format tests
+// (runner_format_test.go) can observe the captured Starlark callsite
+// without poisoning their parent test.
 type recordingT struct {
 	failed bool
+	detail strings.Builder
 }
 
-func (r *recordingT) Helper()                           {}
-func (r *recordingT) Error(args ...any)                 { r.failed = true }
-func (r *recordingT) Errorf(format string, args ...any) { r.failed = true }
+func (r *recordingT) Helper() {}
+func (r *recordingT) Error(args ...any) {
+	r.failed = true
+	msg := fmt.Sprint(args...)
+	r.detail.WriteString(msg)
+	if !strings.HasSuffix(msg, "\n") {
+		r.detail.WriteByte('\n')
+	}
+}
+func (r *recordingT) Errorf(format string, args ...any) {
+	r.failed = true
+	msg := fmt.Sprintf(format, args...)
+	r.detail.WriteString(msg)
+	if !strings.HasSuffix(msg, "\n") {
+		r.detail.WriteByte('\n')
+	}
+}
 
 // TestRunOneTest_SubtestIsolation: test_a fails, test_b passes; verify
 // per-test reporters are independent. Each runOneTest invocation gets
