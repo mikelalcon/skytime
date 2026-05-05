@@ -4,7 +4,7 @@ milestone: v1.42.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 04.3-05-PLAN.md
-last_updated: "2026-05-05T00:13:44.481Z"
+last_updated: "2026-05-05T00:13:47.022Z"
 last_activity: 2026-05-05 -- Phase 04.3 execution started
 progress:
   total_phases: 9
@@ -234,6 +234,7 @@ Recent decisions affecting current work:
 - [Phase 04.3]: Plan 06: Documented expectedErrFlows registration step in 'Adding a New Example' section — Phase 04.2 introduced the package-level map in tests/differential_test.go; contributors adding fail()-emitting fixtures need this knowledge or hit confusing dryrun failures
 - [Phase 04.3]: Plan 04.3-07: tutorial is the source of truth for plan 08's README verbatim embed (D-06) — single-edit-point convention, README regenerated on tutorial change. Inline carve-out citations (D4.1-22, D4.2-05) so reader gets the 'no string compilation + parser-time-only' stance from the tutorial alone
 - [Phase 04.3]: Plan 04.3-05: docs/for-flow-authors/extensions/http.md hand-written per D-17 — 440 lines, 7 H2 + 14 H3 sections, ops in SOURCE ORDER (get/head/post/put/delete) NOT alphabetical; D4-14 idempotence table with verbatim RFC-7231 PUT/DELETE divergence; 4xx ErrNonRetryable / 5xx retryable classification (quick-260502-onc); JIT credential resolution + Bearer/Basic/APIKey applyCredential routing table; future docgen extension-walker target
+- [Phase 04.3]: Plan 04.3-07: docs/getting-started.md uses examples/skeleton/expression_if.star check_user flow as canonical demo (D-05) — asymmetric expression-mode if_cond + dollar-ctx-expr fail interpolation shows headline DSL features in fewest lines; output snapshots labeled "approximately like this" to insulate against renderer drift
 
 ### Pending Todos
 
