@@ -1,0 +1,17 @@
+package parser
+
+import "go.starlark.net/starlark"
+
+type Parser struct{}
+
+func newParseTimeGlobals(p *Parser, thread *starlark.Thread) (starlark.StringDict, error) {
+	g := starlark.StringDict{
+		"flow":    starlark.NewBuiltin("flow", p.builtinFlow),
+		"step":    starlark.NewBuiltin("step", p.builtinStep),
+		"if_cond": starlark.NewBuiltin("if_cond", p.builtinIfCond),
+		"result":  starlark.NewBuiltin("result", p.builtinResult),
+		"fail":    starlark.NewBuiltin("fail", p.builtinFail),
+	}
+	_ = thread
+	return g, nil
+}

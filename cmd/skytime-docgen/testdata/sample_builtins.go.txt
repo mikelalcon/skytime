@@ -1,0 +1,64 @@
+package parser
+
+import "go.starlark.net/starlark"
+
+func (p *Parser) builtinFlow(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		name        string
+		inputs      *starlark.Dict
+		stepsLst    *starlark.List
+		taskQueue   string
+		description string
+	)
+	if err := starlark.UnpackArgs("flow", args, kwargs,
+		"name", &name,
+		"inputs?", &inputs,
+		"steps", &stepsLst,
+		"task_queue?", &taskQueue,
+		"description?", &description,
+	); err != nil {
+		return nil, err
+	}
+	_ = name
+	_ = inputs
+	_ = stepsLst
+	_ = taskQueue
+	_ = description
+	return nil, nil
+}
+
+func (p *Parser) builtinStep(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var action starlark.Value
+	if err := starlark.UnpackArgs("step", args, kwargs, "action?", &action); err != nil {
+		return nil, err
+	}
+	_ = action
+	return nil, nil
+}
+
+func (p *Parser) builtinIfCond(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var cond starlark.Value
+	if err := starlark.UnpackArgs("if_cond", args, kwargs, "cond", &cond); err != nil {
+		return nil, err
+	}
+	_ = cond
+	return nil, nil
+}
+
+func (p *Parser) builtinResult(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var valueArg starlark.Value
+	if err := starlark.UnpackArgs("result", args, kwargs, "value", &valueArg); err != nil {
+		return nil, err
+	}
+	_ = valueArg
+	return nil, nil
+}
+
+func (p *Parser) builtinFail(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var msgVal starlark.Value
+	if err := starlark.UnpackPositionalArgs("fail", args, nil, 1, &msgVal); err != nil {
+		return nil, err
+	}
+	_ = msgVal
+	return nil, nil
+}

@@ -8,6 +8,8 @@ coverage.html
 
 # Stray binary from `go build ./cmd/skytime` at repo root
 /skytime
+# Stray binary from `go build ./cmd/skytime-docgen` at repo root
+/skytime-docgen
 
 # Editor
 .idea/
