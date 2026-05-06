@@ -42,6 +42,12 @@ guarantees.
   that ships with `skytime` out of the box: `endpoint()`, the 5 ops
   (`get`/`head`/`post`/`put`/`delete`), the D4-14 idempotence policy,
   4xx/5xx classification, JIT credential resolution
+- **[Testing Tutorial](testing-tutorial.md)** — step-by-step
+  walkthrough that builds a Tier-3 test suite for a GitHub-API flow
+  from scratch. Companion to the reference manual.
+- **[Testing Reference](testing.md)** — every `tester.*` builtin,
+  every return shape, every locked decision. The manual reference for
+  the Tier-3 test harness.
 
 ## Common Tasks
 

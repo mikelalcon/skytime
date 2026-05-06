@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/mikelalcon/skytime/pkg/extension"
 	"github.com/mikelalcon/skytime/pkg/interpreter"
@@ -61,7 +62,12 @@ func bootRegistry(rootDir string, exts []extension.Extension) (*interpreter.Flow
 		if d.IsDir() {
 			return nil
 		}
-		if filepath.Ext(path) == ".star" {
+		if filepath.Ext(path) == ".star" && !strings.HasSuffix(d.Name(), "_test.star") {
+			// Tier-3 test files are parse-only-in-test-mode (they reference
+			// `tester.*`, `ok`, `err`, `nonretryable`, `assert.*`). The
+			// production worker MUST skip them — mirrors Go's `*_test.go`
+			// convention where the build excludes test files from
+			// production binaries.
 			starFiles = append(starFiles, path)
 		}
 		return nil

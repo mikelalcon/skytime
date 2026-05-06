@@ -73,8 +73,17 @@ tester.workflow(
 ```
 
 The `name` kwarg picks one of the flows declared in the SAME `*_test.star`
-file (or `load()`-ed from a sibling). `init_state` is the workflow's seed —
-typed-shape per the flow's `inputs={...}` declaration.
+file. `init_state` is the workflow's seed — typed-shape per the flow's
+`inputs={...}` declaration.
+
+> **v1 limitation — `load()` across files is not supported.**
+> The flow under test MUST be declared inline in the same `*_test.star`
+> file. `load("./users.star", "users")` from a test file will not expose
+> the flow object to `tester.workflow`/`tester.run`. See
+> `pkg/testing/runner.go` ("Single-file scope only — load() across files
+> is a Phase 6 concern"). For now, redeclare (or copy-paste) the flow
+> definition into the test file. Cross-file `load()` is on the v2
+> roadmap.
 
 **Per-test variation:** redeclare `tester.workflow(...)` inside a `def test_*()`
 to override file-level defaults for that test only. The runner uses
@@ -117,6 +126,14 @@ The mock fires whenever the production flow dispatches a matching action via
 the single generic `ExecuteBatch` activity. The runner intercepts the call at
 the testsuite level and routes the per-action invocation through your
 `mock_fn` lambda.
+
+> **Pitfall: `extension` is the *registered* name, not a local variable.**
+> If your flow does `gh = http.endpoint(base_url=...)`, the symbol `gh`
+> is just a Starlark-local binding — dispatch still routes through the
+> `http` extension. Mock with `extension="http"`, NOT `extension="gh"`.
+> An incorrect extension name surfaces at workflow time as
+> `no mock for http.get at <pos>` (note: `http`, not `gh`); use that
+> hint to confirm the registered name.
 
 ### Mock scope (D5-A4 stack)
 
@@ -266,6 +283,17 @@ The flow callsite (D5-D3) points at the originating `step()` in your `.star`
 file — exactly where the divergent action was emitted — so triage is one jump
 from the diff.
 
+> **v1 limitation — no `expects_failure` assertion.**
+> Every workflow failure (whether from `nonretryable()`, `fail()`, an
+> assertion mismatch inside an action, or any other workflow-side
+> error) propagates as a test failure — the test under whose
+> `tester.run` the failure occurred is marked `--- FAIL:`. There is no
+> built-in `tester.expects_failure(...)` block in v1. Negative-path
+> tests can still be written by extracting the *behavior* under test
+> into a Starlark function and using `assert.fails(fn, regex)` against
+> it directly — but you cannot today wrap `tester.run(...)` in such a
+> construct. Negative-path workflow assertions are slated for v2.
+
 ---
 
 ## assert.*
@@ -359,6 +387,7 @@ pass/fail granularity flows naturally into `go test -v` output and
 
 ## See Also
 
+- **Tutorial:** [`testing-tutorial.md`](testing-tutorial.md) — step-by-step walkthrough that builds a Tier-3 test suite for a GitHub-API flow from scratch (file-scope mock → per-test override → retry semantics → reading failure output → JSON format / regex filter).
 - CLI reference: [`docs/reference/cli.md`](../reference/cli.md) — `## skytime test` section with all flags + exit codes + example.
 - Production builtin reference: [`docs/reference/builtins.md`](../reference/builtins.md) — auto-generated reference for `flow`, `step`, `if_cond`, `script`, `for_each_parallel`, `call_flow`, `result`, `fail`. (Note: `tester.*` is documented HERE manually; multi-file docgen integration is deferred per Plan 06 deviation D5-docs-builtins-marker-location.)
 - Architecture: [`docs/architecture.md`](../architecture.md) — how the harness intercepts the single generic `ExecuteBatch` activity inside `testsuite.TestWorkflowEnvironment` and routes per-action calls back to Starlark mocks.
