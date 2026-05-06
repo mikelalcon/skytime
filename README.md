@@ -27,6 +27,7 @@ Temporal's retry/timeout/child-workflow guarantees.
 - Single generic Temporal activity (`ExecuteBatch`) batches idempotent extension I/O; non-idempotent ops execute one-per-invocation
 - Just-in-time credential resolution — secrets never enter workflow state
 - Static validation tier (`skytime validate`) sharing the parser with the runtime; CI corpus differential test pins parse + dryrun agreement
+- E2E test harness (`skytime test`) — Tier-3 `temporal_test` mocks the single generic activity inside `testsuite.TestWorkflowEnvironment`, runs every test twice for replay-determinism. See the [Testing Tutorial](docs/for-flow-authors/testing-tutorial.md).
 - Embedded HTTP extension out of the box; bring-your-own for GitHub/Slack/AWS/etc.
 - Bazel-style colored CLI: `skytime run --flow=... --input=...` streams progress live; multi-line block on TTY, static line-per-event under `--verbose`
 - Expression-mode `if_cond` with strict-equality result-binding (Phase 04.2 — the most distinctive parse-time type system feature)
@@ -361,6 +362,15 @@ Where to go next depends on what you want to do:
   is the landing page for Starlark consultants composing extensions.
   Start with the bundled HTTP extension reference at
   [`docs/for-flow-authors/extensions/http.md`](docs/for-flow-authors/extensions/http.md).
+- **Write tests for your flows** — Skytime ships a Tier-3 E2E test
+  harness (`skytime test <dir>`). The
+  [Testing Tutorial](docs/for-flow-authors/testing-tutorial.md) walks
+  through building a test suite for a GitHub-API flow from scratch
+  (file-scope mocks → per-test override → retry semantics → JSON
+  output → regex filter). For the full surface, see the
+  [Testing Reference](docs/for-flow-authors/testing.md) — every
+  `tester.*` builtin, `assert.*` family, mock precedence rules, and
+  v1 limitations.
 - **Build an extension** —
   [`docs/for-extension-developers/README.md`](docs/for-extension-developers/README.md)
   is the landing page for Go developers writing extensions.
