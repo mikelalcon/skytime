@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 2: Generic Activity + Block-Batch Dispatch + Credentials** - Single `ExecuteBatch` activity with per-action result list, JIT credential resolution, and error-scrubbing middleware
 - [ ] **Phase 3: Lambda-Serialization Decision + Interpreter + Worker** - Resolve how lambdas survive Temporal serialization, then build the generic interpreter workflow and the multi-cluster worker bootstrap
 - [ ] **Phase 4: Static Validation Tier + CLI Skeleton** - `skytime validate` / `run` / `dev-server`, sharing the parser with the runtime via differential corpus testing
-- [ ] **Phase 5: Tier-3 E2E Test Harness (`temporal_test`)** - Starlark-native E2E tests with `attempt`-aware mocks, replay-determinism assertion, and `skytime test`
+- [x] **Phase 5: Tier-3 E2E Test Harness (`temporal_test`)** - Starlark-native E2E tests with `attempt`-aware mocks, replay-determinism assertion, and `skytime test` (completed 2026-05-05)
 - [ ] **Phase 6: Example Project (HTTP + GitHub + Slack)** - Three real extensions, four-to-six `.star` flows exercising every primitive, README walkthrough — the proof-of-life and the demo
 
 ## Phase Details
@@ -152,7 +152,7 @@ Plans:
   - [x] 05-03-PLAN.md — Wave 2: pkg/testing.RunOnceCapturing public helper + EventCapture activity-boundary listeners + replay_diff.FirstDivergentEvent (D5-D2/D5-D3)
   - [x] 05-04-PLAN.md — Wave 3: assert.* parse-time injection + Parser.TestGlobals accessor + reporter.runOneTest + tester.run replay-twice driver + pkgtesting.Run(t, dir, opts...) foundation API
   - [x] 05-05-PLAN.md — Wave 4: recursive *_test.star walker + def test_*() Starlark-module enumeration + WithRunFilter regex + WithFormat=json (cmd/test2json mirror) + human-format static line-per-test
-  - [ ] 05-06-PLAN.md — Wave 5: pkg/testing.RunCLI non-*testing.T adapter + pkg/cli/test.go cobra subcommand + tests/skytime_test_e2e_test.go subprocess E2E + docs/for-flow-authors/testing.md + docs/reference/cli.md `## skytime test` + // skytime:doc markers regenerating builtins.md
+  - [x] 05-06-PLAN.md — Wave 5: pkg/testing.RunCLI non-*testing.T adapter + pkg/cli/test.go cobra subcommand + tests/skytime_test_e2e_test.go subprocess E2E + docs/for-flow-authors/testing.md + docs/reference/cli.md `## skytime test` + // skytime:doc markers regenerating builtins.md
 **UI hint**: no
 
 ### Phase 6: Example Project (HTTP + GitHub + Slack)
@@ -178,7 +178,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Generic Activity + Block-Batch Dispatch + Credentials | 2/3 | In Progress|  |
 | 3. Lambda-Serialization Decision + Interpreter + Worker | 3/4 | In Progress|  |
 | 4. Static Validation Tier + CLI Skeleton | 0/7 | Not started | - |
-| 5. Tier-3 E2E Test Harness (`temporal_test`) | 0/6 | Not started | - |
+| 5. Tier-3 E2E Test Harness (`temporal_test`) | 6/6 | Complete | 2026-05-05 |
 | 6. Example Project (HTTP + GitHub + Slack) | 0/TBD | Not started | - |
 
 ---

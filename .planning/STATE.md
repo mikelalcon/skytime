@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 05-05-PLAN.md
-last_updated: "2026-05-05T20:28:32.379Z"
-last_activity: 2026-05-05
+status: verifying
+stopped_at: Completed 05-06-PLAN.md (Phase 5 closed)
+last_updated: "2026-05-06T00:51:11.359Z"
+last_activity: 2026-05-06
 progress:
   total_phases: 9
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 49
-  completed_plans: 48
+  completed_plans: 49
   percent: 100
 ---
 
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 
 Phase: 05 (tier-3-e2e-test-harness-temporal-test) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
-Last activity: 2026-05-05
+Status: Phase complete — ready for verification
+Last activity: 2026-05-06
 
 Progress: [██████████] 100%
 
@@ -99,6 +99,7 @@ Progress: [██████████] 100%
 | Phase 05 P03 | 9min | 3 tasks | 9 files |
 | Phase 05 P04 | 30min | 3 tasks | 13 files |
 | Phase 05 P05 | 11min | 2 tasks | 8 files |
+| Phase 05 P06 | 14min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -282,6 +283,10 @@ Recent decisions affecting current work:
 - [Phase 05]: [05-05] JSONEvent uses capitalized json tags (Time/Action/Package/Test,omitempty/Elapsed,omitempty/Output,omitempty) exactly mirroring stdlib cmd/test2json
 - [Phase 05]: [05-05] WithRunFilter compiles regex once at option time; ErrBadFilter sentinel detected via errors.Is
 - [Phase 05]: [05-05] jsonEmitter writes time.Now().UTC() (Open Q6 RFC3339Nano UTC); replay-deterministic across hosts
+- [Phase 05]: Plan 05-06: D5-runner-cli-adapter — RunCLI is a parallel implementation of Plan 04 Run rather than a refactor; planning lock forbade modifying Plans 01..05; ~80 LOC duplication in pkg/testing/cli_run.go (runOneFileCLI + runOneTestCLI bound to bareReporter instead of *testing.T)
+- [Phase 05]: Plan 05-06: D5-docs-builtins-marker-location — manual docs/for-flow-authors/testing.md is the source of truth for tester.* until multi-file docgen ships post-v1; cmd/skytime-docgen is single-file (pkg/parser/globals.go only) and tester.* lives in pkg/testing/module.go — outside its reach. Existing TestDocgenDrift CI gate stays green by NOT touching docgen-managed files.
+- [Phase 05]: Plan 05-06: bareReporter satisfies starlarktest.Reporter (interface{ Error(args ...any) }) without depending on *testing.T — reusable pattern for any future caller (REST endpoint, REPL, scheduled job) that wants to drive the Tier-3 harness from a non-test context
+- [Phase 05]: Plan 05-06: Three-layer CLI-03 contract pinning — 'no Go stack traces in default output' asserted at (a) pkg/testing.RunCLI via TestRunCLI_NoGoStackTracesInFailureOutput, (b) pkg/cli/test.go via TestTestCommand_DefaultOutput_NoGoStackTraces, (c) subprocess via TestSkytimeTestE2E_FailureExitNonzero — independent failure modes for one explicit success-criterion phrase
 
 ### Pending Todos
 
@@ -312,6 +317,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-05T20:28:23.177Z
-Stopped at: Completed 05-05-PLAN.md
+Last session: 2026-05-06T00:50:53.519Z
+Stopped at: Completed 05-06-PLAN.md (Phase 5 closed)
 Resume file: None
