@@ -57,7 +57,7 @@ A consultant team can take an extension catalog and a customer brief, write a `.
 
 ### Active
 
-- [ ] Example project with HTTP + GitHub + Slack extensions exercising every primitive (retries, credentials, parallel for-each, child workflow)
+- [ ] Example project with HTTP + GitHub + Webhook extensions exercising every primitive (retries, credentials, parallel for-each, child workflow); plus a reusable `pkg/extension/credfile/` library credential resolver (TOML, default `$HOME/.skytime-credentials`); plus `.github/workflows/ci.yml` running the project green-check on every push
 - [ ] Compatibility with Temporal Cloud and self-hosted Temporal clusters (BYO cluster, plus dev-server helper for examples) — verified by Phase 3's three named client constructors and Phase 4's `skytime run` variant routing; example project (Phase 6) demonstrates end-to-end
 
 ### Out of Scope

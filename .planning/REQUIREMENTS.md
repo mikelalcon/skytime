@@ -96,7 +96,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Example Project (Dogfood + Demo)
 
-- [ ] **EX-01**: `examples/http-github-slack/` ships three real extensions — generic HTTP, GitHub, Slack — each declaring `Idempotent bool` per operation
+- [ ] **EX-01**: `examples/http-github-webhook/` ships three real extensions — generic HTTP (already shipped in Phase 4 as `pkg/extension/builtin/http`), GitHub, and Webhook (POST JSON to any URL; demonstrated against webhook.site for zero-setup non-idempotency proof) — each declaring `Idempotent bool` per operation. GitHub + Webhook live under `examples/http-github-webhook/extensions/{github,webhook}/` and are registered alongside HTTP in the example's custom CLI binary at `examples/http-github-webhook/cmd/extbin/main.go`. Slack was originally named here but swapped to Webhook during Phase 6 discuss-phase to remove account-creation friction; Webhook covers the same non-idempotency-demo intent and is broader-purpose (consultants point it at Discord/Slack/Teams webhooks too).
 - [ ] **EX-02**: The example contains four to six `.star` flows that collectively exercise every DSL primitive (sequential, block batch, `if_cond`, `script`, `for_each_parallel`, `call_flow`) and every concern (retries, timeouts, credentials, cancellation)
 - [ ] **EX-03**: The example contains at least one `.star` test file using `temporal_test` that exercises retries via `attempt` and asserts replay determinism
 - [ ] **EX-04**: A README walkthrough takes a reader from `git clone` to a successfully-executed flow against `skytime dev-server` in under five commands

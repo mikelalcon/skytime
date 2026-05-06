@@ -2,7 +2,7 @@
 
 ## Overview
 
-Skytime delivers a Go library that lets consultant teams declare durable Temporal workflows in Starlark. The journey is risk-front-loaded: lock the type spine and the parser/bridge contract before anything depends on it, build the generic activity in isolation so its partial-failure protocol can be tested standalone, then resolve the lambda-serialization decision and stand up the interpreter against a real Temporal dev server. After the production execution path works end-to-end, layer the static validator and CLI on top of the same parser, then build the Tier-3 test harness that mocks the single generic activity, then dogfood everything through the HTTP + GitHub + Slack example project. Six phases, 55 v1 requirements, no UI.
+Skytime delivers a Go library that lets consultant teams declare durable Temporal workflows in Starlark. The journey is risk-front-loaded: lock the type spine and the parser/bridge contract before anything depends on it, build the generic activity in isolation so its partial-failure protocol can be tested standalone, then resolve the lambda-serialization decision and stand up the interpreter against a real Temporal dev server. After the production execution path works end-to-end, layer the static validator and CLI on top of the same parser, then build the Tier-3 test harness that mocks the single generic activity, then dogfood everything through the HTTP + GitHub + Webhook example project. Six phases, 55 v1 requirements, no UI.
 
 ## Phases
 
@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 3: Lambda-Serialization Decision + Interpreter + Worker** - Resolve how lambdas survive Temporal serialization, then build the generic interpreter workflow and the multi-cluster worker bootstrap
 - [ ] **Phase 4: Static Validation Tier + CLI Skeleton** - `skytime validate` / `run` / `dev-server`, sharing the parser with the runtime via differential corpus testing
 - [x] **Phase 5: Tier-3 E2E Test Harness (`temporal_test`)** - Starlark-native E2E tests with `attempt`-aware mocks, replay-determinism assertion, and `skytime test` (completed 2026-05-05)
-- [ ] **Phase 6: Example Project (HTTP + GitHub + Slack)** - Three real extensions, four-to-six `.star` flows exercising every primitive, README walkthrough — the proof-of-life and the demo
+- [ ] **Phase 6: Example Project (HTTP + GitHub + Webhook)** - Three real extensions, four-to-six `.star` flows exercising every primitive, README walkthrough — the proof-of-life and the demo
 
 ## Phase Details
 
@@ -155,15 +155,16 @@ Plans:
   - [x] 05-06-PLAN.md — Wave 5: pkg/testing.RunCLI non-*testing.T adapter + pkg/cli/test.go cobra subcommand + tests/skytime_test_e2e_test.go subprocess E2E + docs/for-flow-authors/testing.md + docs/reference/cli.md `## skytime test` + // skytime:doc markers regenerating builtins.md
 **UI hint**: no
 
-### Phase 6: Example Project (HTTP + GitHub + Slack)
-**Goal**: Ship `examples/http-github-slack/` as the dogfooding vehicle and proof-of-life: three real extensions (HTTP, GitHub, Slack) with per-operation `Idempotent bool`, four-to-six `.star` flows exercising every primitive and every concern, at least one `.star` test using `temporal_test`, and a README walkthrough that takes a reader from `git clone` to a successfully-executed flow against `skytime dev-server` in under five commands.
+### Phase 6: Example Project (HTTP + GitHub + Webhook)
+**Goal**: Ship `examples/http-github-webhook/` as the dogfooding vehicle and proof-of-life: three real extensions (HTTP, GitHub, Webhook) with per-operation `Idempotent bool`, four-to-six `.star` flows exercising every primitive and every concern, at least one `.star` test using `temporal_test`, a `pkg/extension/credfile/` library credential resolver (TOML, `$HOME/.skytime-credentials` default), and a README walkthrough that takes a reader from `git clone` to a successfully-executed flow against `skytime dev-server` in under five commands. Plus `.github/workflows/ci.yml` running the full Go test suite + `skytime test ./examples/` on every push (any branch).
 **Depends on**: Phase 5
 **Requirements**: EX-01, EX-02, EX-03, EX-04
 **Success Criteria** (what must be TRUE):
   1. A reader can `git clone`, follow the README walkthrough, and execute a `.star` flow against `skytime dev-server` in under five commands — verified by a CI smoke test that exercises the documented commands
   2. The example contains four-to-six `.star` flows that collectively exercise every DSL primitive (sequential `step`, `block` batch, `if_cond`, `script`, `for_each_parallel`, `call_flow`) and every concern (retries, timeouts, credentials, cancellation) — coverage demonstrated by a primitive-coverage matrix in the README
-  3. Each of the three extensions (HTTP, GitHub, Slack) declares `Idempotent bool` per operation, with Slack `chat.postMessage` correctly declared non-idempotent and verified to execute one-action-per-activity-invocation even when the author wrote it inside a `block`
+  3. Each of the three extensions (HTTP, GitHub, Webhook) declares `Idempotent bool` per operation, with `webhook.post` correctly declared non-idempotent and verified to execute one-action-per-activity-invocation even when the author wrote it inside a `block`
   4. At least one `.star` test file uses `temporal_test` to exercise retries via `attempt` and asserts replay determinism — and any awkward Starlark ergonomics surfaced by writing this example are fed back as fixes to the parser or builtin set before v1 is declared done
+  5. `.github/workflows/ci.yml` runs `go vet`, `go test -race ./... -count=1`, the example custom binary's `test` against `examples/http-github-webhook/`, and the EX-04 walkthrough smoke (public-API GitHub flow) on every push to any branch — green status reports back via GitHub's commit-status API
 **Plans**: TBD
 **UI hint**: no
 
@@ -179,7 +180,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Lambda-Serialization Decision + Interpreter + Worker | 3/4 | In Progress|  |
 | 4. Static Validation Tier + CLI Skeleton | 0/7 | Not started | - |
 | 5. Tier-3 E2E Test Harness (`temporal_test`) | 6/6 | Complete | 2026-05-05 |
-| 6. Example Project (HTTP + GitHub + Slack) | 0/TBD | Not started | - |
+| 6. Example Project (HTTP + GitHub + Webhook) | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-04-26*
