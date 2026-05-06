@@ -8,6 +8,8 @@ The `skytime` binary is the entry point for static validation, workflow dispatch
 
 > **Want auto-completion / man-page generation?** Future phase — for now this is hand-written reference (D-16). The companion [Starlark builtins reference](builtins.md) ships from `cmd/skytime-docgen` and stays in lockstep with `pkg/parser/builtins.go`. To discover what flows a specific `.star` file declares, run `skytime info <file>` (the runtime equivalent of the auto-generated reference).
 
+> **Note on exit codes:** v1 uses exit `1` for *any* error, including cobra usage errors (bad arg count, unknown flag). The conventional Unix `exit 2 → usage` distinction is collapsed into `1` because `cmd/skytime/main.go` returns a blanket `os.Exit(1)` for every error returned from `root.ExecuteContext`. Cobra still renders its usage banner on bad arg counts, so the user-facing diagnostic is unaffected — only the numeric exit code differs from convention. Differentiating `2` is tracked as a v2 polish item.
+
 ---
 
 ## Persistent Flags
@@ -81,8 +83,7 @@ The transient embedded worker uses the same `pkg/cli` `--rootdir`-style conventi
 ### Exit Codes
 
 - `0` — workflow completed successfully; result printed as JSON on stdout.
-- `1` — error rendered to stderr (parse error, validation error, missing `--flow` target, malformed `--input` JSON, connect failure, worker init/start failure, workflow failed via top-level `fail(...)` or non-retryable activity error). The renderer (`pkg/cli/render.go::renderError`) emits the Starlark-first message; `--debug` adds the Go cause chain underneath (D4-18, D4-19).
-- `2` — usage error (e.g., zero or two-plus positional args; missing the required `--flow` flag). Surfaced by cobra's argument validator before `RunE` runs.
+- `1` — any error including parse error, validation error, missing `--flow` target, malformed `--input` JSON, connect failure, worker init/start failure, workflow failed via top-level `fail(...)` or non-retryable activity error, AND usage errors (bad arg count, missing required flag) per the top-of-doc note. The renderer (`pkg/cli/render.go::renderError`) emits the Starlark-first message; `--debug` adds the Go cause chain underneath (D4-18, D4-19). Cobra surfaces its own usage banner on argument-validation failures before `RunE` runs.
 - `130` — NOT used in v1: Ctrl-C during `run.Get` exits with `1` and prints `interrupted; workflow continues on Temporal as runID=<X>`. The workflow itself keeps executing on the cluster.
 
 ### Example
@@ -128,8 +129,7 @@ No subcommand-specific flags. All persistent flags apply.
 ### Exit Codes
 
 - `0` — no validation issues found.
-- `1` — one or more `*dag.ParseError` or `*dag.ValidationError` rendered to stderr. Format (VAL-03): `<file>:<line>:<col> [flow > step > action]: <msg>`. The bracketed segments appear only when at least one of flow/step/action is non-empty, mirroring the legacy `<file>:<line>:<col>: <msg>` format for low-level parse errors that lack flow/step/action context.
-- `2` — usage error (e.g., zero or multiple positional args). Surfaced by cobra before `RunE`.
+- `1` — one or more `*dag.ParseError` or `*dag.ValidationError` rendered to stderr, OR a usage error (bad arg count) per the top-of-doc note. Format (VAL-03): `<file>:<line>:<col> [flow > step > action]: <msg>`. The bracketed segments appear only when at least one of flow/step/action is non-empty, mirroring the legacy `<file>:<line>:<col>: <msg>` format for low-level parse errors that lack flow/step/action context.
 
 `--debug` walks the Go `Unwrap` chain underneath each rendered error (D4-19); without it, only the typed dag-error message prints (D4-18).
 
@@ -186,8 +186,7 @@ No subcommand-specific flags. All persistent flags apply (though `--api-key`, `-
 ### Exit Codes
 
 - `0` — table printed to stdout.
-- `1` — parse error rendered to stderr via the shared renderer (`pkg/cli/render.go::renderError`); no partial table on stdout.
-- `2` — usage error.
+- `1` — parse error rendered to stderr via the shared renderer (`pkg/cli/render.go::renderError`), OR a usage error (bad arg count) per the top-of-doc note; no partial table on stdout.
 
 ### Example
 
@@ -243,8 +242,7 @@ Plus all persistent flags. Notably:
 ### Exit Codes
 
 - `0` — every test passed (or no `*_test.star` files found under `<dir>`; an advisory line is printed).
-- `1` — one or more tests failed; failures rendered to stdout as `--- FAIL:` lines with indented Starlark assertion detail. Also returned for option-time errors (bad `--run` regex, unknown `--format` value at the runner layer).
-- `2` — usage error (zero or multiple positional args; cobra `ExactArgs(1)` surfaces this before `RunE`).
+- `1` — one or more tests failed; failures rendered to stdout as `--- FAIL:` lines with indented Starlark assertion detail. Also returned for option-time errors (bad `--run` regex, unknown `--format` value at the runner layer) AND for usage errors (bad arg count) per the top-of-doc note. Cobra surfaces its own usage banner before `RunE` runs.
 
 ### Example
 

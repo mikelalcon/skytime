@@ -29,7 +29,11 @@ import (
 //	failed == 0, err == nil  → exit 0 (RunE returns nil)
 //	failed > 0               → exit 1 (RunE returns errSilent)
 //	err != nil               → exit 1 (RunE prints err to stderr, returns errSilent)
-//	bad arg count            → exit 2 (cobra ExactArgs(1) before RunE)
+//	bad arg count            → exit 1 (cobra ExactArgs(1) surfaces a usage banner;
+//	                                   cmd/skytime/main.go's blanket os.Exit(1)
+//	                                   currently subsumes the conventional
+//	                                   exit-2-for-usage convention. Tracked as a
+//	                                   v2 polish item.)
 func newTestCommand(cfg *config) *cobra.Command {
 	var runPattern string
 	var format string
