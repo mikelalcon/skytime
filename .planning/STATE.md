@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 06-04-PLAN.md (webhook extension)
-last_updated: "2026-05-07T23:09:39.596Z"
+stopped_at: Completed 06-05-PLAN.md
+last_updated: "2026-05-07T23:16:05.422Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 9
   completed_phases: 8
   total_plans: 58
-  completed_plans: 53
+  completed_plans: 54
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 06 (example-project-http-github-webhook) — EXECUTING
-Plan: 4 of 9
+Plan: 5 of 9
 Status: Ready to execute
 Last activity: 2026-05-07
 
@@ -104,6 +104,7 @@ Progress: [██████████] 100%
 | Phase 06 P02 | 3min | 3 tasks | 5 files |
 | Phase 06-example-project-http-github-webhook P03 | 4min | 3 tasks | 5 files |
 | Phase 06 P04 | 5min | 4 tasks | 4 files |
+| Phase 06 P05 | 7min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -296,6 +297,8 @@ Recent decisions affecting current work:
 - [Phase 06-example-project-http-github-webhook]: GitHub extension uses 'gogh' alias for go-github/v78 (avoids local package collision); ActionRef construction via struct literal (no NewActionRef constructor in pkg/dag); args coercion helpers added defensively to prevent value-vs-pointer panic seen in HTTP extension (quick 260502-guu pattern)
 - [Phase 06]: webhook.post non-idempotent (extension.Ptr(false)) is the load-bearing source of truth for CONTEXT.md success criterion 3
 - [Phase 06]: Activity-boundary mechanical pin via ExecuteBatch + counter-mock proves N ActionRefs => N op invocations without parser dependency
+- [Phase 06]: 06-05 cmd/extbin: lazy credfile via sync.Once defers credfile.New() to first Resolve so headline demo (public_repo_check.star, no creds) works without ~/.skytime-credentials
+- [Phase 06]: 06-05 cmd/extbin: SKYTIME_CREDFILE_PATH env-var override convention; empty string falls through to credfile's default $HOME/.skytime-credentials
 
 ### Pending Todos
 
@@ -326,6 +329,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-07T23:09:39.591Z
-Stopped at: Completed 06-04-PLAN.md (webhook extension)
+Last session: 2026-05-07T23:15:52.602Z
+Stopped at: Completed 06-05-PLAN.md
 Resume file: None
