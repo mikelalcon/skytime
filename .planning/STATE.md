@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 06-06-PLAN.md (5 .star flows + flows_test.go)
-last_updated: "2026-05-07T23:22:40.519Z"
+stopped_at: Completed 06-09-PLAN.md
+last_updated: "2026-05-07T23:29:01.508Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 9
   completed_phases: 8
   total_plans: 58
-  completed_plans: 55
+  completed_plans: 56
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 06 (example-project-http-github-webhook) — EXECUTING
-Plan: 6 of 9
+Plan: 7 of 9
 Status: Ready to execute
 Last activity: 2026-05-07
 
@@ -106,6 +106,7 @@ Progress: [██████████] 100%
 | Phase 06 P04 | 5min | 4 tasks | 4 files |
 | Phase 06 P05 | 7min | 2 tasks | 2 files |
 | Phase 06 P06 | 1min | 3 tasks | 6 files |
+| Phase 06 P09 | 2m | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -304,6 +305,10 @@ Recent decisions affecting current work:
 - [Phase 06]: Plan 06-06: call_flow.inputs are literal-only (pkg/parser/builtins.go:1271 starlarkLiteralToGo) — no ${ctx.x} desugaring or ctx-expression support. issue_triage passes literal placeholders to triage_issue subflow; matches existing skeleton/parallel_fanout.star pattern.
 - [Phase 06]: Plan 06-06: Coverage-matrix mechanical pinning shape — flows_test.go's expected map per flow is the single source of truth for the README coverage table; primitiveSet walker collapses Step into step_seq/step_block/step_block_fn discriminators; aggregate assertion guarantees every primitive is exercised in the corpus.
 - [Phase 06]: Plan 06-06: Plan kwarg names corrected to actual parser API — retry_policy={...} → retry={'max_attempts':N,'initial_interval':'1s'}; timeouts={...} → timeout={'start_to_close':'30s'}; max_in_flight=N → max_concurrency=N. Verified at pkg/dag/retry.go + pkg/parser/builtins.go.
+- [Phase 06]: Plan 06-09: setup-go pinned to @v6 (RESEARCH § 5 upgrade from CONTEXT.md @v5) — v6 has built-in module + build cache eliminating actions/cache@v4 step
+- [Phase 06]: Plan 06-09: walkthrough smoke extracted to scripts/walkthrough_smoke.sh (not inline ci.yml) — same script invoked by CI and humans for repro; m13 sanity runs flow twice (absolute + relative cwd) to drift-proof README walkthrough
+- [Phase 06]: Plan 06-09: assert rendered terminator 'flow complete' (space) per progress_static.go:245 — slog event KIND is flow_complete (underscore) but renderer translates underscore→space; smoke greps the rendered form
+- [Phase 06]: Plan 06-09: permissions: contents: read added beyond CONTEXT.md spec — least-privilege hardening, GitHub-Actions-recommended baseline for read-only CI
 
 ### Pending Todos
 
@@ -334,6 +339,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-07T23:22:40.515Z
-Stopped at: Completed 06-06-PLAN.md (5 .star flows + flows_test.go)
+Last session: 2026-05-07T23:28:52.774Z
+Stopped at: Completed 06-09-PLAN.md
 Resume file: None
