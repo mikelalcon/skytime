@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 06-01-PLAN.md (Wave-0 scaffolding)
-last_updated: "2026-05-07T23:01:27.962Z"
+stopped_at: Completed 06-02-PLAN.md (credfile package)
+last_updated: "2026-05-07T23:07:26.676Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 9
   completed_phases: 8
   total_plans: 58
-  completed_plans: 50
+  completed_plans: 51
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 06 (example-project-http-github-webhook) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9
 Status: Ready to execute
 Last activity: 2026-05-07
 
@@ -101,6 +101,7 @@ Progress: [██████████] 100%
 | Phase 05 P05 | 11min | 2 tasks | 8 files |
 | Phase 05 P06 | 14min | 3 tasks | 8 files |
 | Phase 06 P01 | 3min | 3 tasks | 5 files |
+| Phase 06 P02 | 3min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -289,6 +290,7 @@ Recent decisions affecting current work:
 - [Phase 05]: Plan 05-06: bareReporter satisfies starlarktest.Reporter (interface{ Error(args ...any) }) without depending on *testing.T — reusable pattern for any future caller (REST endpoint, REPL, scheduled job) that wants to drive the Tier-3 harness from a non-test context
 - [Phase 05]: Plan 05-06: Three-layer CLI-03 contract pinning — 'no Go stack traces in default output' asserted at (a) pkg/testing.RunCLI via TestRunCLI_NoGoStackTracesInFailureOutput, (b) pkg/cli/test.go via TestTestCommand_DefaultOutput_NoGoStackTraces, (c) subprocess via TestSkytimeTestE2E_FailureExitNonzero — independent failure modes for one explicit success-criterion phrase
 - [Phase 06]: Wave-0 dep scaffolding skips final go mod tidy to preserve direct-require entries until Wave 1 imports them
+- [Phase 06]: Plan 06-02: pkg/extension/credfile/ ships as library tier per D-CREDS-LIB. credfile.Resolver implements extension.CredentialHandler over TOML credfile (default $HOME/.skytime-credentials, override via WithPath). Three sealed credential kinds (Bearer/Basic/APIKey) constructed via extension.NewSecret; unknown IDs wrap extension.ErrUnknownCredential. POSIX mode-bit check warns by default, refuses with WithStrictMode (skipped on Windows per Pitfall 4). 19 test results green under -race.
 
 ### Pending Todos
 
@@ -319,6 +321,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-07T23:01:27.958Z
-Stopped at: Completed 06-01-PLAN.md (Wave-0 scaffolding)
+Last session: 2026-05-07T23:07:18.709Z
+Stopped at: Completed 06-02-PLAN.md (credfile package)
 Resume file: None
