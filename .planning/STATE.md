@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 06-05-PLAN.md
-last_updated: "2026-05-07T23:16:05.422Z"
+stopped_at: Completed 06-06-PLAN.md (5 .star flows + flows_test.go)
+last_updated: "2026-05-07T23:22:40.519Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 9
   completed_phases: 8
   total_plans: 58
-  completed_plans: 54
+  completed_plans: 55
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 06 (example-project-http-github-webhook) — EXECUTING
-Plan: 5 of 9
+Plan: 6 of 9
 Status: Ready to execute
 Last activity: 2026-05-07
 
@@ -105,6 +105,7 @@ Progress: [██████████] 100%
 | Phase 06-example-project-http-github-webhook P03 | 4min | 3 tasks | 5 files |
 | Phase 06 P04 | 5min | 4 tasks | 4 files |
 | Phase 06 P05 | 7min | 2 tasks | 2 files |
+| Phase 06 P06 | 1min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -299,6 +300,10 @@ Recent decisions affecting current work:
 - [Phase 06]: Activity-boundary mechanical pin via ExecuteBatch + counter-mock proves N ActionRefs => N op invocations without parser dependency
 - [Phase 06]: 06-05 cmd/extbin: lazy credfile via sync.Once defers credfile.New() to first Resolve so headline demo (public_repo_check.star, no creds) works without ~/.skytime-credentials
 - [Phase 06]: 06-05 cmd/extbin: SKYTIME_CREDFILE_PATH env-var override convention; empty string falls through to credfile's default $HOME/.skytime-credentials
+- [Phase 06]: Plan 06-06: Step outputs do NOT auto-bind to ctx in v1 (verified pkg/parser/state_schema.go) — only flow.Inputs / script.OutputAlias / if_cond.OutputAlias / for_each.ItemVar populate state. Flows seed iteration lists from script outputs not step outputs; documented in each .star header.
+- [Phase 06]: Plan 06-06: call_flow.inputs are literal-only (pkg/parser/builtins.go:1271 starlarkLiteralToGo) — no ${ctx.x} desugaring or ctx-expression support. issue_triage passes literal placeholders to triage_issue subflow; matches existing skeleton/parallel_fanout.star pattern.
+- [Phase 06]: Plan 06-06: Coverage-matrix mechanical pinning shape — flows_test.go's expected map per flow is the single source of truth for the README coverage table; primitiveSet walker collapses Step into step_seq/step_block/step_block_fn discriminators; aggregate assertion guarantees every primitive is exercised in the corpus.
+- [Phase 06]: Plan 06-06: Plan kwarg names corrected to actual parser API — retry_policy={...} → retry={'max_attempts':N,'initial_interval':'1s'}; timeouts={...} → timeout={'start_to_close':'30s'}; max_in_flight=N → max_concurrency=N. Verified at pkg/dag/retry.go + pkg/parser/builtins.go.
 
 ### Pending Todos
 
@@ -329,6 +334,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-07T23:15:52.602Z
-Stopped at: Completed 06-05-PLAN.md
+Last session: 2026-05-07T23:22:40.515Z
+Stopped at: Completed 06-06-PLAN.md (5 .star flows + flows_test.go)
 Resume file: None
