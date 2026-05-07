@@ -14,6 +14,8 @@ require (
 	golang.org/x/term v0.41.0
 )
 
+require github.com/google/go-querystring v1.1.0 // indirect
+
 require (
 	github.com/charmbracelet/ultraviolet v0.0.0-20251205161215-1948445e3318 // indirect
 	github.com/charmbracelet/x/ansi v0.11.6 // indirect
