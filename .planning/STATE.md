@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 06-09-PLAN.md
-last_updated: "2026-05-07T23:29:01.508Z"
+stopped_at: Completed 06-08-PLAN.md (rich-example README + cross-doc additions)
+last_updated: "2026-05-07T23:31:55.550Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 9
   completed_phases: 8
   total_plans: 58
-  completed_plans: 56
+  completed_plans: 57
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-26)
 ## Current Position
 
 Phase: 06 (example-project-http-github-webhook) — EXECUTING
-Plan: 7 of 9
+Plan: 8 of 9
 Status: Ready to execute
 Last activity: 2026-05-07
 
@@ -107,6 +107,7 @@ Progress: [██████████] 100%
 | Phase 06 P05 | 7min | 2 tasks | 2 files |
 | Phase 06 P06 | 1min | 3 tasks | 6 files |
 | Phase 06 P09 | 2m | 2 tasks | 2 files |
+| Phase 06 P08 | 4min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -309,6 +310,7 @@ Recent decisions affecting current work:
 - [Phase 06]: Plan 06-09: walkthrough smoke extracted to scripts/walkthrough_smoke.sh (not inline ci.yml) — same script invoked by CI and humans for repro; m13 sanity runs flow twice (absolute + relative cwd) to drift-proof README walkthrough
 - [Phase 06]: Plan 06-09: assert rendered terminator 'flow complete' (space) per progress_static.go:245 — slog event KIND is flow_complete (underscore) but renderer translates underscore→space; smoke greps the rendered form
 - [Phase 06]: Plan 06-09: permissions: contents: read added beyond CONTEXT.md spec — least-privilege hardening, GitHub-Actions-recommended baseline for read-only CI
+- [Phase 06]: Plan 06-08: Seven-section example README copied verbatim from D-DOCS-README; coverage matrix copied verbatim from D-FLOWS-COVERAGE-MATRIX (mechanically pinned by 06-06 TestFlows_CoverageMatrix); .skytime-credentials.example refined comment-only with TOML schema lock preserved (D-CREDS-FORMAT).
 
 ### Pending Todos
 
@@ -339,6 +341,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-07T23:28:52.774Z
-Stopped at: Completed 06-09-PLAN.md
+Last session: 2026-05-07T23:31:49.303Z
+Stopped at: Completed 06-08-PLAN.md (rich-example README + cross-doc additions)
 Resume file: None
