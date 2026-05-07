@@ -433,8 +433,3 @@ block above the `builtinXxx` function in `pkg/parser/builtins.go`
 and run `go generate ./pkg/parser/`. The reference doc updates
 automatically.
 
-## License
-
-License to be selected before v1. The repository is currently
-published as the work-in-progress source; treat as private/unlicensed
-for downstream use until a license file lands.
