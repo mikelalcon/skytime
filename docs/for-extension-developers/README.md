@@ -52,6 +52,43 @@ per-extension activity registration, no string-compilation surface.
 - **[Builtins Reference](../reference/builtins.md)** — the DSL surface
   flow-authors call into your extension from.
 
+## Credential resolution: `pkg/extension/credfile/`
+
+Skytime ships a file-based credential resolver at
+[`pkg/extension/credfile/`](../../pkg/extension/credfile/). Use it
+from your custom CLI binary via `cli.WithCredentialHandler(credfile.New(...))`.
+
+**Schema** — TOML with explicit `type` tag per credential:
+
+```toml
+[credentials.github_token]
+type  = "bearer"
+token = "ghp_..."
+
+[credentials.basic_id]
+type     = "basic"
+username = "..."
+password = "..."
+
+[credentials.apikey_id]
+type  = "apikey"
+key   = "X-API-Key"   # header NAME
+value = "..."         # header VALUE (the secret)
+```
+
+**Default path** — `$HOME/.skytime-credentials`. Override via
+`credfile.New(credfile.WithPath("/etc/skytime/credentials.toml"))`.
+
+**Security** — On Linux/macOS, the resolver warns when the file is
+world-readable (`mode & 0o044 != 0`) and refuses to load in strict
+mode (`credfile.WithStrictMode()`). Always `chmod 600
+~/.skytime-credentials` after copying the example template.
+
+**Worked example** — see
+[`examples/http-github-webhook/cmd/extbin/main.go`](../../examples/http-github-webhook/cmd/extbin/main.go),
+which wires `credfile.New(...)` into a custom CLI binary alongside three
+registered extensions.
+
 ## Hard Rules (architecture firewall)
 
 The library enforces these via AST-walking firewall tests under

@@ -357,6 +357,12 @@ Where to go next depends on what you want to do:
   skeleton fixture (`simple_check.star`, `parallel_fanout.star`,
   `expression_if.star`) with a one-line summary and a "what features
   it exercises" pointer.
+- **Try the rich example project** —
+  [`examples/http-github-webhook/README.md`](examples/http-github-webhook/README.md)
+  walks through the dogfooding example: three extensions
+  (HTTP + GitHub + Webhook), five `.star` flows covering every DSL
+  primitive, a Tier-3 test, and the canonical `cmd/extbin` custom
+  binary. From `git clone` to a real workflow run in under five commands.
 - **Write a flow yourself** —
   [`docs/for-flow-authors/README.md`](docs/for-flow-authors/README.md)
   is the landing page for Starlark consultants composing extensions.
