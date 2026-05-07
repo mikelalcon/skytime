@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.42.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 6 context gathered
-last_updated: "2026-05-06T03:23:05.166Z"
-last_activity: 2026-05-06
+status: executing
+stopped_at: Completed 06-01-PLAN.md (Wave-0 scaffolding)
+last_updated: "2026-05-07T23:01:27.962Z"
+last_activity: 2026-05-07
 progress:
   total_phases: 9
   completed_phases: 8
-  total_plans: 49
-  completed_plans: 49
+  total_plans: 58
+  completed_plans: 50
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-26)
 
 **Core value:** A consultant team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
-**Current focus:** Phase 05 — tier-3-e2e-test-harness-temporal-test
+**Current focus:** Phase 06 — example-project-http-github-webhook
 
 ## Current Position
 
-Phase: 6
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-05-06
+Phase: 06 (example-project-http-github-webhook) — EXECUTING
+Plan: 2 of 9
+Status: Ready to execute
+Last activity: 2026-05-07
 
 Progress: [██████████] 100%
 
@@ -100,6 +100,7 @@ Progress: [██████████] 100%
 | Phase 05 P04 | 30min | 3 tasks | 13 files |
 | Phase 05 P05 | 11min | 2 tasks | 8 files |
 | Phase 05 P06 | 14min | 3 tasks | 8 files |
+| Phase 06 P01 | 3min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -287,6 +288,7 @@ Recent decisions affecting current work:
 - [Phase 05]: Plan 05-06: D5-docs-builtins-marker-location — manual docs/for-flow-authors/testing.md is the source of truth for tester.* until multi-file docgen ships post-v1; cmd/skytime-docgen is single-file (pkg/parser/globals.go only) and tester.* lives in pkg/testing/module.go — outside its reach. Existing TestDocgenDrift CI gate stays green by NOT touching docgen-managed files.
 - [Phase 05]: Plan 05-06: bareReporter satisfies starlarktest.Reporter (interface{ Error(args ...any) }) without depending on *testing.T — reusable pattern for any future caller (REST endpoint, REPL, scheduled job) that wants to drive the Tier-3 harness from a non-test context
 - [Phase 05]: Plan 05-06: Three-layer CLI-03 contract pinning — 'no Go stack traces in default output' asserted at (a) pkg/testing.RunCLI via TestRunCLI_NoGoStackTracesInFailureOutput, (b) pkg/cli/test.go via TestTestCommand_DefaultOutput_NoGoStackTraces, (c) subprocess via TestSkytimeTestE2E_FailureExitNonzero — independent failure modes for one explicit success-criterion phrase
+- [Phase 06]: Wave-0 dep scaffolding skips final go mod tidy to preserve direct-require entries until Wave 1 imports them
 
 ### Pending Todos
 
@@ -317,6 +319,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-06T03:23:05.155Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-example-project-http-github-webhook/06-CONTEXT.md
+Last session: 2026-05-07T23:01:27.958Z
+Stopped at: Completed 06-01-PLAN.md (Wave-0 scaffolding)
+Resume file: None
