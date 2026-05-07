@@ -80,16 +80,24 @@ func makeBuiltinTesterRun(reg *MockRegistry, ws *WorkflowSpec, ctxRef **runConte
 			initState = map[string]any{}
 		}
 
+		// Sibling flow registration: a *_test.star file may declare
+		// multiple flow(...) blocks where the entry flow uses
+		// call_flow to invoke siblings (mirrors production multi-flow
+		// .star files). Build the sibling map from the runContext's
+		// parsed flows + content hashes; RunOnceCapturingWithSiblings
+		// registers each one against the test workflow's FlowRegistry.
+		siblings := buildSiblingMap(ctx, flowName)
+
 		// D5-D1: always-on replay. Run twice with shared mock
 		// registry + shared attempt counter so retry-style mocks
 		// (D5-C1 attempt arg) see consistent counts across both runs.
 		attempts := NewAttemptCounter()
 
-		cap1, _, err1 := RunOnceCapturing(parsed, hash, initState, reg, attempts, nil)
+		cap1, _, err1 := RunOnceCapturingWithSiblings(parsed, hash, initState, reg, attempts, nil, siblings)
 		if err1 != nil {
 			return nil, fmt.Errorf("tester.run (run 1): workflow error: %w", err1)
 		}
-		cap2, _, err2 := RunOnceCapturing(parsed, hash, initState, reg, attempts, nil)
+		cap2, _, err2 := RunOnceCapturingWithSiblings(parsed, hash, initState, reg, attempts, nil, siblings)
 		if err2 != nil {
 			return nil, fmt.Errorf("tester.run (run 2): workflow error: %w", err2)
 		}
@@ -137,6 +145,32 @@ func isInsideDefTestStar(thread *starlark.Thread) bool {
 		}
 	}
 	return false
+}
+
+// buildSiblingMap converts a runContext's parsed-flows + content-hashes
+// into the SiblingFlow map RunOnceCapturingWithSiblings expects. The
+// entry flow (entryName) is excluded — the underlying interpreter
+// helper registers it directly from the `parsed` argument and would
+// reject a duplicate. Returns nil when no siblings exist (single-flow
+// test files); the caller treats nil as "no extra flows to register".
+func buildSiblingMap(ctx *runContext, entryName string) map[string]interpreter.SiblingFlow {
+	if ctx == nil || len(ctx.flows) <= 1 {
+		return nil
+	}
+	out := make(map[string]interpreter.SiblingFlow, len(ctx.flows)-1)
+	for name, parsed := range ctx.flows {
+		if name == entryName {
+			continue
+		}
+		out[name] = interpreter.SiblingFlow{
+			Hash:   ctx.contentHashes[name],
+			Parsed: parsed,
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // callerPosFromThread is shared with builtin_mock_action.go; defined

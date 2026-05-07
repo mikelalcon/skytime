@@ -255,6 +255,15 @@ func writeSortedKwargs(b *strings.Builder, d any) {
 // Compile-time check that EventCapture satisfies log.Logger.
 var _ log.Logger = (*EventCapture)(nil)
 
+// SiblingFlow pairs a parsed flow with its content hash for batch
+// registration via RunOnceCapturingWithSiblings. Used by the Tier-3
+// harness (pkg/testing) to register every parsed flow in a *_test.star
+// file so call_flow targets resolve at workflow execution time.
+type SiblingFlow struct {
+	Hash   string
+	Parsed *ParsedFlow
+}
+
 // RunOnceCapturing executes parsed against a fresh
 // TestWorkflowEnvironment, capturing slog events + activity-boundary
 // events. Pass mockCallback == nil for activity-free flows
@@ -272,11 +281,39 @@ var _ log.Logger = (*EventCapture)(nil)
 //
 // Plan 03 Task 1 lift target: replaces
 // pkg/interpreter/replay_determinism_test.go::runOnceCapturing.
+//
+// For multi-flow scenarios (call_flow targets), use
+// RunOnceCapturingWithSiblings instead.
 func RunOnceCapturing(
 	parsed *ParsedFlow,
 	hash string,
 	init map[string]any,
 	mockCallback func(context.Context, []*dag.ActionRef) ([]dag.ActionResult, error),
+) (*EventCapture, map[string]any, error) {
+	return RunOnceCapturingWithSiblings(parsed, hash, init, mockCallback, nil)
+}
+
+// RunOnceCapturingWithSiblings is the multi-flow form of RunOnceCapturing.
+// In addition to the entry flow (`parsed`), it registers every sibling
+// flow in `siblings` against the same FlowRegistry so call_flow targets
+// resolve at workflow execution time.
+//
+// Tier-3 use case (pkg/testing): a *_test.star file may declare multiple
+// flow(...) blocks where the entry flow uses call_flow to invoke the
+// others. The Tier-3 harness collects ALL parsed flows into the
+// runContext and passes them here so the test workflow sees the same
+// child-flow registry shape that production sees in pkg/worker/boot.go.
+//
+// `siblings` may be nil or empty for single-flow tests; the entry flow
+// is registered exactly once (its name must NOT also appear in siblings,
+// or registry.Register would return ErrAlreadyRegistered — callers
+// strip the entry from the map before passing it in).
+func RunOnceCapturingWithSiblings(
+	parsed *ParsedFlow,
+	hash string,
+	init map[string]any,
+	mockCallback func(context.Context, []*dag.ActionRef) ([]dag.ActionResult, error),
+	siblings map[string]SiblingFlow,
 ) (*EventCapture, map[string]any, error) {
 	if parsed == nil {
 		return nil, nil, errors.New("RunOnceCapturing: parsed must not be nil")
@@ -289,6 +326,29 @@ func RunOnceCapturing(
 	registry := NewRegistry()
 	if err := registry.Register(parsed.Flow.Name, hash, parsed); err != nil {
 		return nil, nil, fmt.Errorf("RunOnceCapturing: registry.Register: %w", err)
+	}
+	// Register every sibling flow so call_flow targets resolve. Iterate
+	// in sorted-name order for replay determinism (Go map iteration is
+	// randomized; identical input must produce identical registration
+	// order across both runs of the always-on D5-D1 replay).
+	if len(siblings) > 0 {
+		names := make([]string, 0, len(siblings))
+		for n := range siblings {
+			if n == parsed.Flow.Name {
+				continue // entry flow already registered above
+			}
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		for _, n := range names {
+			s := siblings[n]
+			if s.Parsed == nil || s.Parsed.Flow == nil {
+				return nil, nil, fmt.Errorf("RunOnceCapturing: sibling %q has nil Parsed/Flow", n)
+			}
+			if err := registry.Register(n, s.Hash, s.Parsed); err != nil {
+				return nil, nil, fmt.Errorf("RunOnceCapturing: registry.Register sibling %q: %w", n, err)
+			}
+		}
 	}
 	registry.Freeze()
 
