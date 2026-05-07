@@ -19,3 +19,10 @@ coverage.html
 # OS
 .DS_Store
 Thumbs.db
+
+# Skytime credfile (defense-in-depth — credfiles live at ~/.skytime-credentials by default;
+# these patterns prevent accidental commits if a user copies one into the repo).
+.skytime-credentials
+.skytime-credentials.local
+*.skytime-credentials
+!*.skytime-credentials.example

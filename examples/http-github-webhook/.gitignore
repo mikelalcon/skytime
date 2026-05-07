@@ -1,0 +1,5 @@
+# Local credfile — never commit. Copy .skytime-credentials.example to
+# ~/.skytime-credentials (NOT here) and chmod 600.
+.skytime-credentials
+.skytime-credentials.local
+!.skytime-credentials.example
