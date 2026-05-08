@@ -48,6 +48,14 @@ func newParseTimeGlobals(p *Parser, thread *starlark.Thread) (starlark.StringDic
 		"for_each_parallel": starlark.NewBuiltin("for_each_parallel", p.builtinForEachParallel),
 		"call_flow":         starlark.NewBuiltin("call_flow", p.builtinCallFlow),
 
+		// Phase 7 (D-07-01..D-07-13): top-level trigger(...) binds a
+		// TriggerSource to a flow with map/idempotency_key lambdas.
+		// Trigger lambdas resolve free variables against
+		// bridge.triggerTimeGlobals (lambdaTimeGlobals + json + time)
+		// at HTTP ingress, NOT against the workflow lambda env. See
+		// pkg/parser/doc.go for the D-07-03 / D-07-04 contract.
+		"trigger": starlark.NewBuiltin("trigger", p.builtinTrigger),
+
 		// D4.2-02: top-level result(value={...}) emits *dag.Result. Only
 		// legal as the LAST node of an expression-mode if_cond branch
 		// (validation lives in plan 04.2-03 finalize pass).

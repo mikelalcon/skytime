@@ -67,4 +67,28 @@
 // message (via the D4.1-01 desugarer); lambda-time fail() takes a
 // literal string at the call site (interpolation must be done by
 // string concatenation: fail("missing " + ctx.repo)).
+//
+// # Trigger lambda contract (D-07-03 / D-07-04 deviation note)
+//
+// The trigger(...) builtin captures two lambdas — `map` and
+// `idempotency_key` — each with the locked single-positional signature
+// `lambda req: ...`. This OVERRIDES the illustrative
+// `lambda payload, headers` shown in REQUIREMENTS.md TRIG-01's success
+// criterion (D-07-03): the locked one-arg form is the actual contract;
+// the multi-arg illustration is decorative.
+//
+// Trigger lambdas resolve free variables against
+// `bridge.triggerTimeGlobals` (lambdaTimeGlobals + json + time), NOT
+// against the workflow `lambdaTimeGlobals` (D-07-04). The extra
+// `json.Module` + `time.Module` are SAFE in trigger lambdas because
+// trigger lambdas are non-deterministic by design — they execute
+// exactly once at HTTP ingress (the receive-side activity), and their
+// output is persisted into the workflow's StartWorkflowOptions before
+// the workflow itself starts. No workflow replay ever re-evaluates a
+// trigger lambda, so non-deterministic globals (e.g., time.now(),
+// wall-clock-dependent json formatting) are safe here.
+//
+// Workflow lambdas, by contrast, evaluate inside workflow.Go contexts
+// during replay — they MUST stay deterministic and thus MUST NOT see
+// json/time.
 package parser
