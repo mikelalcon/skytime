@@ -229,6 +229,121 @@ func (n *CallFlow) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// triggerJSON is the marshal-time shape of *Trigger. The Pos field is
+// deliberately excluded for cross-machine stability (same convention as
+// actionRefJSON below). The Source field is delegated to the concrete
+// TriggerSource implementation (returns the {kind, config} envelope).
+//
+// CRITICAL: credential_id is a STRING ID. No extension.Secret value, no
+// resolved credential, ever appears in this JSON shape. The Source.config
+// envelope produced by each concrete TriggerSource also carries only
+// credential ID strings — verified by tests/firewall_credential_redaction_test.go
+// in Plan 06.
+type triggerJSON struct {
+	Kind                string          `json:"kind"`
+	FlowName            string          `json:"flow_name"`
+	Source              json.RawMessage `json:"source"`
+	MapLambdaID         string          `json:"map_lambda_id,omitempty"`
+	IdempotencyLambdaID string          `json:"idempotency_lambda_id,omitempty"`
+	CredentialID        string          `json:"credential_id,omitempty"`
+}
+
+// MarshalJSON emits a Trigger with a "kind":"Trigger" discriminator. The
+// Source field is rendered via Source.MarshalJSON() so each concrete
+// TriggerSource type controls its own envelope. Lambdas are referenced by
+// content-hash ID only — the *starlark.Function bodies are reconstructed
+// at runtime via interpreter.RunOnceCapturing (Phase 3 lambda-serialization
+// contract).
+func (t *Trigger) MarshalJSON() ([]byte, error) {
+	var sourceRaw json.RawMessage
+	if t.Source != nil {
+		b, err := t.Source.MarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		sourceRaw = b
+	} else {
+		sourceRaw = json.RawMessage("null")
+	}
+	var mapID, idempID string
+	if t.MapLambda != nil {
+		mapID = t.MapLambda.ID
+	}
+	if t.IdempotencyLambda != nil {
+		idempID = t.IdempotencyLambda.ID
+	}
+	return json.Marshal(triggerJSON{
+		Kind:                "Trigger",
+		FlowName:            t.FlowName,
+		Source:              sourceRaw,
+		MapLambdaID:         mapID,
+		IdempotencyLambdaID: idempID,
+		CredentialID:        t.CredentialID,
+	})
+}
+
+// UnmarshalJSON reads the {kind, flow_name, source, map_lambda_id,
+// idempotency_lambda_id, credential_id} envelope. Source unmarshaling
+// dispatches via a kind-keyed registry populated by extensions during
+// their Initialize() lifecycle (see pkg/extension/trigger_unmarshal.go,
+// Plan 02). Pos is NOT recovered (zero value), matching the dag.ActionRef
+// precedent — runtime attribution uses lambda IDs, not source positions.
+//
+// Lambdas are NOT reconstructed here. The deserialized Trigger has
+// MapLambda/IdempotencyLambda carrying ONLY the IDs (Fn nil) — Plan 04's
+// TriggerRegistry will rehydrate Fn pointers via the same lambda registry
+// the FlowRegistry uses.
+func (t *Trigger) UnmarshalJSON(data []byte) error {
+	var raw triggerJSON
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if raw.Kind != "Trigger" {
+		return fmt.Errorf("dag: unmarshal Trigger: kind=%q expected \"Trigger\"", raw.Kind)
+	}
+	t.FlowName = raw.FlowName
+	t.CredentialID = raw.CredentialID
+	// MapLambda / IdempotencyLambda: only the IDs are kept; Fn rehydration
+	// is the registry's responsibility.
+	if raw.MapLambdaID != "" {
+		t.MapLambda = &CapturedLambda{ID: raw.MapLambdaID}
+	}
+	if raw.IdempotencyLambdaID != "" {
+		t.IdempotencyLambda = &CapturedLambda{ID: raw.IdempotencyLambdaID}
+	}
+	// Source: decode the discriminator and route through the registry.
+	if len(raw.Source) > 0 && string(raw.Source) != "null" {
+		src, err := unmarshalTriggerSource(raw.Source)
+		if err != nil {
+			return fmt.Errorf("dag: unmarshal Trigger.Source: %w", err)
+		}
+		t.Source = src
+	}
+	return nil
+}
+
+// unmarshalTriggerSource is the kind-keyed dispatch seam wired by
+// pkg/extension (Plan 02 ships pkg/extension/trigger_unmarshal.go which
+// calls RegisterTriggerSourceUnmarshaler from package init). Plan 01
+// ships only the variable + setter so Trigger.UnmarshalJSON compiles
+// against a stable seam.
+//
+// Default behavior: returns an explanatory error so anyone unmarshaling
+// a Trigger with a non-null Source before Plan 02 lands gets a clear
+// message instead of a nil panic.
+var unmarshalTriggerSource = func(data []byte) (TriggerSource, error) {
+	return nil, fmt.Errorf("dag: no TriggerSource unmarshaler registered (Plan 02 wires extension package)")
+}
+
+// RegisterTriggerSourceUnmarshaler installs the cross-package seam used
+// by pkg/extension to register the kind-keyed TriggerSource unmarshaler.
+// Called once at package init from pkg/extension. Tests may also use this
+// to install fakes — pair with t.Cleanup that restores the previous value
+// to avoid cross-test contamination.
+func RegisterTriggerSourceUnmarshaler(fn func([]byte) (TriggerSource, error)) {
+	unmarshalTriggerSource = fn
+}
+
 // actionRefJSON is the marshal-time shape of *ActionRef. The Pos field is
 // deliberately excluded — Pos.Filename is absolute and breaks
 // cross-machine golden stability.
