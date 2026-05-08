@@ -8,7 +8,8 @@
 //
 //	extbin validate <file.star>      static validation (Tier 1)
 //	extbin run <file.star> ...       trigger a workflow against a Temporal cluster
-//	extbin dev-server                spawn a local Temporal dev server
+//	extbin dev-temporal              spawn a local Temporal dev server (renamed in Phase 7 per D-07-21)
+//	extbin server                    long-lived worker (Phase 7+)
 //	extbin test <dir>                discover + run *_test.star (Tier 3)
 //
 // Credentials live at $HOME/.skytime-credentials (TOML; see
@@ -52,7 +53,7 @@ func main() {
 
 	if err := root.ExecuteContext(ctx); err != nil {
 		// Per D4-18, pkg/cli owns user-visible output. Subcommands that
-		// already rendered (validate, run, dev-server, test) return
+		// already rendered (validate, run, dev-temporal, server, test) return
 		// cli.ErrAlreadyRendered and RenderRootError no-ops on it.
 		// Top-level cobra errors (unknown command, etc.) reach
 		// RenderRootError as plain errors and get a human-friendly

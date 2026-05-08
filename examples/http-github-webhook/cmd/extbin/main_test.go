@@ -108,7 +108,7 @@ func TestExtbin_BuildsAndShowsHelp(t *testing.T) {
 	require.NoError(t, err, "--help should exit 0; output: %s", string(out))
 
 	s := string(out)
-	for _, sub := range []string{"validate", "run", "dev-server", "test"} {
+	for _, sub := range []string{"validate", "run", "dev-temporal", "server", "test"} {
 		assert.Contains(t, s, sub, "expected subcommand %q in --help output", sub)
 	}
 }

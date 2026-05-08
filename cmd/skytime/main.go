@@ -1,7 +1,7 @@
-// skytime is the Skytime CLI binary: validate, run, and dev-server
-// subcommands wired against the baked-in HTTP extension. Consultants
-// who need additional extensions should build their own binary by
-// importing pkg/cli — see docs/cli-binary.md.
+// skytime is the Skytime CLI binary: validate, run, dev-temporal,
+// server, info, and test subcommands wired against the baked-in HTTP
+// extension. Consultants who need additional extensions should build
+// their own binary by importing pkg/cli — see docs/cli-binary.md.
 //
 // The binary is intentionally thin per D4-13 — pkg/cli owns the cobra
 // tree and the renderer; cmd/skytime is the wiring + the CredentialHandler
@@ -40,7 +40,7 @@ func main() {
 	}
 	if err := root.ExecuteContext(ctx); err != nil {
 		// Per D4-18, pkg/cli owns user-visible output. Subcommands that
-		// already rendered (validate, run, dev-server) return
+		// already rendered (validate, run, dev-temporal, server) return
 		// cli.ErrAlreadyRendered and RenderRootError no-ops on it. Top-
 		// level cobra errors (unknown command, etc.) reach
 		// RenderRootError as plain errors and get a human-friendly
