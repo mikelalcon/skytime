@@ -1,21 +1,21 @@
 # Skytime
 
 > Starlark-defined durable workflows on Temporal — a strict parse/execute
-> split that gives consultant teams a safe DSL on top of Temporal's
+> split that gives flow authors a safe DSL on top of Temporal's
 > retry/timeout/child-workflow guarantees.
 
-Skytime is a Go library that lets teams declare durable workflows in
-Starlark and execute them on Temporal. The boundary between Starlark
-(parse-time, deterministic graph generation) and Temporal
-(execution-time, durable orchestration) is **absolute and architectural**
-— no string compilation, no dynamic activities, no context bleed.
+Skytime is a Go library for declaring durable workflows in Starlark
+and executing them on Temporal. A `.star` file is parsed into a
+deterministic DAG; Temporal walks that DAG at execution time. The two
+phases share no runtime — no string compilation, no dynamic activities,
+no context bleed.
 
 The two-tier authoring model:
 
 - **Library/extension developers** write Go *extensions* — typed I/O wrappers, reusable across customers
-- **Consultant/integrator teams** compose those extensions in `.star` files specialized per customer
+- **Flow authors** compose those extensions in `.star` files specialized per customer
 
-A consultant team can take an extension catalog and a customer brief,
+A flow-author team can take an extension catalog and a customer brief,
 write a `.star` file, and have a production-grade durable workflow
 running on Temporal — without touching Go and without giving up
 Temporal's retry/timeout/child-workflow guarantees.
@@ -28,7 +28,7 @@ Temporal's retry/timeout/child-workflow guarantees.
 - Just-in-time credential resolution — secrets never enter workflow state
 - Static validation tier (`skytime validate`) sharing the parser with the runtime; CI corpus differential test pins parse + dryrun agreement
 - E2E test harness (`skytime test`) — Tier-3 `temporal_test` mocks the single generic activity inside `testsuite.TestWorkflowEnvironment`, runs every test twice for replay-determinism. See the [Testing Tutorial](docs/for-flow-authors/testing-tutorial.md).
-- Embedded HTTP extension out of the box; bring-your-own for GitHub/Slack/AWS/etc.
+- Embedded HTTP extension; example GitHub + Webhook extensions in `examples/http-github-webhook/`; bring-your-own for everything else
 - Bazel-style colored CLI: `skytime run --flow=... --input=...` streams progress live; multi-line block on TTY, static line-per-event under `--verbose`
 - Expression-mode `if_cond` with strict-equality result-binding (Phase 04.2 — the most distinctive parse-time type system feature)
 
@@ -52,18 +52,17 @@ Pre-v1; foundational architecture stable. Phase progress:
 - ✓ **Phase 4** — Static validation, CLI skeleton (`skytime run`/`validate`/`info`/`dev-server`), HTTP extension (7/7 reqs)
 - ✓ **Phase 04.1** — Dynamic step kwargs, `${ctx.expr}` interpolation, multi-line live progress (7/7 reqs)
 - ✓ **Phase 04.2** — Expression-mode `if_cond` with strict-equality result-binding (3/3 reqs)
-- ⏳ **Phase 5** — Tier-3 E2E test harness (`temporal_test` Starlark builtin)
-- ⏳ **Phase 6** — Example project (HTTP + GitHub + Slack) — the proof-of-life
+- ✓ **Phase 04.3** — Documentation set + source-driven reference generator
+- ✓ **Phase 5** — Tier-3 E2E test harness (`temporal_test` Starlark builtin) (5/5 reqs)
+- ✓ **Phase 6** — Example project: HTTP + GitHub + Webhook extensions, five `.star` flows, Tier-3 test, credfile resolver, README walkthrough, CI (4/4 reqs)
 
-**v1 readiness:** 65/65 v1 requirements mapped to phases; 55/65 complete
-(see [.planning/REQUIREMENTS.md](.planning/REQUIREMENTS.md)). Phases 5-6
-deliver the test harness + dogfooded example before v1 is declared done.
+**v1 readiness:** 64/64 v1 requirements complete
+(see [.planning/REQUIREMENTS.md](.planning/REQUIREMENTS.md)).
 
-**Production-readiness:** the runtime path (Phases 1-4) has been
-shipped with full test coverage including replay-determinism assertions
-and `workflowcheck` analysis. Use it for non-critical workloads today;
-audit the credential-resolver wiring in your CLI binary before
-production rollout.
+**Production-readiness:** the runtime path has full test coverage
+including replay-determinism assertions and `workflowcheck` analysis.
+Use it for non-critical workloads today; audit the credential-resolver
+wiring in your CLI binary before production rollout.
 
 ## Getting Started
 
@@ -365,7 +364,7 @@ Where to go next depends on what you want to do:
   binary. From `git clone` to a real workflow run in under five commands.
 - **Write a flow yourself** —
   [`docs/for-flow-authors/README.md`](docs/for-flow-authors/README.md)
-  is the landing page for Starlark consultants composing extensions.
+  is the landing page for flow authors composing extensions.
   Start with the bundled HTTP extension reference at
   [`docs/for-flow-authors/extensions/http.md`](docs/for-flow-authors/extensions/http.md).
 - **Write tests for your flows** — Skytime ships a Tier-3 E2E test
@@ -407,7 +406,7 @@ skytime/
 │   ├── architecture.md     # Required reading: parse/execute split + boundary diagram
 │   ├── getting-started.md  # The canonical 5-10 min tutorial
 │   ├── reference/          # docs/reference/builtins.md is auto-generated (cmd/skytime-docgen)
-│   ├── for-flow-authors/   # Starlark consultants
+│   ├── for-flow-authors/   # Flow authors
 │   ├── for-extension-developers/  # Go developers
 │   └── cli-binary.md       # Building binaries with custom extensions
 └── tests/                  # Cross-package firewalls + corpus differential tests
