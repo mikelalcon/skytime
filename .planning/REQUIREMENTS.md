@@ -94,41 +94,41 @@ Explicit exclusions for v1.43 with reasoning.
 
 ## Traceability
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| TRIG-01 | Phase 7 | Pending |
-| TRIG-02 | Phase 7 | Pending |
-| TRIG-03 | Phase 7 | Pending |
-| TRIG-04 | Phase 7 | Pending |
-| TRIG-05 | Phase 7 | Pending |
-| TRIG-06 | Phase 7.1 | Pending |
-| TRIG-07 | Phase 7.1 | Pending |
-| TRIG-08 | Phase 7.1 | Pending |
-| TRIG-09 | Phase 7.1 | Pending |
-| TRIG-10 | Phase 7.1 | Pending |
-| SERVER-01 | Phase 7 | Pending |
-| SERVER-02 | Phase 7 | Pending |
-| SERVER-03 | Phase 7 | Pending |
-| SCHED-01 | Phase 7.2 | Pending |
-| SCHED-02 | Phase 7.2 | Pending |
-| SCHED-03 | Phase 7.2 | Pending |
-| UI-01 | Phase 7.3 | Pending |
-| UI-02 | Phase 7.3 | Pending |
-| UI-03 | Phase 7.3 | Pending |
-| UI-04 | Phase 7.3 | Pending |
-| CLI-08 | Phase 7.4 | Pending |
-| CLI-09 | Phase 7.4 | Pending |
-| CLI-10 | Phase 7.4 | Pending |
-| CLI-11 | Phase 7.4 | Pending |
-| CLI-12 | Phase 7.4 | Pending |
-| CLI-13 | Phase 7 | Pending |
-| EX-05 | Phase 7.1 | Pending |
-| AUTH-01 | Phase 7.5 | Pending |
-| AUTH-02 | Phase 7.5 | Pending |
-| AUTH-03 | Phase 7.5 | Pending |
-| AUTH-04 | Phase 7.5 | Pending |
+| Requirement | Phase | Source Plan | Status |
+|-------------|-------|-------------|--------|
+| TRIG-01 | Phase 7 | — | Pending |
+| TRIG-02 | Phase 7 | — | Pending |
+| TRIG-03 | Phase 7 | — | Pending |
+| TRIG-04 | Phase 7 | — | Pending |
+| TRIG-05 | Phase 7 | — | Pending |
+| TRIG-06 | Phase 7.1 | — | Pending |
+| TRIG-07 | Phase 7.1 | — | Pending |
+| TRIG-08 | Phase 7.1 | — | Pending |
+| TRIG-09 | Phase 7.1 | — | Pending |
+| TRIG-10 | Phase 7.1 | — | Pending |
+| SERVER-01 | Phase 7 | — | Pending |
+| SERVER-02 | Phase 7 | — | Pending |
+| SERVER-03 | Phase 7 | — | Pending |
+| SCHED-01 | Phase 7.2 | — | Pending |
+| SCHED-02 | Phase 7.2 | — | Pending |
+| SCHED-03 | Phase 7.2 | — | Pending |
+| UI-01 | Phase 7.3 | — | Pending |
+| UI-02 | Phase 7.3 | — | Pending |
+| UI-03 | Phase 7.3 | — | Pending |
+| UI-04 | Phase 7.3 | — | Pending |
+| CLI-08 | Phase 7.4 | — | Pending |
+| CLI-09 | Phase 7.4 | — | Pending |
+| CLI-10 | Phase 7.4 | — | Pending |
+| CLI-11 | Phase 7.4 | — | Pending |
+| CLI-12 | Phase 7.4 | — | Pending |
+| CLI-13 | Phase 7 | — | Pending |
+| EX-05 | Phase 7.1 | — | Pending |
+| AUTH-01 | Phase 7.5 | — | Pending |
+| AUTH-02 | Phase 7.5 | — | Pending |
+| AUTH-03 | Phase 7.5 | — | Pending |
+| AUTH-04 | Phase 7.5 | — | Pending |
 
-**Total:** 31 requirements across 7 categories, mapped to 6 phases.
+**Total:** 31 requirements across 7 categories, mapped to 6 phases. `Source Plan` column is `—` placeholder; `/gsd:plan-phase` fills it as plans land.
 
 ## Coverage Summary
 
@@ -144,3 +144,4 @@ Explicit exclusions for v1.43 with reasoning.
 
 ---
 *Created: 2026-05-08 — v1.43.0 Durability + Triggers milestone opened*
+*Updated: 2026-05-08 — added `Source Plan` column on roadmap creation*

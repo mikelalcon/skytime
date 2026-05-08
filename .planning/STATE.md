@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
-status: defining_requirements
-stopped_at: v1.43.0 milestone opened — defining requirements
-last_updated: "2026-05-08T16:00:00.000Z"
+status: ready_to_plan
+stopped_at: v1.43.0 roadmap created — 6 phases, 31 requirements
+last_updated: "2026-05-08T17:00:00.000Z"
 last_activity: 2026-05-08
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A flow-author team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
-**Current focus:** v1.43.0 Durability + Triggers — defining requirements
+**Current focus:** v1.43.0 Durability + Triggers — ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-05-08 — Milestone v1.43.0 opened
+Phase: 7 (next)
+Plan: not started
+Status: Ready to plan
+Last activity: 2026-05-08 — v1.43.0 roadmap created (6 phases, 31 requirements)
 
 Progress: [          ] 0%
 
