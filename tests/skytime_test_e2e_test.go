@@ -2,7 +2,7 @@
 
 // Subprocess E2E for `skytime test` (CLI-03 success-criteria #5
 // verbatim). Mirrors tests/e2e_skytime_run_test.go's ensureBinary
-// pattern. Build tag: this test does not need a Temporal dev-server
+// pattern. Build tag: this test does not need a Temporal dev server
 // (Tier-3 harness uses TestWorkflowEnvironment in-process), but we
 // keep the !windows guard for parity with sibling e2e tests in this
 // directory.

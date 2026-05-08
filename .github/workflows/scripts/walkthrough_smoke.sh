@@ -41,21 +41,21 @@ fi
 
 # Start the Temporal dev server in the background. --headless is faster
 # (~2s startup vs ~4s with web UI) and more deterministic in CI.
-echo "==> Starting temporal dev-server (background, headless)"
+echo "==> Starting temporal dev server (background, headless)"
 temporal server start-dev --headless &
 TEMPORAL_PID=$!
 
-# Trap-based cleanup — guarantees the dev-server is stopped even if the
-# smoke fails partway through. `kill %1` would also work for the
+# Trap-based cleanup — guarantees the temporal dev server is stopped even
+# if the smoke fails partway through. `kill %1` would also work for the
 # immediate-foreground case but the trap survives any exit path.
 cleanup() {
-    echo "==> Cleaning up temporal dev-server (pid=$TEMPORAL_PID)"
+    echo "==> Cleaning up temporal dev server (pid=$TEMPORAL_PID)"
     kill "$TEMPORAL_PID" 2>/dev/null || true
     wait "$TEMPORAL_PID" 2>/dev/null || true
 }
 trap cleanup EXIT
 
-# Wait for the dev-server to be ready (up to 30s). RESEARCH § 5 documents
+# Wait for the temporal dev server to be ready (up to 30s). RESEARCH § 5 documents
 # this poll loop; alternative is `--retry-attempts 30` flag on the describe
 # subcommand but the explicit loop gives clearer failure logs.
 echo "==> Waiting for temporal server readiness"

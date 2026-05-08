@@ -67,7 +67,7 @@ func teardownDevServer() {
 // TestMain sets up two package-wide responsibilities:
 //
 //  1. Signal handler → reliable subprocess group teardown on Ctrl-C /
-//     SIGTERM mid-test (the dev-server process group lives outside the
+//     SIGTERM mid-test (the temporal dev server process group lives outside the
 //     normal defer chain since it's a long-lived background subprocess).
 //  2. After-suite teardown of any spawned dev server.
 //
@@ -212,7 +212,7 @@ func findModuleRootE2E(t *testing.T) string {
 	}
 }
 
-// TestE2E_SkytimeRun_Happy: full stack — binary build → dev-server →
+// TestE2E_SkytimeRun_Happy: full stack — binary build → temporal dev server →
 // skytime run examples/skeleton/simple_check.star → assert status=200
 // + flow complete + no ✗ + correct ordering.
 func TestE2E_SkytimeRun_Happy(t *testing.T) {
@@ -308,7 +308,7 @@ flow(name = "bad", inputs = {}, steps = [
 	// completion AND exited non-zero.
 	require.Error(t, err, "skytime run on a 404-pointing flow must exit non-zero")
 	require.IsType(t, &exec.ExitError{}, err,
-		"expected *exec.ExitError (real non-zero exit), got %T: %v — likely a context-cancellation timeout, dev-server hang, or binary crash",
+		"expected *exec.ExitError (real non-zero exit), got %T: %v — likely a context-cancellation timeout, temporal dev server hang, or binary crash",
 		err, err)
 
 	// Defensive: confirm the exit code is a real number, not -1
