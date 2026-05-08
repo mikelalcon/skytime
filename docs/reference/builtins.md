@@ -212,6 +212,42 @@ call_flow(
 
 ---
 
+## trigger
+
+Declares a top-level trigger — binds a TriggerSource to a flow with map/idempotency_key lambdas.
+
+Trigger lambdas run ONCE at HTTP ingress (Phase 7.1+), NOT in workflow replay; non-determinism (time.now, json) is observably safe.
+
+**Signature:** `trigger(flow, source, map, idempotency_key, credential?)`
+
+| Param | Type | Required | Description |
+| ----- | ---- | -------- | ----------- |
+| `flow` | string | yes | Target flow name (must resolve in the same parser session — cross-file allowed; resolved at parse-finalize). |
+| `source` | TriggerSource | yes | Sealed extension.TriggerSource value (e.g. github.webhook(...)). Phase 7 has no shipped factories; first one in 7.1. |
+| `map` | lambda req | yes | Single-positional lambda. Returns a dict — the workflow input. Free vars rejected (D-19); arity != 1 rejected; req.<field> typos surface valid-list. |
+| `idempotency_key` | lambda req | yes | Single-positional lambda. Returns a string used as the idempotency key for ExecuteWorkflow's WorkflowID dedup. |
+| `credential` | string | no | Optional credential ID string. Resolved JIT inside the receiver (Phase 7.1+); never serialized to DAG JSON, never logged. |
+
+**Returns:** None (registers a *dag.Trigger as a parse-time side effect).
+
+**Example:**
+
+```python
+trigger(
+    flow="check_user",
+    source=github.webhook(events=["push"]),
+    map=lambda req: {"repo": req.payload.repository.name},
+    idempotency_key=lambda req: req.headers["X-GitHub-Delivery"],
+    credential="github-app-prod",
+)
+```
+
+**See also:** flow
+
+**Since:** phase-07
+
+---
+
 ## result
 
 Branch terminator that binds a typed dict-literal value to ctx.<output_alias> in the enclosing if_cond expression-mode.

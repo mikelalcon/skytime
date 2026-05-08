@@ -2,12 +2,12 @@
 # a trigger against the flow defined there. Validates D-07-12 cross-file
 # flow-name resolution at finalize.
 
-load("cross_file_flow.star", "_loaded")
+load("cross_file_flow.star", "marker")
 
-# `_loaded` itself is unused at runtime; reading the binding satisfies
+# `marker` itself is unused at runtime; reading the binding satisfies
 # Starlark's "every imported name must be referenced" expectation in some
 # strict environments, and is harmless under our defaults.
-_ignore = _loaded
+keepalive = marker
 
 trigger(
     flow = "check_user",  # defined in the loaded file
