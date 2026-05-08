@@ -6,14 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/mikelalcon/skytime/pkg/extension"
 )
 
 const (
-	defaultTaskQueue    = "skytime"
-	defaultDevHostPort  = "localhost:7233"
-	defaultDevNamespace = "default"
+	defaultTaskQueue         = "skytime"
+	defaultDevHostPort       = "localhost:7233"
+	defaultDevNamespace      = "default"
+	defaultWorkerStopTimeout = 30 * time.Second
 )
 
 // CloudOptions configures a connection to Temporal Cloud (D3-17).
@@ -110,6 +112,20 @@ type WorkerOptions struct {
 	// is what makes interpreter `event=*` records render as Bazel-style
 	// step lines instead of raw log noise.
 	Logger *slog.Logger
+
+	// WorkerStopTimeout is the SDK's graceful-stop duration (D-07-16).
+	// Worker.Stop() closes the poll channel and blocks up to this duration
+	// waiting for in-flight tasks to complete; uncompleted workflow tasks
+	// are NOT ACK'd back to the server, so Temporal redispatches them on
+	// the next worker start (this IS the durability story). Default 30s
+	// applied in applyDefaults; matches Kubernetes terminationGracePeriodSeconds
+	// default per D-07-17.
+	//
+	// Phase 5 / Phase 4 paths (skytime run, embedded transient workers) can
+	// leave this zero — applyDefaults supplies 30s, which is a safe upper
+	// bound for one-shot workflows. Phase 7's skytime server explicitly
+	// sets this from --drain-timeout.
+	WorkerStopTimeout time.Duration
 }
 
 // applyDefaults fills in defaults on an in-place WorkerOptions copy and
@@ -126,6 +142,9 @@ func (o *WorkerOptions) applyDefaults() error {
 	}
 	if o.TaskQueue == "" {
 		o.TaskQueue = defaultTaskQueue
+	}
+	if o.WorkerStopTimeout == 0 {
+		o.WorkerStopTimeout = defaultWorkerStopTimeout
 	}
 	return nil
 }

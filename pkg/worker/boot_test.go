@@ -51,7 +51,7 @@ func TestBootRegistry_ParsesAllStarFiles(t *testing.T) {
 	writeStarFile(t, dir, "a.star", trivialFlowSrc)
 	writeStarFile(t, dir, "b.star", trivialFlowSrc2)
 
-	reg, err := bootRegistry(dir, nil)
+	reg, _, err := bootRegistry(dir, nil)
 	require.NoError(t, err)
 	require.NotNil(t, reg)
 
@@ -71,7 +71,7 @@ func TestBootRegistry_ContentHashIsSha256OfFileBytes(t *testing.T) {
 	dir := t.TempDir()
 	writeStarFile(t, dir, "a.star", trivialFlowSrc)
 
-	reg, err := bootRegistry(dir, nil)
+	reg, _, err := bootRegistry(dir, nil)
 	require.NoError(t, err)
 
 	gotHash, ok := reg.ContentHashFor("trivial")
@@ -86,7 +86,7 @@ func TestBootRegistry_RegistryFrozenAfterBoot(t *testing.T) {
 	dir := t.TempDir()
 	writeStarFile(t, dir, "a.star", trivialFlowSrc)
 
-	reg, err := bootRegistry(dir, nil)
+	reg, _, err := bootRegistry(dir, nil)
 	require.NoError(t, err)
 
 	err = reg.Register("anything", "h", &interpreter.ParsedFlow{})
@@ -99,7 +99,7 @@ func TestBootRegistry_FailsOnUnparseable(t *testing.T) {
 	writeStarFile(t, dir, "a.star", trivialFlowSrc)
 	writeStarFile(t, dir, "z_broken.star", `this is not valid starlark @@@@@@`)
 
-	_, err := bootRegistry(dir, nil)
+	_, _, err := bootRegistry(dir, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "z_broken.star", "error must mention the offending file")
 }
@@ -108,7 +108,7 @@ func TestBootRegistry_EmptyDirReturnsEmptyRegistry(t *testing.T) {
 	dir := t.TempDir()
 	// No .star files written.
 
-	reg, err := bootRegistry(dir, nil)
+	reg, _, err := bootRegistry(dir, nil)
 	require.NoError(t, err)
 	require.NotNil(t, reg)
 
@@ -125,7 +125,7 @@ func TestBootRegistry_IgnoresNonStarFiles(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("docs"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("notes"), 0644))
 
-	reg, err := bootRegistry(dir, nil)
+	reg, _, err := bootRegistry(dir, nil)
 	require.NoError(t, err)
 	_, ok := reg.ContentHashFor("trivial")
 	assert.True(t, ok)
@@ -137,19 +137,19 @@ func TestBootRegistry_RecursesSubdirectories(t *testing.T) {
 	require.NoError(t, os.MkdirAll(sub, 0755))
 	writeStarFile(t, sub, "sub.star", trivialFlowSrc)
 
-	reg, err := bootRegistry(dir, nil)
+	reg, _, err := bootRegistry(dir, nil)
 	require.NoError(t, err)
 	_, ok := reg.ContentHashFor("trivial")
 	assert.True(t, ok, "bootRegistry must walk subdirectories")
 }
 
 func TestBootRegistry_RootDirRequired(t *testing.T) {
-	_, err := bootRegistry("", nil)
+	_, _, err := bootRegistry("", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "rootDir")
 }
 
 func TestBootRegistry_RootDirMissing(t *testing.T) {
-	_, err := bootRegistry("/nonexistent/dir/that/should/not/exist", nil)
+	_, _, err := bootRegistry("/nonexistent/dir/that/should/not/exist", nil)
 	require.Error(t, err)
 }

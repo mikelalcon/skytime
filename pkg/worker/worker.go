@@ -25,6 +25,7 @@ var sdkWorkerNew = sdkworker.New
 type Worker struct {
 	sdk      sdkworker.Worker
 	registry *interpreter.FlowRegistry
+	triggers *interpreter.TriggerRegistry // Phase 7 — trigger registry sibling
 	opts     WorkerOptions
 
 	stopOnce sync.Once
@@ -41,7 +42,7 @@ func NewWorker(c client.Client, opts WorkerOptions) (*Worker, error) {
 		return nil, err
 	}
 
-	registry, err := bootRegistry(opts.RootDir, opts.Extensions)
+	flowReg, trigReg, err := bootRegistry(opts.RootDir, opts.Extensions)
 	if err != nil {
 		return nil, fmt.Errorf("NewWorker: %w", err)
 	}
@@ -63,6 +64,9 @@ func NewWorker(c client.Client, opts WorkerOptions) (*Worker, error) {
 	if opts.MaxConcurrentActivities > 0 {
 		sdkOpts.MaxConcurrentActivityExecutionSize = opts.MaxConcurrentActivities
 	}
+	if opts.WorkerStopTimeout > 0 {
+		sdkOpts.WorkerStopTimeout = opts.WorkerStopTimeout
+	}
 	// Quick 260502-guu Fix B: the SDK's worker.Options struct does NOT
 	// expose a Logger field (verified against go.temporal.io/sdk@v1.42.0
 	// internal/worker.go WorkerOptions). The worker INHERITS the
@@ -80,7 +84,7 @@ func NewWorker(c client.Client, opts WorkerOptions) (*Worker, error) {
 	sdkW := sdkWorkerNew(c, opts.TaskQueue, sdkOpts)
 
 	// Register the single interpreter workflow.
-	wf := interpreter.NewWorkflow(registry)
+	wf := interpreter.NewWorkflow(flowReg)
 	sdkW.RegisterWorkflowWithOptions(wf, workflow.RegisterOptions{Name: "SkytimeWorkflow"})
 
 	// Register the single ExecuteBatch activity.
@@ -88,7 +92,8 @@ func NewWorker(c client.Client, opts WorkerOptions) (*Worker, error) {
 
 	return &Worker{
 		sdk:      sdkW,
-		registry: registry,
+		registry: flowReg,
+		triggers: trigReg, // Phase 7 — trigger registry sibling
 		opts:     opts,
 	}, nil
 }
@@ -108,6 +113,12 @@ func (w *Worker) Stop() {
 // (e.g., Phase 4 CLI's `skytime validate`) and for the WORK-03 library-embed
 // integration test, which uses ContentHashFor to build the workflow input.
 func (w *Worker) Registry() *interpreter.FlowRegistry { return w.registry }
+
+// Triggers returns the frozen trigger registry. Used by Phase 7's startup
+// banner (pkg/cli/server.go) and by Phase 7.1's HTTP router for handler
+// mounting. Empty registry (no .star file declared a trigger) is the
+// normal case for Phase 4-6 worker uses.
+func (w *Worker) Triggers() *interpreter.TriggerRegistry { return w.triggers }
 
 // buildDispatch flattens an []extension.Extension into the
 // activity.OperationDispatch map keyed by "<extName>.<opName>".
