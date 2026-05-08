@@ -16,6 +16,10 @@ import (
 //  1. resolveCallFlows (D-16): walk every Flow.Body recursively for
 //     *dag.CallFlow nodes; look up CallFlow.Name in p.flows; set Resolved
 //     or return *dag.ParseError "call_flow target not found".
+//  1.5. validateTriggerFlowNames (D-07-12, Phase 7 Plan 03): every
+//     registered trigger's FlowName must resolve to a known flow.
+//     Runs RIGHT AFTER resolveCallFlows (both inspect p.flows) and
+//     BEFORE any lint that might mask an unknown-flow error.
 //  2. lintMixedIdempotency (D2-05): each step(block=[...]) must be
 //     homogeneous — either all idempotent OR a single non-idempotent
 //     action. Mixed batches surface as *dag.ValidationError at parse time.
@@ -38,6 +42,12 @@ import (
 //     at entry, += script.OutputAlias after each script, += ItemVar
 //     inside for_each_parallel.Steps, if_cond branches see same pre-branch
 //     state.
+//  5.25. validateTriggerReqAccesses (D-07-05, Phase 7 Plan 03): for
+//     every registered trigger, walk both lambdas (map and
+//     idempotency_key) and reject any req.<attr> reference whose
+//     attribute name is not in trig.Source.ReqSchema(). Runs AFTER
+//     validateLambdaCtxAccesses so workflow-lambda ctx-typo errors
+//     surface first per the existing finalize ordering doctrine.
 //  5.5. validateResultPlacement (D4.2-04): every *dag.Result MUST be the
 //     LAST node of an if_cond branch with OutputAlias set. Top-level
 //     result(), mid-branch, inside for_each — all reject with the
@@ -57,6 +67,10 @@ import (
 //     extension.DecodeKwargsFromDict. Catches hand-built ActionRefs (test
 //     fixtures, future programmatic callers) where the per-call extension
 //     factory was bypassed.
+//  8. warnDuplicateTriggers (D-07-13, Phase 7 Plan 03): byte-identical
+//     trigger duplicates accumulate a deferred warning on
+//     p.triggerWarnings and are accepted. Always returns nil; runs LAST
+//     so no real error is masked by warning state.
 //
 // finalize returns the FIRST error and stops; tests expect at-most-one
 // surfaced error per parse. Phase-2 lints run AFTER call_flow resolution
@@ -66,6 +80,9 @@ import (
 // before kwarg-shape errors.
 func (p *Parser) finalize() error {
 	if err := p.resolveCallFlows(); err != nil {
+		return err
+	}
+	if err := p.validateTriggerFlowNames(); err != nil { // D-07-12
 		return err
 	}
 	if err := p.lintMixedIdempotency(); err != nil {
@@ -83,13 +100,19 @@ func (p *Parser) finalize() error {
 	if err := p.validateLambdaCtxAccesses(); err != nil {
 		return err
 	}
+	if err := p.validateTriggerReqAccesses(); err != nil { // D-07-05
+		return err
+	}
 	if err := p.validateResultPlacement(); err != nil {
 		return err
 	}
 	if err := p.validateIfCondExpressionShape(); err != nil {
 		return err
 	}
-	return p.validateActionRefKwargs()
+	if err := p.validateActionRefKwargs(); err != nil {
+		return err
+	}
+	return p.warnDuplicateTriggers() // D-07-13 — always nil
 }
 
 // resolveCallFlows walks every flow's body recursively and resolves

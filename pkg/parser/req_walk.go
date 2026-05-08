@@ -184,3 +184,94 @@ func sortedKeysTrigger(m map[string]struct{}) []string {
 	sort.Strings(out)
 	return out
 }
+
+// validateTriggerFlowNames runs in finalize AFTER resolveCallFlows (both
+// inspect p.flows). Every trigger's FlowName must resolve to a known
+// flow; unknown names surface position-aware *dag.ParseError listing the
+// known flows. Cross-file ordering does NOT matter — finalize runs after
+// all loads complete (D-07-12).
+func (p *Parser) validateTriggerFlowNames() error {
+	// Sort triggers by posKey for deterministic error attribution when
+	// multiple unknown flows exist.
+	keys := make([]string, 0, len(p.triggers))
+	for k := range p.triggers {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		trig := p.triggers[k]
+		if _, ok := p.flows[trig.FlowName]; !ok {
+			knownFlows := sortedFlowNames(p.flows)
+			return &dag.ParseError{
+				Pos: trig.Pos,
+				Msg: fmt.Sprintf("trigger references unknown flow %q; known flows: %v", trig.FlowName, knownFlows),
+			}
+		}
+	}
+	return nil
+}
+
+// sortedFlowNames returns the keys of p.flows sorted ascending. Used by
+// validateTriggerFlowNames to produce a deterministic "known flows"
+// suffix in unknown-flow error messages.
+func sortedFlowNames(m map[string]*dag.Flow) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// warnDuplicateTriggers (D-07-13) — byte-identical (FlowName + Source
+// MarshalJSON output + CredentialID) duplicates accumulate a deferred
+// warning on p.triggerWarnings and are accepted. Non-identical pairs
+// (same FlowName + same Source.Kind() but different config bytes) are
+// accepted silently — the future HTTP router de-dups handler mounts.
+//
+// Implementation: group triggers by FlowName + Source.Kind(); for each
+// group, hash the (Source MarshalJSON output, CredentialID) tuple;
+// collisions are byte-identical duplicates. Lambda IDs are intentionally
+// EXCLUDED from the duplicate signature: byte-identical lambdas at
+// different positions get different D-18 IDs (line:col), so including
+// them would mask the very duplicates this pass targets (Plan 03 Task 6
+// duplicate_warn.star fixture).
+//
+// warnDuplicateTriggers ALWAYS returns nil — duplicate triggers are
+// ACCEPTED per D-07-13. Warnings accumulate on p.triggerWarnings; the
+// worker boot loop (Plan 04) drains them via Parser.TriggerWarnings()
+// and surfaces them via slog.Warn at server startup.
+func (p *Parser) warnDuplicateTriggers() error {
+	type sig struct {
+		flowName     string
+		sourceKind   string
+		sourceBytes  string
+		credentialID string
+	}
+	seen := make(map[sig]syntax.Position)
+	keys := make([]string, 0, len(p.triggers))
+	for k := range p.triggers {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		trig := p.triggers[k]
+		srcBytes, err := trig.Source.MarshalJSON()
+		if err != nil {
+			return &dag.ParseError{Pos: trig.Pos, Msg: fmt.Sprintf("trigger source MarshalJSON: %v", err)}
+		}
+		s := sig{
+			flowName:     trig.FlowName,
+			sourceKind:   trig.Source.Kind(),
+			sourceBytes:  string(srcBytes),
+			credentialID: trig.CredentialID,
+		}
+		if firstPos, dup := seen[s]; dup {
+			p.triggerWarnings = append(p.triggerWarnings,
+				fmt.Sprintf("%s: duplicate trigger (byte-identical to %s) — accepted but flagged", trig.Pos, firstPos))
+			continue
+		}
+		seen[s] = trig.Pos
+	}
+	return nil
+}
