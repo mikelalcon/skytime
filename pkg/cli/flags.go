@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -65,3 +66,25 @@ func bindEnvVars(cmd *cobra.Command, cfg *config) {
 		}
 	}
 }
+
+// Server-subcommand flag constants (Phase 7 Plan 05).
+//
+// minDrainTimeout / maxDrainTimeout bound the --drain-timeout flag.
+// Values below minDrainTimeout (including zero and negatives) are
+// rejected outright in newServerCommand.RunE; values above
+// maxDrainTimeout are accepted but trigger a warning so operators
+// notice unusually long drain windows.
+//
+// defaultDrainTimeout matches Kubernetes terminationGracePeriodSeconds
+// per D-07-17 (worker.WorkerOptions.WorkerStopTimeout default is 30s
+// for the same reason).
+//
+// defaultAddr is the placeholder for Phase 7.1's HTTP receiver — the
+// server subcommand accepts it now so the flag stays stable across
+// the 7.1 transition, but emits a warning that it has no effect yet.
+const (
+	minDrainTimeout     = 1 * time.Second
+	maxDrainTimeout     = 1 * time.Hour
+	defaultDrainTimeout = 30 * time.Second
+	defaultAddr         = ":8080"
+)

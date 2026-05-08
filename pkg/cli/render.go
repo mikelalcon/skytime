@@ -173,3 +173,25 @@ func renderErrors(out io.Writer, errs []error, debug bool) {
 		renderError(out, e, debug)
 	}
 }
+
+// setupServerLogging is the skytime server's logging entry point. Charm-log
+// default; JSON via slog.NewJSONHandler when jsonMode is true. Server
+// startup events are NOT flow events — bypasses the buildRoutedSlogLogger
+// progressHandler routing per § Pitfall 7 of 07-RESEARCH.md.
+//
+// The returned *slog.Logger is also installed as slog.Default so any
+// indirect callers (e.g. parser warnings drained at boot via
+// slog.Default().Warn) flow through the same handler.
+func setupServerLogging(debug, jsonMode bool) *slog.Logger {
+	if !jsonMode {
+		return setupLogging(debug)
+	}
+	level := slog.LevelInfo
+	if debug {
+		level = slog.LevelDebug
+	}
+	h := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level})
+	logger := slog.New(h)
+	slog.SetDefault(logger)
+	return logger
+}
