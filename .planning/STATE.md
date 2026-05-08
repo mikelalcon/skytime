@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07-03-parser-trigger-builtin-PLAN.md
-last_updated: "2026-05-08T20:10:13.679Z"
+stopped_at: Completed 07-04-trigger-registry-and-boot-PLAN.md
+last_updated: "2026-05-08T20:23:25.919Z"
 last_activity: 2026-05-08
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 6
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07 (trigger-primitive-server-shell) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-05-08
 
@@ -111,6 +111,7 @@ Progress: [          ] 0%
 | Phase 07 P01 | 7min | 2 tasks | 3 files |
 | Phase 07 P02 | 7min | 2 tasks | 4 files |
 | Phase 07 P03 | 13min | 7 tasks | 13 files |
+| Phase 07 P04 | 8min | 6 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -325,6 +326,9 @@ Recent decisions affecting current work:
 - [Phase 07]: Plan 03: TriggerWarnings accumulate on parser state, not slog.Default at finalize — keeps tests deterministic; Plan 04's worker boot drains via slog.Warn at server startup
 - [Phase 07]: Plan 03: validateTriggerReqAccesses type-asserts trig.Source against interface{ ReqSchema() []string } — dag.TriggerSource is the minimal seal (Kind+MarshalJSON only); production goes through extension.TriggerSource which provides ReqSchema
 - [Phase 07]: Plan 03: Trigger lambdas at parse time use parseTimeGlobals (rich); triggerTimeGlobals is the runtime env that Phase 7.1+ wires at HTTP ingress — matches Phase 1+ predeclared-env-per-call architecture
+- [Phase 07]: TriggerRegistry uses sorted-slice + byContentHash map shape (Pitfall 1) — diverges from FlowRegistry's per-(name,hash) lookup because triggers are iterated wholesale at HTTP-mount time, never per-request
+- [Phase 07]: Parser warning drain via slog.Default().Warn at boot — keeps parser pure (warnings accumulate on Parser.triggerWarnings); worker boot owns the slog surface
+- [Phase 07]: WorkerStopTimeout default 30s (D-07-17) matches Kubernetes terminationGracePeriodSeconds; Plan 05 server subcommand sets explicitly via --drain-timeout
 
 ### Pending Todos
 
@@ -355,6 +359,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-08T20:09:56.820Z
-Stopped at: Completed 07-03-parser-trigger-builtin-PLAN.md
+Last session: 2026-05-08T20:23:16.725Z
+Stopped at: Completed 07-04-trigger-registry-and-boot-PLAN.md
 Resume file: None
