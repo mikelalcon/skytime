@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
-status: planning
-stopped_at: Phase 7 context gathered
-last_updated: "2026-05-08T16:30:31.078Z"
-last_activity: 2026-05-08 — v1.43.0 roadmap created (6 phases, 31 requirements)
+status: executing
+stopped_at: Completed 07-01-dag-trigger-node-PLAN.md
+last_updated: "2026-05-08T19:45:47.724Z"
+last_activity: 2026-05-08 -- Phase 07 execution started
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 6
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A flow-author team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
-**Current focus:** v1.43.0 Durability + Triggers — ready to plan
+**Current focus:** Phase 07 — trigger-primitive-server-shell
 
 ## Current Position
 
-Phase: 7 (next)
-Plan: not started
-Status: Ready to plan
-Last activity: 2026-05-08 — v1.43.0 roadmap created (6 phases, 31 requirements)
+Phase: 07 (trigger-primitive-server-shell) — EXECUTING
+Plan: 1 of 6
+Status: Executing Phase 07
+Last activity: 2026-05-08 -- Phase 07 execution started
 
 Progress: [          ] 0%
 
@@ -108,6 +108,7 @@ Progress: [          ] 0%
 | Phase 06 P06 | 1min | 3 tasks | 6 files |
 | Phase 06 P09 | 2m | 2 tasks | 2 files |
 | Phase 06 P08 | 4min | 3 tasks | 5 files |
+| Phase 07 P01 | 7min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -311,6 +312,9 @@ Recent decisions affecting current work:
 - [Phase 06]: Plan 06-09: assert rendered terminator 'flow complete' (space) per progress_static.go:245 — slog event KIND is flow_complete (underscore) but renderer translates underscore→space; smoke greps the rendered form
 - [Phase 06]: Plan 06-09: permissions: contents: read added beyond CONTEXT.md spec — least-privilege hardening, GitHub-Actions-recommended baseline for read-only CI
 - [Phase 06]: Plan 06-08: Seven-section example README copied verbatim from D-DOCS-README; coverage matrix copied verbatim from D-FLOWS-COVERAGE-MATRIX (mechanically pinned by 06-06 TestFlows_CoverageMatrix); .skytime-credentials.example refined comment-only with TOML schema lock preserved (D-CREDS-FORMAT).
+- [Phase 07]: Trigger does NOT implement dag.Node (Pitfall 11): Triggers are top-level decls, never inside flow.Body; doc comment in pkg/dag/trigger.go explains
+- [Phase 07]: TriggerSource is dag-local + structural (Kind + MarshalJSON only); full seal lives in pkg/extension to avoid pkg/dag importing pkg/extension
+- [Phase 07]: Default unmarshalTriggerSource returns explanatory error instead of nil panic (helps tests + diagnostics before pkg/extension wires the registry)
 
 ### Pending Todos
 
@@ -341,6 +345,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-08T16:30:31.073Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-trigger-primitive-server-shell/07-CONTEXT.md
+Last session: 2026-05-08T19:45:47.720Z
+Stopped at: Completed 07-01-dag-trigger-node-PLAN.md
+Resume file: None
