@@ -5,6 +5,9 @@ import (
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
+
+	starlarkjson "go.starlark.net/lib/json"
+	starlarktime "go.starlark.net/lib/time"
 )
 
 // sumBuiltin implements `sum(iterable, start=0)` — standard Python/Starlark
@@ -106,6 +109,47 @@ var lambdaTimeGlobals = func() starlark.StringDict {
 func LambdaTimeGlobals() starlark.StringDict {
 	out := make(starlark.StringDict, len(lambdaTimeGlobals))
 	for k, v := range lambdaTimeGlobals {
+		out[k] = v
+	}
+	return out
+}
+
+// triggerTimeGlobals is the predeclared environment for trigger map and
+// idempotency_key lambdas (D-07-01). Strict superset of lambdaTimeGlobals
+// (the locked 20-key Phase 1 set) plus go.starlark.net/lib/json (encode,
+// decode, indent) and go.starlark.net/lib/time (now, parse_duration, etc).
+//
+// Why expanded vs lambdaTimeGlobals: trigger lambdas run at HTTP ingress
+// (Phase 7.1+), NOT in workflow replay. Non-determinism (time.now) is
+// observably safe — the resulting workflow input is frozen at
+// ExecuteWorkflow call time. See pkg/bridge/doc.go for the contract.
+//
+// Frozen at module init like lambdaTimeGlobals; immutable to consumers.
+var triggerTimeGlobals = func() starlark.StringDict {
+	sd := make(starlark.StringDict, len(lambdaTimeGlobals)+2)
+	for k, v := range lambdaTimeGlobals {
+		sd[k] = v
+	}
+	// go.starlark.net/lib/json — *starlarkstruct.Module with attrs
+	// encode/decode/indent. Imported as starlarkjson alias so the
+	// existing "json" key name on sd is unambiguous.
+	sd["json"] = starlarkjson.Module
+	sd["time"] = starlarktime.Module
+	sd.Freeze()
+	return sd
+}()
+
+// TriggerTimeGlobals returns a fresh COPY of the locked trigger-time
+// globals. Callers may mutate the returned StringDict freely without
+// affecting the locked source of truth.
+//
+// The 22-key surface (20 from lambdaTimeGlobals + json + time) is
+// asserted by TestTriggerTimeGlobalsLocked as the API stability gate;
+// any future expansion requires explicit decision logging in PROJECT.md
+// and an update to that test.
+func TriggerTimeGlobals() starlark.StringDict {
+	out := make(starlark.StringDict, len(triggerTimeGlobals))
+	for k, v := range triggerTimeGlobals {
 		out[k] = v
 	}
 	return out

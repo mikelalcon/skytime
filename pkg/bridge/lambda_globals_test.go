@@ -240,3 +240,90 @@ func TestFail_LambdaTime_StillRaises(t *testing.T) {
 	assert.Contains(t, evalErr.Error(), "nope",
 		"error message must include the user's fail() argument")
 }
+
+// TestTriggerTimeGlobalsLocked is the API stability gate for the Phase-7
+// trigger-time predeclared env (D-07-01). EXACTLY 22 keys: 20 from the
+// locked lambdaTimeGlobals + json (starlarkjson.Module) + time
+// (starlarktime.Module). Any future addition or removal MUST update this
+// test, forcing a deliberate decision before changing the surface.
+func TestTriggerTimeGlobalsLocked(t *testing.T) {
+	require.Len(t, triggerTimeGlobals, 22,
+		"D-07-01 declares exactly 22 trigger-time globals (lambdaTimeGlobals + json + time)")
+
+	// Every lambdaTimeGlobals key must be present with the same value
+	// pointer. Catches accidental rebinding.
+	for k, v := range lambdaTimeGlobals {
+		tv, ok := triggerTimeGlobals[k]
+		require.True(t, ok,
+			"lambdaTimeGlobals key %q missing from triggerTimeGlobals", k)
+		assert.Equal(t, v, tv,
+			"triggerTimeGlobals[%q] differs from lambdaTimeGlobals[%q]", k, k)
+	}
+
+	// json + time must be the canonical Module values from go.starlark.net.
+	jsonVal, ok := triggerTimeGlobals["json"]
+	require.True(t, ok, "triggerTimeGlobals must contain key %q", "json")
+	require.NotNil(t, jsonVal, "triggerTimeGlobals[json] must be non-nil")
+
+	timeVal, ok := triggerTimeGlobals["time"]
+	require.True(t, ok, "triggerTimeGlobals must contain key %q", "time")
+	require.NotNil(t, timeVal, "triggerTimeGlobals[time] must be non-nil")
+}
+
+// TestTriggerTimeGlobals_ReturnedCopy verifies TriggerTimeGlobals() returns
+// a COPY — mutating the returned dict must not affect the package-private
+// triggerTimeGlobals or subsequent calls.
+func TestTriggerTimeGlobals_ReturnedCopy(t *testing.T) {
+	c1 := TriggerTimeGlobals()
+	c1["__test_only_added_to_copy__"] = starlark.None
+
+	c2 := TriggerTimeGlobals()
+	_, present := c2["__test_only_added_to_copy__"]
+	assert.False(t, present,
+		"TriggerTimeGlobals() must return a copy; mutating it must not affect the next call")
+
+	// Sanity: the second copy still has all 22 keys.
+	assert.Len(t, c2, 22)
+}
+
+// TestTriggerTimeGlobals_JSONEncodeWorks proves json.Module is wired
+// correctly: a tiny script `result = json.encode({"a": 1})` evaluates
+// against TriggerTimeGlobals() and produces the expected JSON string.
+func TestTriggerTimeGlobals_JSONEncodeWorks(t *testing.T) {
+	thread := &starlark.Thread{Name: "test"}
+	opts := &syntax.FileOptions{}
+	src := `result = json.encode({"a": 1})`
+	globals, err := starlark.ExecFileOptions(opts, thread, "test.star", src, TriggerTimeGlobals())
+	require.NoError(t, err)
+	resVal, ok := globals["result"].(starlark.String)
+	require.True(t, ok, "json.encode must return a starlark.String; got %T", globals["result"])
+	assert.Equal(t, `{"a":1}`, string(resVal),
+		"json.encode({\"a\":1}) must produce the canonical JSON form")
+}
+
+// TestTriggerTimeGlobals_TimeNowCallable proves time.Module is wired
+// correctly: time.now() is callable. The returned value is non-deterministic
+// (wall clock), so we don't assert on it — just that the call succeeds.
+func TestTriggerTimeGlobals_TimeNowCallable(t *testing.T) {
+	thread := &starlark.Thread{Name: "test"}
+	opts := &syntax.FileOptions{}
+	src := `result = time.now()`
+	globals, err := starlark.ExecFileOptions(opts, thread, "test.star", src, TriggerTimeGlobals())
+	require.NoError(t, err, "time.now() must be callable in trigger-time env")
+	require.Contains(t, globals, "result")
+	assert.NotNil(t, globals["result"])
+}
+
+// TestTriggerTimeGlobals_LambdaSubsetExact catches drift if a future
+// contributor changes one of the 20 lambdaTimeGlobals entries without
+// updating triggerTimeGlobals (or vice versa). Each lambdaTimeGlobals
+// key must appear in triggerTimeGlobals with the same value pointer.
+func TestTriggerTimeGlobals_LambdaSubsetExact(t *testing.T) {
+	for k, v := range lambdaTimeGlobals {
+		tv, ok := triggerTimeGlobals[k]
+		require.True(t, ok,
+			"lambdaTimeGlobals key %q missing from triggerTimeGlobals", k)
+		assert.Equal(t, v, tv,
+			"triggerTimeGlobals[%q] differs from lambdaTimeGlobals[%q]", k, k)
+	}
+}
