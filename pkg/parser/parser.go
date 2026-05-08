@@ -74,6 +74,19 @@ type Parser struct {
 	// *starlark.Function values.
 	lambdas map[string]*dag.CapturedLambda
 
+	// triggers is the parser-session multi-trigger map (D-07-12).
+	// builtinTrigger populates this. Keyed by posKey(pos) to keep map
+	// operations stable across tests (positions are guaranteed unique
+	// per call site by Starlark's exec model).
+	triggers map[string]*dag.Trigger
+
+	// triggerWarnings holds deferred warnings produced by finalize
+	// passes (D-07-13 byte-identical duplicate-trigger warnings).
+	// The boot loop drains these via Parser.TriggerWarnings() and
+	// surfaces them via slog.Warn at server startup. Tests inspect
+	// directly.
+	triggerWarnings []string
+
 	// preBuiltResults caches *dag.Result objects built by the pre-exec
 	// scan in preExecBuildResults (Phase 04.2 D4.2-02). Keyed by call
 	// position string ("file:line:col"). builtinResult looks up the
@@ -145,6 +158,7 @@ func NewParser(opts ...Option) (*Parser, error) {
 		flows:           make(map[string]*dag.Flow),
 		flowOrder:       make([]string, 0, 4), // Quick 260504-k9c
 		lambdas:         make(map[string]*dag.CapturedLambda),
+		triggers:        make(map[string]*dag.Trigger),
 		preBuiltResults: make(map[string]*dag.Result),
 	}
 	for _, opt := range opts {

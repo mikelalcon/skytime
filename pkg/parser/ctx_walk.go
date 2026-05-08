@@ -35,68 +35,68 @@ type ctxAccess struct {
 // Returns ([], nil) when no matching lambda is found in the re-parsed file —
 // defensive; callers treat absent lambdas as "nothing to check" (a missing
 // lambda would have errored earlier via lambda capture).
+//
+// Phase 7 refactor (Plan 07-03): findCtxAccesses now delegates to
+// findFreeVarAccesses (req_walk.go) after extracting the lambda's first
+// positional parameter name via firstParamNameAt. The two-pass cost is
+// bounded — each pass is O(file_bytes), and the parser-time finalize chain
+// already pays one re-parse per lambda. The generalization lets the
+// trigger req-walker share the same AST traversal without duplicating it.
 func findCtxAccesses(src []byte, filename string, lambdaPos syntax.Position) ([]ctxAccess, error) {
-	opts := defaultFileOptions()
-	file, err := opts.Parse(filename, src, 0)
+	firstParam, err := firstParamNameAt(src, filename, lambdaPos)
 	if err != nil {
 		return nil, err
 	}
+	if firstParam == "" {
+		// No matching lambda found OR the matched lambda has no params.
+		// Both cases are "nothing to validate" — preserve pre-refactor
+		// semantics (return empty, no error).
+		return nil, nil
+	}
+	fv, err := findFreeVarAccesses(src, filename, lambdaPos, firstParam)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ctxAccess, len(fv))
+	for i, a := range fv {
+		out[i] = ctxAccess{Pos: a.Pos, AttrName: a.AttrName}
+	}
+	return out, nil
+}
 
-	// First pass: locate the matching lambda/def and capture its first-param
-	// name + body shape. We split lambda (Body is a single Expr) and def
-	// (Body is a []Stmt) into two storage variables so the second pass can
-	// dispatch on whichever is set.
-	var (
-		firstParamName string
-		targetBody     syntax.Expr // for *syntax.LambdaExpr
-		targetStmts    []syntax.Stmt // for *syntax.DefStmt
-	)
+// firstParamNameAt re-parses src and returns the name of the FIRST
+// positional parameter of the lambda/def whose keyword position equals
+// lambdaPos. Returns ("", nil) when no matching lambda is found OR when
+// the matched lambda has no params.
+//
+// Extracted from findCtxAccesses during the Phase 7 Plan 07-03 refactor
+// so the ctx-walker can use the lambda's first-param convention while
+// the new req-walker (req_walk.go::findFreeVarAccesses) takes the
+// expected name as a parameter.
+func firstParamNameAt(src []byte, filename string, lambdaPos syntax.Position) (string, error) {
+	opts := defaultFileOptions()
+	file, err := opts.Parse(filename, src, 0)
+	if err != nil {
+		return "", err
+	}
+	var name string
 	syntax.Walk(file, func(n syntax.Node) bool {
+		if name != "" {
+			return false
+		}
 		switch fn := n.(type) {
 		case *syntax.LambdaExpr:
 			if positionsEqual(fn.Lambda, lambdaPos) && len(fn.Params) > 0 {
-				firstParamName = paramName(fn.Params[0])
-				targetBody = fn.Body
+				name = paramName(fn.Params[0])
 			}
 		case *syntax.DefStmt:
 			if positionsEqual(fn.Def, lambdaPos) && len(fn.Params) > 0 {
-				firstParamName = paramName(fn.Params[0])
-				targetStmts = fn.Body
+				name = paramName(fn.Params[0])
 			}
 		}
 		return true
 	})
-
-	if firstParamName == "" {
-		// No matching lambda/def found, OR matched node had no params.
-		// Both cases are "nothing to validate" — return empty.
-		return nil, nil
-	}
-
-	// Second pass: walk the matched body collecting every DotExpr whose X is
-	// the first-param Ident. Pitfall #9: dot.Name is *Ident, the string is
-	// dot.Name.Name. Note: dot.NamePos is consistently <invalid> in
-	// go.starlark.net's current syntax tree; use dot.Name.NamePos (the
-	// Ident's position) instead — that one is properly populated.
-	var accesses []ctxAccess
-	collect := func(n syntax.Node) bool {
-		if dot, ok := n.(*syntax.DotExpr); ok {
-			if id, ok := dot.X.(*syntax.Ident); ok && id.Name == firstParamName {
-				accesses = append(accesses, ctxAccess{
-					Pos:      dot.Name.NamePos,
-					AttrName: dot.Name.Name,
-				})
-			}
-		}
-		return true
-	}
-	if targetBody != nil {
-		syntax.Walk(targetBody, collect)
-	}
-	for _, stmt := range targetStmts {
-		syntax.Walk(stmt, collect)
-	}
-	return accesses, nil
+	return name, nil
 }
 
 // positionsEqual compares two syntax.Position values on (Filename, Line,
@@ -109,9 +109,11 @@ func positionsEqual(a, b syntax.Position) bool {
 
 // paramName extracts the parameter name from a parameter Expr. For
 // LambdaExpr/DefStmt, the param shape is one of (per go.starlark.net docs):
-//   *syntax.Ident                   — plain `x`
-//   *syntax.BinaryExpr (Op=EQ)      — defaulted `x = expr`
-//   *syntax.UnaryExpr (* / **)      — `*args` / `**kwargs`
+//
+//	*syntax.Ident                   — plain `x`
+//	*syntax.BinaryExpr (Op=EQ)      — defaulted `x = expr`
+//	*syntax.UnaryExpr (* / **)      — `*args` / `**kwargs`
+//
 // For Phase 4's check we only need plain Ident or defaulted Ident — *args /
 // **kwargs are vanishingly rare for `ctx`-style first params, but the helper
 // handles them defensively (returning the name without the prefix). Returns
