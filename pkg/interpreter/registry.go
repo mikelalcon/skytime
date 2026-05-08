@@ -107,6 +107,21 @@ func (r *FlowRegistry) Lookup(flowName, contentHash string) (*ParsedFlow, bool) 
 	return parsed, ok
 }
 
+// FlowNames returns a fresh sorted slice of all registered flow names.
+// Used by pkg/cli/server.go's startup banner (Phase 7) so the rendered
+// list is deterministic across runs. Returns an empty (non-nil) slice
+// when no flows are registered.
+func (r *FlowRegistry) FlowNames() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]string, 0, len(r.byFlow))
+	for name := range r.byFlow {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // ContentHashFor returns the unique content_hash for a flow_name when
 // exactly one version is registered. Used by the call_flow walker (plan
 // 03-03) to construct the child WorkflowInput. Returns ("", false) if

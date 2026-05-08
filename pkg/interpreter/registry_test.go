@@ -190,6 +190,35 @@ func TestRegistry_RegisterRequiresAllFields(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestFlowRegistry_FlowNames: FlowNames returns a sorted slice of all
+// registered flow names. Used by pkg/cli/server.go's startup banner
+// (Phase 7 Plan 05) — sort order is load-bearing for deterministic
+// output. The returned slice is a snapshot; mutations by the caller
+// must not propagate back into the registry.
+func TestFlowRegistry_FlowNames(t *testing.T) {
+	r := NewRegistry()
+	require.NoError(t, r.Register("zebra", "h1", helperNewParsedFlow("zebra")))
+	require.NoError(t, r.Register("alpha", "h2", helperNewParsedFlow("alpha")))
+	require.NoError(t, r.Register("middle", "h3", helperNewParsedFlow("middle")))
+	r.Freeze()
+	assert.Equal(t, []string{"alpha", "middle", "zebra"}, r.FlowNames())
+
+	// Snapshot semantics: caller-side mutation must not bleed back.
+	names := r.FlowNames()
+	names[0] = "MUTATED"
+	assert.Equal(t, "alpha", r.FlowNames()[0])
+}
+
+// TestFlowRegistry_FlowNames_Empty: FlowNames on an empty registry
+// returns a non-nil empty slice (callers can range over it without
+// nil-checking).
+func TestFlowRegistry_FlowNames_Empty(t *testing.T) {
+	r := NewRegistry()
+	r.Freeze()
+	assert.Empty(t, r.FlowNames())
+	assert.NotNil(t, r.FlowNames())
+}
+
 // =============================================================================
 // TriggerRegistry — Phase 7 Plan 04 (TRIG-05)
 // =============================================================================

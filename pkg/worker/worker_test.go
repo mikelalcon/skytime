@@ -15,7 +15,9 @@ import (
 	sdkworker "go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 
+	"github.com/mikelalcon/skytime/pkg/dag"
 	"github.com/mikelalcon/skytime/pkg/extension"
+	"github.com/mikelalcon/skytime/pkg/interpreter"
 )
 
 // fakeSDKWorker is a stub sdkworker.Worker that records register calls and
@@ -337,4 +339,46 @@ func TestNewWorker_WorkerStopTimeoutCustom(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 5*time.Second, capturedOpts.WorkerStopTimeout,
 		"explicit WorkerStopTimeout must propagate to sdkworker.Options")
+}
+
+// =============================================================================
+// Phase 7 Plan 05 — Worker.FlowNames + NewWorkerForTest
+// =============================================================================
+
+// TestWorker_FlowNames: Worker.FlowNames is a sorted-slice pass-through to
+// the flow registry. Phase 7 Plan 05's startup banner depends on this
+// being deterministic.
+func TestWorker_FlowNames(t *testing.T) {
+	_, _, _, cleanup := withFakeSDKWorker(t)
+	defer cleanup()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "flows.star"), []byte(`
+flow(name = "z", steps = [])
+flow(name = "a", steps = [])
+flow(name = "m", steps = [])
+`), 0o644))
+
+	w, err := NewWorker(&fakeClient{}, WorkerOptions{
+		RootDir:           dir,
+		CredentialHandler: noopHandler{},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "m", "z"}, w.FlowNames())
+}
+
+// TestNewWorkerForTest: NewWorkerForTest builds a Worker from pre-built
+// registries WITHOUT running boot. Used by pkg/cli's banner test which
+// is a black-box consumer of pkg/worker and cannot reach sdkWorkerNew.
+func TestNewWorkerForTest(t *testing.T) {
+	flowReg := interpreter.NewRegistry()
+	require.NoError(t, flowReg.Register("foo", "h1", &interpreter.ParsedFlow{Flow: &dag.Flow{Name: "foo"}}))
+	flowReg.Freeze()
+	trigReg := interpreter.NewTriggerRegistry()
+	trigReg.Freeze()
+
+	w := NewWorkerForTest(flowReg, trigReg)
+	require.NotNil(t, w)
+	assert.Equal(t, []string{"foo"}, w.FlowNames())
+	assert.Empty(t, w.Triggers().All())
 }

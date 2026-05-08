@@ -120,6 +120,12 @@ func (w *Worker) Registry() *interpreter.FlowRegistry { return w.registry }
 // normal case for Phase 4-6 worker uses.
 func (w *Worker) Triggers() *interpreter.TriggerRegistry { return w.triggers }
 
+// FlowNames returns the sorted list of flow names registered on this
+// worker. Pass-through to FlowRegistry.FlowNames; provided here so
+// pkg/cli's server-subcommand startup banner (Phase 7 Plan 05) does not
+// need to crack open w.Registry() to enumerate flows.
+func (w *Worker) FlowNames() []string { return w.registry.FlowNames() }
+
 // buildDispatch flattens an []extension.Extension into the
 // activity.OperationDispatch map keyed by "<extName>.<opName>".
 func buildDispatch(exts []extension.Extension) skyactivity.OperationDispatch {
@@ -134,4 +140,17 @@ func buildDispatch(exts []extension.Extension) skyactivity.OperationDispatch {
 		}
 	}
 	return d
+}
+
+// NewWorkerForTest constructs a Worker from pre-built registries WITHOUT
+// running boot or starting the SDK worker. Test-only — pkg/cli's
+// banner test (TestServerCmd_BannerSorted) uses this because pkg/cli is
+// a black-box consumer of pkg/worker and cannot reach the package-private
+// sdkWorkerNew seam. The returned *Worker has nil sdk; do NOT call
+// Start/Stop on it.
+func NewWorkerForTest(reg *interpreter.FlowRegistry, trigs *interpreter.TriggerRegistry) *Worker {
+	return &Worker{
+		registry: reg,
+		triggers: trigs,
+	}
 }
