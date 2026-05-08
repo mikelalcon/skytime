@@ -7,7 +7,7 @@ successfully-executed workflow in about 5–10 minutes.
 By the end you'll have:
 
 - The `skytime` binary built and running
-- A local Temporal dev-server humming
+- A local Temporal dev server humming
 - One workflow run end-to-end with both a happy path AND a deliberately
   failing path so you see how errors surface
 - A working understanding of the four DSL features the canonical
@@ -28,7 +28,7 @@ that demonstrate the project's most distinctive features in one place.
 | A terminal | — | bash, zsh, fish all fine |
 
 You do **not** need to install Temporal Server separately.
-`skytime dev-server` wraps `temporal server start-dev` (in-memory,
+`skytime dev-temporal` wraps `temporal server start-dev` (in-memory,
 single binary) — that's enough for this tutorial.
 
 Verify your prereqs:
@@ -39,7 +39,7 @@ temporal --version   # temporal version vX.Y.Z
 ```
 
 If `temporal --version` errors, jump back to the install hint above —
-the dev-server step won't work without it.
+the dev-temporal step won't work without it.
 
 ## 1. Clone and Build
 
@@ -59,7 +59,7 @@ check:
 ```
 
 You should see the cobra usage with subcommands `run`, `validate`,
-`info`, `dev-server`. If not, double-check Go is on `PATH` and re-run
+`info`, `dev-temporal`. If not, double-check Go is on `PATH` and re-run
 `go build`.
 
 ## 2. Start the Dev Server
@@ -67,7 +67,7 @@ You should see the cobra usage with subcommands `run`, `validate`,
 Open a fresh terminal and run:
 
 ```sh
-./skytime dev-server
+./skytime dev-temporal
 ```
 
 This wraps `temporal server start-dev` — Temporal's in-memory dev
@@ -280,7 +280,7 @@ you want to do:
   `call_flow`).
 - **CLI reference** — [`docs/reference/cli.md`](reference/cli.md)
   documents `skytime run` connection variants, `skytime validate`
-  exit codes, `skytime info`, `skytime dev-server`, and more.
+  exit codes, `skytime info`, `skytime dev-temporal`, and more.
 - **Browse more examples** —
   [`examples/README.md`](../examples/README.md) indexes every
   skeleton fixture (`simple_check.star`, `parallel_fanout.star`,

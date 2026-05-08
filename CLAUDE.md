@@ -48,7 +48,7 @@ Skytime is a Go library that lets teams declare durable workflows in Starlark an
 | **`gofumpt`** | (latest) | Stricter `gofmt` superset | Optional but recommended for greenfield. Catches formatting choices `gofmt` allows. |
 | **`go test -race`** | stdlib | Race detector for activity/test code | Always run with `-race` in CI. Workflow code is single-threaded by Temporal's deterministic runner so race issues only surface in activities, the interpreter shell, and test harnesses. |
 | **`mockgen` / `gomock`** | not recommended | Mock generation | Skip. The Temporal testsuite provides `OnActivity(...).Return(...)` style mocking; project's `temporal_test` builtin will wrap that. Don't introduce gomock. |
-| **`Makefile` or `Taskfile.yml`** | — | Build/test/lint orchestration | A simple `Makefile` with `test`, `lint`, `example-run`, `dev-server` targets is sufficient for v1. |
+| **`Makefile` or `Taskfile.yml`** | — | Build/test/lint orchestration | A simple `Makefile` with `test`, `lint`, `example-run`, `dev-temporal` targets is sufficient for v1. |
 ## Installation
 # Initialize module (Go 1.25+ required)
 # Core dependencies
@@ -86,11 +86,11 @@ Skytime is a Go library that lets teams declare durable workflows in Starlark an
 | **`gomock` / `mockery`** | Adds another code-gen step and competes with Temporal testsuite mocks. | Temporal `testsuite.OnActivity(...)` for activities; manual fakes for the few interfaces (credential resolver, extension registry) that need them. |
 | **`viper` for v1** | Heavy dep tree, lowercases YAML keys, breaks spec compatibility for nested config. | `koanf/v2` or hand-rolled flag parsing. |
 | **Tagged `v0.x.y` for `go.starlark.net`** | There are no tags. Anyone instructing `go get go.starlark.net@v0.1.0` will fail. | Use `@latest` for initial pull, then `go mod tidy` will pin to the pseudo-version (e.g. `v0.0.0-20260326113308-fadfc96def35`). Update intentionally. |
-| **`SetTLSDisabled` defaults from old samples** | Temporal SDK v1.39 (Jan 2025) flipped the default: providing an API key now *implies* TLS. Old "TLS off + API key" samples silently break. | Be explicit: set `TLSDisabled: true` only for local dev-server connections; let production paths default to TLS. |
+| **`SetTLSDisabled` defaults from old samples** | Temporal SDK v1.39 (Jan 2025) flipped the default: providing an API key now *implies* TLS. Old "TLS off + API key" samples silently break. | Be explicit: set `TLSDisabled: true` only for local-dev (dev-temporal) connections; let production paths default to TLS. |
 | **`v1.0.0` tag of `charmbracelet/log`** | `v2.0.0` (2026-03) is the slog-native major; `v1` predates the slog stabilization and has API drift. | `github.com/charmbracelet/log/v2` v2.0.0+. |
 ## Stack Patterns by Variant
 - Use `temporalio/temporalite` (or `temporal server start-dev`) for an in-memory Temporal — no Postgres, no Cassandra, single binary.
-- CLI command `skytime dev-server` should wrap `temporalite` lifecycle.
+- CLI command `skytime dev-temporal` should wrap `temporalite` lifecycle.
 - `TLSDisabled: true` on the Temporal client.
 - API key + `Namespace` from config.
 - Do NOT set `TLSDisabled` (default = enabled in v1.39+).

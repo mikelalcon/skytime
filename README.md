@@ -36,7 +36,7 @@ Temporal's retry/timeout/child-workflow guarantees.
 
 - Not a hosted SaaS. Skytime is a Go library; deployment is your problem.
 - Not a CEL/JSONPath/Jinja replacement. Lambdas only — runtime template engines are explicitly forbidden (parser-time syntactic sugar like `${ctx.expr}` is permitted, see [docs/architecture.md](docs/architecture.md#no-string-compilation)).
-- Not a Temporal alternative. Skytime sits ON TOP of Temporal; you still need a Temporal cluster (cloud or self-hosted; `skytime dev-server` for local).
+- Not a Temporal alternative. Skytime sits ON TOP of Temporal; you still need a Temporal cluster (cloud or self-hosted; `skytime dev-temporal` for local).
 - Not a workflow versioning helper. Use Temporal's Build IDs + content-addressed flows; Skytime-specific versioning is out of scope for v1.
 - Not a Web UI. Temporal's UI is sufficient for v1.
 - Not Starlark-the-language with full Python compatibility — `lambda` and `def` are usable; some stdlib (time, random, I/O) is NOT in the lambda-time predeclared environment.
@@ -49,7 +49,7 @@ Pre-v1; foundational architecture stable. Phase progress:
 - ✓ **Phase 1** — Type spine, extension contract, parser/bridge foundations (22/22 reqs)
 - ✓ **Phase 2** — Generic activity, block-batch dispatch, credentials (6/6 reqs)
 - ✓ **Phase 3** — Lambda-serialization decision (Option B: re-parse on workflow start), interpreter, worker (10/10 reqs)
-- ✓ **Phase 4** — Static validation, CLI skeleton (`skytime run`/`validate`/`info`/`dev-server`), HTTP extension (7/7 reqs)
+- ✓ **Phase 4** — Static validation, CLI skeleton (`skytime run`/`validate`/`info`/`dev-temporal`), HTTP extension (7/7 reqs)
 - ✓ **Phase 04.1** — Dynamic step kwargs, `${ctx.expr}` interpolation, multi-line live progress (7/7 reqs)
 - ✓ **Phase 04.2** — Expression-mode `if_cond` with strict-equality result-binding (3/3 reqs)
 - ✓ **Phase 04.3** — Documentation set + source-driven reference generator
@@ -78,7 +78,7 @@ successfully-executed workflow in about 5–10 minutes.
 By the end you'll have:
 
 - The `skytime` binary built and running
-- A local Temporal dev-server humming
+- A local Temporal dev server humming
 - One workflow run end-to-end with both a happy path AND a deliberately
   failing path so you see how errors surface
 - A working understanding of the four DSL features the canonical
@@ -99,7 +99,7 @@ that demonstrate the project's most distinctive features in one place.
 | A terminal | — | bash, zsh, fish all fine |
 
 You do **not** need to install Temporal Server separately.
-`skytime dev-server` wraps `temporal server start-dev` (in-memory,
+`skytime dev-temporal` wraps `temporal server start-dev` (in-memory,
 single binary) — that's enough for this tutorial.
 
 Verify your prereqs:
@@ -110,7 +110,7 @@ temporal --version   # temporal version vX.Y.Z
 ```
 
 If `temporal --version` errors, jump back to the install hint above —
-the dev-server step won't work without it.
+the dev-temporal step won't work without it.
 
 ## 1. Clone and Build
 
@@ -130,7 +130,7 @@ check:
 ```
 
 You should see the cobra usage with subcommands `run`, `validate`,
-`info`, `dev-server`. If not, double-check Go is on `PATH` and re-run
+`info`, `dev-temporal`. If not, double-check Go is on `PATH` and re-run
 `go build`.
 
 ## 2. Start the Dev Server
@@ -138,7 +138,7 @@ You should see the cobra usage with subcommands `run`, `validate`,
 Open a fresh terminal and run:
 
 ```sh
-./skytime dev-server
+./skytime dev-temporal
 ```
 
 This wraps `temporal server start-dev` — Temporal's in-memory dev
@@ -350,7 +350,7 @@ Where to go next depends on what you want to do:
   `call_flow`).
 - **CLI reference** — [`docs/reference/cli.md`](docs/reference/cli.md)
   documents `skytime run` connection variants, `skytime validate`
-  exit codes, `skytime info`, `skytime dev-server`, and more.
+  exit codes, `skytime info`, `skytime dev-temporal`, and more.
 - **Browse more examples** —
   [`examples/README.md`](examples/README.md) indexes every
   skeleton fixture (`simple_check.star`, `parallel_fanout.star`,

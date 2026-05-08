@@ -253,7 +253,7 @@ Versioning (Build IDs): production deployers register a Build ID
 compatibility set on the task queue and run a fresh worker pool against the
 new Build ID. In-flight workflows continue draining against the old Build ID.
 The `WorkerOptions.UseBuildIDVersioning` flag is **opt-in** (default false)
-so dev / CLI runs against `skytime dev-server` work without any
+so dev / CLI runs against `skytime dev-temporal` work without any
 task-queue-versioning ceremony.
 
 **Why Option B and not a custom DataConverter.** A custom DataConverter

@@ -83,7 +83,7 @@ func (myCredentialHandler) Resolve(ctx context.Context, id string) (extension.Cr
 go build -o my-skytime ./cmd/my-skytime
 ./my-skytime validate flows/my_flow.star
 ./my-skytime run flows/my_flow.star --flow=approve_pr --input='{"pr_id": 42}'
-./my-skytime dev-server
+./my-skytime dev-temporal
 ```
 
 ## Build-time Identity (Optional)
