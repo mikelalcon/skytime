@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestDevServerCmd_MissingBinary: overrides lookPath to simulate a
+// TestDevTemporalCmd_MissingBinary: overrides lookPath to simulate a
 // missing temporal binary; asserts the install instructions appear in
 // stderr and the command returns a non-nil error.
-func TestDevServerCmd_MissingBinary(t *testing.T) {
+func TestDevTemporalCmd_MissingBinary(t *testing.T) {
 	original := lookPath
 	defer func() { lookPath = original }()
 	lookPath = func(_ string) (string, error) {
@@ -24,7 +24,7 @@ func TestDevServerCmd_MissingBinary(t *testing.T) {
 	}
 
 	cfg := &config{}
-	cmd := newDevServerCommand(cfg)
+	cmd := newDevTemporalCommand(cfg)
 	var stderr bytes.Buffer
 	cmd.SetErr(&stderr)
 	cmd.SetContext(context.Background())
@@ -37,7 +37,7 @@ func TestDevServerCmd_MissingBinary(t *testing.T) {
 	require.Contains(t, stderr.String(), "go install go.temporal.io/server/cmd/temporal@latest")
 }
 
-// TestDevServerCmd_Spawn (W-7): requires a real `temporal` binary on
+// TestDevTemporalCmd_Spawn (W-7): requires a real `temporal` binary on
 // PATH. When absent, skip — matches the workflowcheck skip pattern
 // (Phase 3). When present, spawn with a 200ms ctx deadline; ctx-cancel
 // kills the subprocess before it finishes binding ports.
@@ -47,19 +47,19 @@ func TestDevServerCmd_MissingBinary(t *testing.T) {
 // ctx-cancel kills the subprocess (not flag parsing) — `--headless`
 // would have been rejected by temporal as unknown, which would pass
 // for the wrong reason.
-func TestDevServerCmd_Spawn(t *testing.T) {
+func TestDevTemporalCmd_Spawn(t *testing.T) {
 	if _, err := exec.LookPath("temporal"); err != nil {
 		t.Skip("temporal CLI not on PATH; install per D4-12 install instructions to enable this test")
 	}
 	if testing.Short() {
-		t.Skip("dev-server spawn test is heavy; -short skips")
+		t.Skip("dev-temporal spawn test is heavy; -short skips")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
 	cfg := &config{}
-	cmd := newDevServerCommand(cfg)
+	cmd := newDevTemporalCommand(cfg)
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
@@ -73,7 +73,7 @@ func TestDevServerCmd_Spawn(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestDevServerCmd_SignalForward (W-8 BEHAVIORAL test) exercises the
+// TestDevTemporalCmd_SignalForward (W-8 BEHAVIORAL test) exercises the
 // SIGINT/SIGTERM forwarding behavior directly on the running
 // subprocess. D4-10 mandates SIGINT forwarding; a source-grep alone
 // is insufficient because it doesn't catch the case where
@@ -84,14 +84,14 @@ func TestDevServerCmd_Spawn(t *testing.T) {
 //      and sleeps for 10s — keeps the subprocess alive long enough
 //      for the test to observe testRunningCmd.
 //   2. Kick off RunE in a goroutine.
-//   3. Wait for testRunningCmd to be set (W-8 seam in dev_server.go).
+//   3. Wait for testRunningCmd to be set (W-8 seam in dev_temporal.go).
 //   4. Dispatch SIGINT directly at testRunningCmd.Process — NOT at
 //      the test process.
 //   5. Assert RunE returns within 1s.
 //
 // Skipped on Windows because os.Interrupt is not deliverable to
 // subprocesses on Windows per Go docs.
-func TestDevServerCmd_SignalForward(t *testing.T) {
+func TestDevTemporalCmd_SignalForward(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("os.Interrupt not deliverable to subprocesses on Windows per Go docs")
 	}
@@ -99,7 +99,7 @@ func TestDevServerCmd_SignalForward(t *testing.T) {
 		t.Skip("/bin/sh not on PATH; cannot run signal-forward behavioral test")
 	}
 
-	// dev_server.go ALWAYS prepends "server start-dev" to args. We
+	// dev_temporal.go ALWAYS prepends "server start-dev" to args. We
 	// need a long-running fake binary that ignores all arguments —
 	// /bin/sleep would reject "server"/"start-dev" as non-numeric and
 	// exit immediately, racing the seam observation. A tiny wrapper
@@ -114,13 +114,13 @@ func TestDevServerCmd_SignalForward(t *testing.T) {
 
 	ctx := context.Background()
 	cfg := &config{}
-	cmd := newDevServerCommand(cfg)
+	cmd := newDevTemporalCommand(cfg)
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 	cmd.SetContext(ctx)
 
-	// Run dev-server with one extra arg (ignored by the wrapper).
+	// Run dev-temporal with one extra arg (ignored by the wrapper).
 	done := make(chan error, 1)
 	go func() {
 		done <- cmd.RunE(cmd, []string{"--ignored"})
@@ -156,12 +156,12 @@ func TestDevServerCmd_SignalForward(t *testing.T) {
 	}
 }
 
-// TestDevServerCmd_SignalForwardSourceSmoke (W-8 SECONDARY assertion)
+// TestDevTemporalCmd_SignalForwardSourceSmoke (W-8 SECONDARY assertion)
 // is cheap insurance that a refactor doesn't accidentally delete the
 // signal.Notify call. The behavioral test above catches functional
 // regressions; this grep catches accidental deletion of the wiring.
-func TestDevServerCmd_SignalForwardSourceSmoke(t *testing.T) {
-	data, err := os.ReadFile("dev_server.go")
+func TestDevTemporalCmd_SignalForwardSourceSmoke(t *testing.T) {
+	data, err := os.ReadFile("dev_temporal.go")
 	require.NoError(t, err)
 	src := string(data)
 	require.Contains(t, src, "signal.Notify")

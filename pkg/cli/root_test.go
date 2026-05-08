@@ -37,7 +37,7 @@ func TestRootCommand_FlagsRegistered(t *testing.T) {
 }
 
 // TestRootCommand_HasValidateSubcommand asserts skytime has a validate
-// subcommand. Run + dev-server are added in W4 (plans 04-05 / 04-06).
+// subcommand. Run + dev-temporal are added in W4 (plans 04-05 / 04-06).
 func TestRootCommand_HasValidateSubcommand(t *testing.T) {
 	root, err := cli.NewRootCommand()
 	require.NoError(t, err)
@@ -89,7 +89,7 @@ func TestRootCommand_BareInvocationPrintsHelp(t *testing.T) {
 	require.Contains(t, stdout.String(), "Available Commands:", "help block should land on stdout")
 	require.Contains(t, stdout.String(), "validate")
 	require.Contains(t, stdout.String(), "run")
-	require.Contains(t, stdout.String(), "dev-server")
+	require.Contains(t, stdout.String(), "dev-temporal")
 	require.Empty(t, stderr.String(), "bare invocation must not write to stderr")
 }
 
@@ -203,4 +203,22 @@ func TestRoot_HasServerSubcommand(t *testing.T) {
 		}
 	}
 	require.True(t, found, "skytime server subcommand must be registered on root")
+}
+
+// TestRoot_HasDevTemporalSubcommand asserts skytime has a dev-temporal
+// subcommand (Phase 7 Plan 06 hard rename per D-07-21). The presence
+// test pins the registration line in pkg/cli/root.go so a regression
+// that drops the AddCommand call (or accidentally re-introduces the
+// dev-server name) surfaces here rather than at runtime.
+func TestRoot_HasDevTemporalSubcommand(t *testing.T) {
+	root, err := cli.NewRootCommand()
+	require.NoError(t, err)
+	var found bool
+	for _, c := range root.Commands() {
+		if c.Name() == "dev-temporal" {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "skytime dev-temporal subcommand must be registered on root")
 }
