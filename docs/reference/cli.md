@@ -1,6 +1,6 @@
 # Skytime CLI Reference
 
-The `skytime` binary is the entry point for static validation, workflow dispatch, flow discovery, and local dev-server lifecycle. It lives at `cmd/skytime/main.go` (a thin wrapper) and `pkg/cli/` (the reusable cobra root, callable from custom binaries — see [docs/cli-binary.md](../cli-binary.md)).
+The `skytime` binary is the entry point for static validation, workflow dispatch, flow discovery, long-running worker hosting, and local Temporal dev server lifecycle. It lives at `cmd/skytime/main.go` (a thin wrapper) and `pkg/cli/` (the reusable cobra root, callable from custom binaries — see [docs/cli-binary.md](../cli-binary.md)).
 
 **Library-side firewall (D4-13):** cobra, `charm.land/log/v2`, and `charm.land/lipgloss/v2` are reachable only from `pkg/cli` and `cmd/skytime` (enforced by `tests/firewall_cli_test.go`). Adding flags or subcommands means editing `pkg/cli/`; the rest of the library stays cobra-unaware.
 
@@ -76,7 +76,7 @@ Plus all persistent flags above. The connection variant is selected automaticall
 - `--api-key` set → Temporal Cloud via `worker.NewCloudClient` (TLS implied per SDK v1.39+).
 - `--client-cert` AND `--client-key` set → self-hosted via `worker.NewSelfHostedClient` (mTLS); `--server-ca` optionally adds a custom root.
 - Only one of `--client-cert` / `--client-key` set → friendly error before any client construction (`--client-cert and --client-key must be supplied together for mTLS`).
-- Otherwise → dev-server via `worker.NewDevClient` (`TLSDisabled=true`).
+- Otherwise → local-dev (dev-temporal) connection via `worker.NewDevClient` (`TLSDisabled=true`).
 
 The transient embedded worker uses the same `pkg/cli` `--rootdir`-style convention as `skytime validate`: the file's directory becomes the worker's frozen registry root. For multi-file flows that `load(...)` siblings, place them in (or below) the same directory as `<file.star>`.
 
@@ -286,24 +286,105 @@ skytime test examples/http-github-slack/ --run '^users_test\.test_existing'
 
 ---
 
-## skytime dev-server
+## skytime server
 
 ### Synopsis
 
-    skytime dev-server [persistent flags] [-- ...args forwarded to `temporal server start-dev`]
+    skytime server --rootdir <dir> [--task-queue <name>] [--addr <addr>]
+                   [--credfile <path>] [--drain-timeout <duration>]
+                   [--json-log] [persistent flags]
 
-Source: `pkg/cli/dev_server.go`.
+Source: `pkg/cli/server.go`. Phase 7 ships SERVER-01..03: the long-running worker shell with two-signal drain escalation. Phase 7.1+ extends `--addr` to mount the HTTP webhook receiver on top of the same skeleton.
 
 ### Motivation
 
-Convenience wrapper around `temporal server start-dev` (D4-09). It does NOT embed Temporalite as a Go dependency — keeps `cmd/skytime` lean and matches the SDK v1.42 dependency footprint (Temporalite would drag sqlite + heavy temporal-server transitives into every `skytime` install). Consultants on macOS run `brew install temporal` once and `skytime dev-server` afterward.
+`skytime server` is the *production sibling* of `skytime run`. Where `run` is a one-shot embedded transient worker (validate → connect → dispatch → wait → exit), `server` boots the same `pkg/worker.Worker` and stays up — picking up workflow tasks from the configured task queue until SIGTERM. The drain semantics match Kubernetes' `terminationGracePeriodSeconds` convention so the binary plugs into a Deployment/StatefulSet without custom shutdown plumbing.
+
+### Flags
+
+| Flag | Type | Default | Purpose |
+|------|------|---------|---------|
+| `--rootdir` | string | (required) | Directory containing `.star` files. Walked recursively at boot; the resulting `FlowRegistry` and `TriggerRegistry` are frozen — runtime mutation is rejected. |
+| `--task-queue` | string | `skytime` | Temporal task queue the worker polls. |
+| `--addr` | string | `:8080` | HTTP listener address. Accepted in Phase 7 but unused; emits a warning if set explicitly. Phase 7.1+ mounts the webhook receiver here. |
+| `--credfile` | string | `""` | Credential file path. Rejected with a friendly error if the binary has no `cli.WithCredentialHandler` wired (D-07-19). |
+| `--drain-timeout` | duration | `30s` | Max time to wait for in-flight workflows to complete on SIGTERM/SIGINT. Range-validated to `[1s, 1h]`; sub-1s rejected before any side effect. Values above 1h emit a warning but are accepted. Default `30s` matches Kubernetes' `terminationGracePeriodSeconds` default. |
+| `--json-log` | bool | `false` | Switch the slog handler from charm-log (Bazel-style) to `slog.NewJSONHandler(os.Stderr, ...)`. Production deployments typically set this for log aggregator ingestion. |
+
+The connection variant is selected automatically via the same `pkg/cli/connect.go::connectClient` path used by `skytime run` — `--api-key` → cloud, `--client-cert + --client-key` → self-hosted (mTLS), otherwise → local-dev (dev-temporal) connection.
+
+### Drain Semantics (D-07-17, D-07-20)
+
+Two-signal escalation:
+
+1. **First signal (SIGINT or SIGTERM).** Logs `server draining; second SIGINT/SIGTERM forces immediate exit`, then calls `worker.Stop()` in a goroutine. SDK `Stop` blocks up to `WorkerStopTimeout` (= `--drain-timeout`) waiting for in-flight workflow tasks to complete. On clean drain → exit 0.
+2. **Second signal during drain.** Logs `drain interrupted by second signal; forcing exit (workflows resume on next worker start from event history)` and calls `os.Exit(1)`. Workflows resume from Temporal's event history when a fresh worker comes up — durability guarantees survive the forced exit.
+3. **Drain timeout expiry.** If `--drain-timeout` elapses before `worker.Stop()` returns, logs `drain-timeout exceeded; restart resumes from event history` and exits 1.
+
+The signal channel is buffered (size 2) so the second signal can land even if the receiver is between selects. `signal.Notify` is used (NOT `signal.NotifyContext`): the latter is single-shot and would silently drop the second signal mid-drain.
+
+### Startup Banner (SERVER-03)
+
+Three slog records emitted before `worker.Start()` so operators see what's about to come online:
+
+```
+{"level":"INFO","msg":"starting server","rootdir":"./flows","task-queue":"skytime","addr":":8080"}
+{"level":"INFO","msg":"registered flows","count":3,"flows":["batch_label_issues","public_repo_check","weekly_digest"]}
+{"level":"INFO","msg":"registered triggers","count":2,"triggers":[{"source":"github_webhook","flow":"on_pr"},{"source":"cron","flow":"weekly_digest"}]}
+```
+
+Flow names sorted alphabetically; triggers sorted by `(Source.Kind, FlowName, Pos)` via `Worker.Triggers().All()` (Plan 04's `TriggerRegistry.Freeze`).
+
+### Exit Codes
+
+- `0` — clean drain on first signal; in-flight workflows completed within `--drain-timeout`.
+- `1` — connect failure, worker init failure, drain-timeout expiry, second-signal forced exit, range-validation failure on `--drain-timeout`, or `--credfile` set without a credential handler. Renderer emits the diagnostic to stderr; cobra's usage banner accompanies argument-validation failures.
+
+### Example
+
+```sh
+# Long-lived worker against the local Temporal dev server (terminal 1: skytime dev-temporal)
+skytime server --rootdir=./flows --task-queue=demo --address=localhost:7233
+
+# Production: Temporal Cloud
+skytime server --rootdir=./flows --task-queue=prod \
+    --address=your-ns.tmprl.cloud:7233 \
+    --api-key=$TEMPORAL_API_KEY \
+    --namespace=your-ns \
+    --json-log \
+    --drain-timeout=2m
+```
+
+To gracefully shut down: `kill <pid>` or Ctrl-C. To force immediate exit: `kill <pid>` twice (or Ctrl-C twice).
+
+### See Also
+
+- One-shot sibling: [`skytime run`](#skytime-run) — embedded transient worker, exits when the workflow completes.
+- Custom CLI: [`docs/cli-binary.md`](../cli-binary.md) — register your own extensions and credential handler in your binary, then run `your-binary server --rootdir=...`.
+- Architecture: [`docs/architecture.md`](../architecture.md) — `pkg/worker` boot, frozen registries, deterministic re-parse on workflow start.
+
+---
+
+## skytime dev-temporal
+
+> **Renamed in Phase 7 per D-07-21.** Prior to v1.43, this subcommand carried the legacy name (see CHANGELOG). The hard rename (no deprecation alias) clarifies that the wrapped subprocess is *Temporal*'s dev server, not Skytime's. Update any local scripts or CI pipelines accordingly.
+
+### Synopsis
+
+    skytime dev-temporal [persistent flags] [-- ...args forwarded to `temporal server start-dev`]
+
+Source: `pkg/cli/dev_temporal.go`.
+
+### Motivation
+
+Convenience wrapper around `temporal server start-dev` (D4-09). It does NOT embed Temporalite as a Go dependency — keeps `cmd/skytime` lean and matches the SDK v1.42 dependency footprint (Temporalite would drag sqlite + heavy temporal-server transitives into every `skytime` install). Consultants on macOS run `brew install temporal` once and `skytime dev-temporal` afterward.
 
 Behavior (D4-10, D4-11, D4-12):
 
-- **Subprocess wrapper.** `exec.CommandContext(ctx, "temporal", "server", "start-dev", ...)`. Stdin, stdout, stderr pass through verbatim — the dev-server's URL banner and shutdown logs land directly on your terminal.
-- **Flag passthrough.** `DisableFlagParsing: true` on the cobra command so any flags after `dev-server` (e.g., `--port 8233`, `--db-filename ./temporal.db`) are forwarded unmodified to `temporal server start-dev`. Persistent Skytime flags before `dev-server` (e.g., `skytime --debug dev-server`) still bind normally.
+- **Subprocess wrapper.** `exec.CommandContext(ctx, "temporal", "server", "start-dev", ...)`. Stdin, stdout, stderr pass through verbatim — the Temporal dev server's URL banner and shutdown logs land directly on your terminal.
+- **Flag passthrough.** `DisableFlagParsing: true` on the cobra command so any flags after `dev-temporal` (e.g., `--port 8233`, `--db-filename ./temporal.db`) are forwarded unmodified to `temporal server start-dev`. Persistent Skytime flags before `dev-temporal` (e.g., `skytime --debug dev-temporal`) still bind normally.
 - **SIGINT/SIGTERM forwarding.** A `signal.Notify` goroutine catches Ctrl-C and termination signals on the parent and forwards them to the subprocess via `sub.Process.Signal`. The subprocess also shares the parent's process group, so terminal Ctrl-C reaches it directly; the goroutine is defense-in-depth for non-TTY contexts.
-- **Missing-binary install hints.** `exec.LookPath("temporal")` failure prints (verbatim from `pkg/cli/dev_server.go::printMissingTemporalBinary`):
+- **Missing-binary install hints.** `exec.LookPath("temporal")` failure prints (verbatim from `pkg/cli/dev_temporal.go::printMissingTemporalBinary`):
 
       error: `temporal` CLI not found on PATH.
       Install:
@@ -315,7 +396,7 @@ Behavior (D4-10, D4-11, D4-12):
 
 ### Flags
 
-No subcommand-specific flags from Skytime. Persistent flags apply, but the connection-shape flags (`--address`, `--api-key`, mTLS triplet) are ignored — `dev-server` is the *target* of `skytime run`, not a client of it. Anything else placed after `dev-server` is forwarded to the subprocess (per `DisableFlagParsing`).
+No subcommand-specific flags from Skytime. Persistent flags apply, but the connection-shape flags (`--address`, `--api-key`, mTLS triplet) are ignored — `dev-temporal` is the *target* of `skytime run`, not a client of it. Anything else placed after `dev-temporal` is forwarded to the subprocess (per `DisableFlagParsing`).
 
 ### Exit Codes
 
@@ -326,9 +407,9 @@ No subcommand-specific flags from Skytime. Persistent flags apply, but the conne
 
 ```
 # Terminal 1
-skytime dev-server
+skytime dev-temporal
 
-# Terminal 2 (after the dev-server's "Started Server" banner appears)
+# Terminal 2 (after the Temporal dev server's "Started Server" banner appears)
 skytime run examples/skeleton/expression_if.star \
     --flow check_user --input '{"user_id":"42"}'
 ```
@@ -337,7 +418,7 @@ For the Temporal CLI install matrix, see <https://docs.temporal.io/cli>.
 
 ### See Also
 
-- Tutorial: [`docs/getting-started.md`](../getting-started.md) — uses `dev-server` for the local-loop walkthrough.
+- Tutorial: [`docs/getting-started.md`](../getting-started.md) — uses `dev-temporal` for the local-loop walkthrough.
 - Custom CLI: [`docs/cli-binary.md`](../cli-binary.md) — your own binary inherits this subcommand verbatim through `cli.NewRootCommand`.
 
 ---
@@ -347,6 +428,6 @@ For the Temporal CLI install matrix, see <https://docs.temporal.io/cli>.
 - **Discoverability runtime equivalent:** [`skytime info`](#skytime-info) is the runtime equivalent of the auto-generated [builtins reference](builtins.md) — `info` shows what a specific `.star` file declares; `builtins.md` shows what the language itself supports.
 - **Authoring flows:** [`docs/for-flow-authors/README.md`](../for-flow-authors/README.md)
 - **Building extensions (Go developers):** [`docs/for-extension-developers/README.md`](../for-extension-developers/README.md)
-- **Tutorial:** [`docs/getting-started.md`](../getting-started.md) — `git clone` → `skytime dev-server` → `skytime run` in 5 minutes.
+- **Tutorial:** [`docs/getting-started.md`](../getting-started.md) — `git clone` → `skytime dev-temporal` → `skytime run` in 5 minutes.
 - **Custom CLI:** [`docs/cli-binary.md`](../cli-binary.md) — register your own extensions via `cli.WithExtensions(...)`; supply a `CredentialHandler` for production secrets resolution.
 - **Architecture:** [`docs/architecture.md`](../architecture.md) — the parse/execute split (D4-18 Starlark-first error rendering, lambda capture model, registry-based deterministic re-parse on workflow start).

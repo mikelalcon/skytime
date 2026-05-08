@@ -14,7 +14,7 @@ guarantees.
 
 1. **[Getting Started Tutorial](../getting-started.md)** — 5–10 minute
    walkthrough. The single best entry point: `git clone` → `skytime
-   dev-server` → `skytime run examples/skeleton/expression_if.star
+   dev-temporal` → `skytime run examples/skeleton/expression_if.star
    --flow check_user --input '{"user_id":"octocat"}'` → see the colored
    live progress block, then trigger the fail path. You'll know what
    Skytime feels like in under ten minutes.
@@ -32,7 +32,7 @@ guarantees.
 ## Reference Material
 
 - **[CLI Reference](../reference/cli.md)** — `skytime run`, `validate`,
-  `info`, `dev-server`: flag tables, env-var fallbacks, exit codes,
+  `info`, `server`, `dev-temporal`: flag tables, env-var fallbacks, exit codes,
   variant-routing prose for Cloud / self-hosted / dev mode
 - **[Examples](../../examples/README.md)** — runnable `.star` fixtures
   (`simple_check`, `parallel_fanout`, `expression_if`) with
@@ -52,7 +52,7 @@ guarantees.
 ## Common Tasks
 
 - **Run a flow against the dev server** — see
-  [Getting Started](../getting-started.md). Two terminals: dev-server
+  [Getting Started](../getting-started.md). Two terminals: dev-temporal
   in one, `skytime run` in the other.
 - **Validate without running** — `skytime validate <file.star>`
   ([cli ref](../reference/cli.md#skytime-validate)). Catches kwarg
