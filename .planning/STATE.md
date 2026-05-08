@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07-02-extension-triggersource-PLAN.md
-last_updated: "2026-05-08T19:49:48.312Z"
+stopped_at: Completed 07-03-parser-trigger-builtin-PLAN.md
+last_updated: "2026-05-08T20:10:13.679Z"
 last_activity: 2026-05-08
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 6
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07 (trigger-primitive-server-shell) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-05-08
 
@@ -110,6 +110,7 @@ Progress: [          ] 0%
 | Phase 06 P08 | 4min | 3 tasks | 5 files |
 | Phase 07 P01 | 7min | 2 tasks | 3 files |
 | Phase 07 P02 | 7min | 2 tasks | 4 files |
+| Phase 07 P03 | 13min | 7 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -318,6 +319,12 @@ Recent decisions affecting current work:
 - [Phase 07]: Default unmarshalTriggerSource returns explanatory error instead of nil panic (helps tests + diagnostics before pkg/extension wires the registry)
 - [Phase 07]: FakeTriggerSource lives in package extension (not pkg/extension/testing) — Go forbids sub-packages from satisfying parent-package unexported-method seals
 - [Phase 07]: Strict-collision on RegisterTriggerSourceFactory: any second registration of the same kind returns 'extension: trigger source kind %q already registered' (function-pointer equality is unreliable in Go)
+- [Phase 07]: Plan 03: findCtxAccesses generalized to findFreeVarAccesses(src, filename, lambdaPos, freeVarName) — ctx-walker delegates via firstParamNameAt; req-walker is a sibling caller. Two-pass cost bounded; TestCtxWalk_* regression-pinned
+- [Phase 07]: Plan 03: triggerTimeGlobals 22-key locked surface (lambdaTimeGlobals + json + time); SAFE in trigger lambdas because they run once at HTTP ingress (Phase 7.1+), no replay
+- [Phase 07]: Plan 03: warnDuplicateTriggers sig EXCLUDES lambda IDs — byte-identical lambdas at different positions get different D-18 IDs; including would mask the very duplicates the warning targets
+- [Phase 07]: Plan 03: TriggerWarnings accumulate on parser state, not slog.Default at finalize — keeps tests deterministic; Plan 04's worker boot drains via slog.Warn at server startup
+- [Phase 07]: Plan 03: validateTriggerReqAccesses type-asserts trig.Source against interface{ ReqSchema() []string } — dag.TriggerSource is the minimal seal (Kind+MarshalJSON only); production goes through extension.TriggerSource which provides ReqSchema
+- [Phase 07]: Plan 03: Trigger lambdas at parse time use parseTimeGlobals (rich); triggerTimeGlobals is the runtime env that Phase 7.1+ wires at HTTP ingress — matches Phase 1+ predeclared-env-per-call architecture
 
 ### Pending Todos
 
@@ -348,6 +355,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-08T19:49:48.307Z
-Stopped at: Completed 07-02-extension-triggersource-PLAN.md
+Last session: 2026-05-08T20:09:56.820Z
+Stopped at: Completed 07-03-parser-trigger-builtin-PLAN.md
 Resume file: None
