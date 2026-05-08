@@ -187,3 +187,20 @@ func TestRootCommand_ValidSubcommandUnaffected(t *testing.T) {
 		"validate happy path stderr must remain empty; got: %s", stderr.String())
 	_ = stdout // help text is not relevant on a happy validate run
 }
+
+// TestRoot_HasServerSubcommand asserts skytime has a server subcommand
+// (Phase 7 Plan 05). The presence test pins the registration line in
+// pkg/cli/root.go so a regression that drops the AddCommand call surfaces
+// here rather than at runtime.
+func TestRoot_HasServerSubcommand(t *testing.T) {
+	root, err := cli.NewRootCommand()
+	require.NoError(t, err)
+	var found bool
+	for _, c := range root.Commands() {
+		if c.Name() == "server" {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "skytime server subcommand must be registered on root")
+}

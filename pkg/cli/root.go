@@ -17,8 +17,9 @@ import (
 )
 
 // NewRootCommand constructs the skytime root command with the validate,
-// run, and dev-server subcommands wired. Options follow the
-// per-instance pattern from D-07: no globals, no init() side effects.
+// run, dev-server, server, info, and test subcommands wired. Options
+// follow the per-instance pattern from D-07: no globals, no init() side
+// effects.
 //
 // Returns (*cobra.Command, error) so option failures (e.g., a
 // misconfigured handler) surface explicitly to the caller.
@@ -59,8 +60,9 @@ func NewRootCommand(opts ...Option) (*cobra.Command, error) {
 	root.AddCommand(newValidateCommand(cfg))
 	root.AddCommand(newRunCommand(cfg))
 	root.AddCommand(newDevServerCommand(cfg))
-	root.AddCommand(newInfoCommand(cfg)) // Quick 260504-k9c
-	root.AddCommand(newTestCommand(cfg)) // Phase 5 Plan 06
+	root.AddCommand(newServerCommand(cfg)) // NEW (Phase 7)
+	root.AddCommand(newInfoCommand(cfg))   // Quick 260504-k9c
+	root.AddCommand(newTestCommand(cfg))   // Phase 5 Plan 06
 
 	return root, nil
 }
