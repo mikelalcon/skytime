@@ -14,6 +14,8 @@ import (
 	"go.temporal.io/sdk/client"
 	sdkworker "go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
+
+	"github.com/mikelalcon/skytime/pkg/extension"
 )
 
 // fakeSDKWorker is a stub sdkworker.Worker that records register calls and
@@ -261,4 +263,78 @@ func TestWorker_RegistryAccessor(t *testing.T) {
 	hash, ok := w.Registry().ContentHashFor("trivial")
 	require.True(t, ok)
 	assert.NotEmpty(t, hash)
+}
+
+// =============================================================================
+// Phase 7 Plan 04 — Worker.Triggers() + WorkerStopTimeout threading
+// =============================================================================
+
+// makeFlowsDirWithTrigger writes a single .star file declaring one flow and
+// one trigger. Used by Worker.Triggers() integration tests below.
+func makeFlowsDirWithTrigger(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "flows.star"), []byte(`
+flow(name = "check_user", steps = [])
+trigger(
+    flow = "check_user",
+    source = fake.webhook(req_fields = ["payload"]),
+    map = lambda req: req.payload,
+    idempotency_key = lambda req: "k",
+)
+`), 0644))
+	return dir
+}
+
+// TestNewWorker_RegistersTriggers proves Worker.Triggers() exposes the
+// trigger registry built by bootRegistry.
+func TestNewWorker_RegistersTriggers(t *testing.T) {
+	_, _, _, cleanup := withFakeSDKWorker(t)
+	defer cleanup()
+
+	dir := makeFlowsDirWithTrigger(t)
+	w, err := NewWorker(&fakeClient{}, WorkerOptions{
+		RootDir:           dir,
+		Extensions:        []extension.Extension{fakeWebhookExt{}},
+		CredentialHandler: noopHandler{},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, w.Triggers())
+	assert.Len(t, w.Triggers().All(), 1, "trigger from flows.star registered")
+	assert.NotNil(t, w.Registry(), "flow registry preserved")
+}
+
+// TestNewWorker_WorkerStopTimeoutDefault proves applyDefaults supplies
+// 30s when WorkerStopTimeout is zero, and that the default flows into
+// sdkworker.Options.
+func TestNewWorker_WorkerStopTimeoutDefault(t *testing.T) {
+	_, capturedOpts, _, cleanup := withFakeSDKWorker(t)
+	defer cleanup()
+
+	dir := makeFlowsDir(t)
+	_, err := NewWorker(&fakeClient{}, WorkerOptions{
+		RootDir:           dir,
+		CredentialHandler: noopHandler{},
+		// WorkerStopTimeout intentionally zero — applyDefaults supplies 30s.
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 30*time.Second, capturedOpts.WorkerStopTimeout,
+		"default WorkerStopTimeout (30s) must propagate to sdkworker.Options")
+}
+
+// TestNewWorker_WorkerStopTimeoutCustom proves an explicit
+// WorkerStopTimeout flows through to sdkworker.Options.
+func TestNewWorker_WorkerStopTimeoutCustom(t *testing.T) {
+	_, capturedOpts, _, cleanup := withFakeSDKWorker(t)
+	defer cleanup()
+
+	dir := makeFlowsDir(t)
+	_, err := NewWorker(&fakeClient{}, WorkerOptions{
+		RootDir:           dir,
+		CredentialHandler: noopHandler{},
+		WorkerStopTimeout: 5 * time.Second,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 5*time.Second, capturedOpts.WorkerStopTimeout,
+		"explicit WorkerStopTimeout must propagate to sdkworker.Options")
 }
