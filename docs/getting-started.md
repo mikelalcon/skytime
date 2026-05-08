@@ -288,7 +288,7 @@ you want to do:
   it exercises" pointer.
 - **Write a flow yourself** —
   [`docs/for-flow-authors/README.md`](for-flow-authors/README.md) is
-  the landing page for Starlark consultants composing extensions.
+  the landing page for flow authors composing extensions.
 - **Build an extension** —
   [`docs/for-extension-developers/README.md`](for-extension-developers/README.md)
   is the landing page for Go developers writing extensions.

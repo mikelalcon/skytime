@@ -244,7 +244,7 @@ your own customer-specific Skytime binary with `validate` / `run` /
 `dev-server` / `test` subcommands. The whole wiring is ~120 lines and
 inherits every subcommand from `pkg/cli` for free.
 
-A consultant team specializing for one customer typically ships:
+A flow-author team specializing for one customer typically ships:
 
 - A `cmd/<customer>-skytime/main.go` that mirrors `cmd/extbin/main.go`
   and registers the extensions that customer's flows need.

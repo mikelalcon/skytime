@@ -10,7 +10,7 @@ purposes:
    `.star` here through both the static validator AND a dry-run
    interpreter; drift fails CI (D4-07, VAL-02).
 3. **Reference snippets** — copy-paste-modify starting points for real
-   consultant flows.
+   production flows.
 
 Each fixture is small (≤30 LOC of declarative code) and focused on a
 single concept. Read the files in this order if you're learning the DSL:
@@ -256,6 +256,6 @@ Demonstrates" bullets so readers can find it by feature.
 - [`docs/architecture.md`](../docs/architecture.md) — parse/execute
   split, the project's foundational design
 - [`docs/for-flow-authors/`](../docs/for-flow-authors/) — landing page
-  for Starlark consultants
+  for flow authors
 - [`docs/for-extension-developers/`](../docs/for-extension-developers/)
   — landing page for Go extension developers

@@ -1,15 +1,15 @@
 # Building a Custom Skytime CLI Binary
 
 The `skytime` binary distributed with this repo (`cmd/skytime/`) ships with
-exactly one extension: a generic HTTP client. Real consultant flows
-typically need more — GitHub, Slack, AWS, internal APIs. To register them
-you build your own CLI binary by importing `pkg/cli` and calling
-`cli.NewRootCommand` with your extension list.
+exactly one extension: a generic HTTP client. Real flows typically need
+more — GitHub, Slack, AWS, internal APIs. To register them you build your
+own CLI binary by importing `pkg/cli` and calling `cli.NewRootCommand`
+with your extension list.
 
 This page is referenced by the `validate` subcommand's "unknown extension"
 hint (D4-16) and by `cmd/skytime/main.go`'s `noopCredentialHandler.Resolve`
-error message — both surface the path here when consultants need a custom
-binary.
+error message — both surface the path here when a flow author needs a
+custom binary.
 
 ## Minimal Example
 

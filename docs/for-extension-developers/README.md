@@ -2,11 +2,10 @@
 
 > You write Go extensions — typed I/O wrappers that wrap real services
 > (HTTP, GitHub, Slack, internal APIs). Your work is reusable across
-> customers; consultants compose your extensions in `.star` files.
+> customers; flow authors compose your extensions in `.star` files.
 
-If you're a Go developer building the catalog of capabilities a
-consulting team will compose into customer-specific flows — this is
-your entry point. Extensions are plain Go: you implement an interface,
+If you're a Go developer building the catalog of capabilities a flow-author
+team will compose into customer-specific flows — this is your entry point. Extensions are plain Go: you implement an interface,
 declare a few `OperationSpec`s with typed kwargs, and a single generic
 Temporal activity dispatches them. No `workflow.Context` plumbing, no
 per-extension activity registration, no string-compilation surface.
@@ -159,5 +158,5 @@ beyond the typed kwargs/output shapes you declare.
 
 This is the **two-tier authoring model** in action: extensions are
 reusable across customers (your Go code), flows are specialized per
-customer (the consultant team's `.star` files), and the parse/execute
+customer (the flow-author team's `.star` files), and the parse/execute
 boundary keeps the two tiers honest.

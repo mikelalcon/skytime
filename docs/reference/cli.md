@@ -345,7 +345,7 @@ For the Temporal CLI install matrix, see <https://docs.temporal.io/cli>.
 ## Where to Go Next
 
 - **Discoverability runtime equivalent:** [`skytime info`](#skytime-info) is the runtime equivalent of the auto-generated [builtins reference](builtins.md) — `info` shows what a specific `.star` file declares; `builtins.md` shows what the language itself supports.
-- **Authoring flows (Starlark consultants):** [`docs/for-flow-authors/README.md`](../for-flow-authors/README.md)
+- **Authoring flows:** [`docs/for-flow-authors/README.md`](../for-flow-authors/README.md)
 - **Building extensions (Go developers):** [`docs/for-extension-developers/README.md`](../for-extension-developers/README.md)
 - **Tutorial:** [`docs/getting-started.md`](../getting-started.md) — `git clone` → `skytime dev-server` → `skytime run` in 5 minutes.
 - **Custom CLI:** [`docs/cli-binary.md`](../cli-binary.md) — register your own extensions via `cli.WithExtensions(...)`; supply a `CredentialHandler` for production secrets resolution.

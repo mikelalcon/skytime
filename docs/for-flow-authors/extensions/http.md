@@ -185,7 +185,7 @@ Source: `pkg/extension/builtin/http/http.go::Operations`.
 ### Why diverge?
 
 PUT and DELETE are technically idempotent per the HTTP spec, but in practice
-(consultant flows hitting GitHub, Slack, internal APIs) the consequences of an
+(flows hitting GitHub, Slack, internal APIs) the consequences of an
 accidental retry of a PUT/DELETE are usually worse than the cost of executing
 them one-action-per-activity. The v1 stance is the conservative one: treat
 them as side-effecting.

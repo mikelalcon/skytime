@@ -1,6 +1,6 @@
 # Testing Flows with `temporal_test`
 
-Skytime's Tier-3 test harness lets consultants write end-to-end tests in `.star`
+Skytime's Tier-3 test harness lets flow authors write end-to-end tests in `.star`
 files, then run them with `skytime test <dir>`. Tests execute against the
 in-process `testsuite.TestWorkflowEnvironment` (no Temporal server required),
 mock the single generic `ExecuteBatch` activity, route per-action calls back to

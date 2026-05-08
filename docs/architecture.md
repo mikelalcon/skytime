@@ -66,7 +66,7 @@ strings.
                            PARSE TIME (no I/O, deterministic)
                                             │
    user .star file ──► pkg/parser ──► dag.Flow (typed, JSON-serializable)
-   (consultant team)    (Starlark        with captured *starlark.Function
+   (flow author)        (Starlark        with captured *starlark.Function
                          interpreter)    instances keyed by stable content-hash
                                             │
                                             │
@@ -119,9 +119,9 @@ to `pkg/parser/globals.go::newParseTimeGlobals`, which is the richer parse-time
 env. The two are intentionally distinct (PARSE-03, D-20).
 
 **Expressive enough that no string DSL is needed.** Lambdas plus
-`*starlarkstruct.Struct` injection give consultants a real expression language
-for data access (`ctx.req.repo_name`) without resurrecting the parse-time
-evaluation surface that string parsers would create. PROJECT.md's "Starlark
+`*starlarkstruct.Struct` injection give flow authors a real expression
+language for data access (`ctx.req.repo_name`) without resurrecting the
+parse-time evaluation surface that string parsers would create. PROJECT.md's "Starlark
 over CEL or custom DSL" Key Decision: *"Lambdas + struct injection give
 expressive data access without a string-parsing risk surface."*
 

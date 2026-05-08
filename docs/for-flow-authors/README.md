@@ -3,9 +3,9 @@
 > You write `.star` files specialized per customer. You compose
 > extensions, write lambdas, define flows. You don't touch Go (mostly).
 
-If you're a Starlark consultant taking an extension catalog and a
-customer brief and turning them into a production-grade durable
-workflow on Temporal — this is your entry point. Skytime's whole
+If you're a flow author taking an extension catalog and a customer
+brief and turning them into a production-grade durable workflow on
+Temporal — this is your entry point. Skytime's whole
 reason for existing is to let you do that without leaving Starlark and
 without giving up Temporal's retry, timeout, and child-workflow
 guarantees.
@@ -105,9 +105,10 @@ tier briefly:
 
 → [For Extension Developers](../for-extension-developers/README.md)
 
-Many flow-author teams pair with a Go-side teammate who builds
-extensions; the consultant team writes the `.star` files. This is the
-**two-tier authoring model** in action: extensions are reusable across
+Many flow-author teams pair with a Go-side teammate who builds the
+extensions while the flow-author team writes the `.star` files. This
+is the **two-tier authoring model** in action: extensions are reusable
+across
 customers, flows are specialized per customer, and the parse/execute
 boundary keeps the two tiers honest.
 

@@ -28,8 +28,8 @@ flow(
             retry = {"max_attempts": 3, "initial_interval": "2s"},
         ),
         # v1 does not auto-bind step outputs into ctx, so the per-author
-        # list is seeded from inputs; consultants would swap this for a
-        # walk over the step output once that wiring lands.
+        # list is seeded from inputs; production flows would swap this for
+        # a walk over the step output once that wiring lands.
         script(
             id = "group",
             fn = lambda ctx: {"authors": [ctx.owner]},
