@@ -8,6 +8,7 @@ import (
 	"go.starlark.net/syntax"
 
 	"github.com/mikelalcon/skytime/pkg/dag"
+	"github.com/mikelalcon/skytime/pkg/extension"
 )
 
 // nodeValue is a private wrapper that lets *dag.Node values flow through
@@ -1365,4 +1366,97 @@ func convertAnyDict(d *starlark.Dict, callPos syntax.Position, kwargName string)
 		out[string(k)] = gv
 	}
 	return out, nil
+}
+
+// =============================================================================
+// builtinTrigger — trigger(flow=, source=, map=, idempotency_key=, credential=) → None
+// =============================================================================
+
+// skytime:doc summary="Declares a top-level trigger — binds a TriggerSource to a flow with map/idempotency_key lambdas."
+// skytime:doc summary="Trigger lambdas run ONCE at HTTP ingress (Phase 7.1+), NOT in workflow replay; non-determinism (time.now, json) is observably safe."
+// skytime:doc returns="None (registers a *dag.Trigger as a parse-time side effect)."
+// skytime:doc since="phase-07"
+// skytime:doc example="trigger(\n    flow=\"check_user\",\n    source=github.webhook(events=[\"push\"]),\n    map=lambda req: {\"repo\": req.payload.repository.name},\n    idempotency_key=lambda req: req.headers[\"X-GitHub-Delivery\"],\n    credential=\"github-app-prod\",\n)"
+// skytime:doc see="flow"
+// skytime:doc param_flow="string"
+// skytime:doc desc_flow="Target flow name (must resolve in the same parser session — cross-file allowed; resolved at parse-finalize)."
+// skytime:doc param_source="TriggerSource"
+// skytime:doc desc_source="Sealed extension.TriggerSource value (e.g. github.webhook(...)). Phase 7 has no shipped factories; first one in 7.1."
+// skytime:doc param_map="lambda req"
+// skytime:doc desc_map="Single-positional lambda. Returns a dict — the workflow input. Free vars rejected (D-19); arity != 1 rejected; req.<field> typos surface valid-list."
+// skytime:doc param_idempotency_key="lambda req"
+// skytime:doc desc_idempotency_key="Single-positional lambda. Returns a string used as the idempotency key for ExecuteWorkflow's WorkflowID dedup."
+// skytime:doc param_credential="string"
+// skytime:doc desc_credential="Optional credential ID string. Resolved JIT inside the receiver (Phase 7.1+); never serialized to DAG JSON, never logged."
+//
+// builtinTrigger constructs a *dag.Trigger from kwargs, type-asserts source
+// to extension.TriggerSource, captures map/idempotency_key lambdas with
+// arity-1 enforcement, and registers the trigger in p.triggers keyed by
+// position. Returns starlark.None — trigger() is a top-level statement,
+// like flow(), captured by side effect.
+//
+// Cross-file FlowName resolution and req-attribute walks happen in
+// finalize (D-07-12, D-07-05) — at builtin-call time the FlowName is
+// stored as a literal string. Per-source ReqSchema() is queried at
+// finalize, not here, because the source value's ReqSchema may depend on
+// kwargs not yet validated at builtin time.
+func (p *Parser) builtinTrigger(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		flowName       string
+		sourceVal      starlark.Value
+		mapVal         starlark.Value
+		idempotencyVal starlark.Value
+		credentialID   string
+	)
+	if err := starlark.UnpackArgs("trigger", args, kwargs,
+		"flow", &flowName,
+		"source", &sourceVal,
+		"map", &mapVal,
+		"idempotency_key", &idempotencyVal,
+		"credential?", &credentialID,
+	); err != nil {
+		return nil, p.wrapBuiltinError("trigger", thread, err)
+	}
+	pos := callerPosition(thread)
+
+	// Type-check Source. The dag-local TriggerSource is the minimal seal
+	// (Kind + MarshalJSON); extension.TriggerSource adds ReqSchema and the
+	// unexported triggerSourceMarker(). We assert against extension.TriggerSource
+	// because the req-walker (finalize) needs ReqSchema().
+	src, ok := sourceVal.(extension.TriggerSource)
+	if !ok {
+		return nil, &dag.ParseError{
+			Pos: pos,
+			Msg: fmt.Sprintf("trigger.source: expected TriggerSource, got %s", sourceVal.Type()),
+		}
+	}
+
+	// Capture lambdas with arity-1 enforcement (D-07-05 layer 2).
+	mapLambda, err := p.captureLambdaWithArity(thread, "map", mapVal, 1)
+	if err != nil {
+		return nil, err
+	}
+	idempLambda, err := p.captureLambdaWithArity(thread, "idempotency_key", idempotencyVal, 1)
+	if err != nil {
+		return nil, err
+	}
+
+	trig := &dag.Trigger{
+		Pos:               pos,
+		FlowName:          flowName,
+		Source:            src,
+		MapLambda:         mapLambda,
+		IdempotencyLambda: idempLambda,
+		CredentialID:      credentialID,
+	}
+
+	// Register in parser session — keyed by Pos (unique per call site).
+	// Reuses the existing posKey helper (originally defined for
+	// preBuiltResults). Two triggers at the SAME position would be a
+	// parser bug (lambda capture would already have collided);
+	// builtinTrigger is called once per source-position by Starlark.
+	key := posKey(pos)
+	p.triggers[key] = trig
+
+	return starlark.None, nil
 }

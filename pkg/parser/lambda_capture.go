@@ -98,3 +98,58 @@ func (p *Parser) captureLambdaAtPosition(fn *starlark.Function, userPos, bodyPos
 	p.lambdas[id] = captured
 	return captured, nil
 }
+
+// captureLambdaWithArity wraps captureLambda with arity enforcement
+// (D-07-05 layer 2). Used by builtinTrigger for map and idempotency_key
+// lambdas — both must accept exactly one positional parameter (convention:
+// req). Existing callers of captureLambda (script, if_cond, action_fn,
+// etc.) accept variable arity by design and continue to use captureLambda
+// directly.
+//
+// Arity check details:
+//   - *args / **kwargs are rejected (would dilute the single-req contract).
+//   - Defaulted positional (e.g. lambda req=None: ...) is rejected — Phase
+//     7's lambda runs with a real req, never with the default.
+//   - Plain positional with arity == expectedArity is accepted.
+//
+// Errors are *dag.ParseError with the lambda's Position so consultants
+// land at the lambda definition.
+func (p *Parser) captureLambdaWithArity(thread *starlark.Thread, kwargName string, val starlark.Value, expectedArity int) (*dag.CapturedLambda, error) {
+	captured, err := p.captureLambda(thread, kwargName, val)
+	if err != nil {
+		return nil, err
+	}
+	fn := captured.Fn
+	numParams := fn.NumParams()
+	if numParams != expectedArity {
+		return nil, &dag.ParseError{
+			Pos: captured.Pos,
+			Msg: fmt.Sprintf("kwarg %q lambda must accept exactly %d positional parameter(s) (convention: req); got %d",
+				kwargName, expectedArity, numParams),
+		}
+	}
+	// Reject defaulted positional: each param's default must be nil
+	// (go.starlark.net signature: ParamDefault(i int) Value, returns nil
+	// when the parameter has no default).
+	for i := 0; i < numParams; i++ {
+		if fn.ParamDefault(i) != nil {
+			return nil, &dag.ParseError{
+				Pos: captured.Pos,
+				Msg: fmt.Sprintf("kwarg %q lambda parameter %d must not have a default value (single-positional req only)", kwargName, i),
+			}
+		}
+	}
+	if fn.HasVarargs() {
+		return nil, &dag.ParseError{
+			Pos: captured.Pos,
+			Msg: fmt.Sprintf("kwarg %q lambda must not accept *args (single-positional req only)", kwargName),
+		}
+	}
+	if fn.HasKwargs() {
+		return nil, &dag.ParseError{
+			Pos: captured.Pos,
+			Msg: fmt.Sprintf("kwarg %q lambda must not accept **kwargs (single-positional req only)", kwargName),
+		}
+	}
+	return captured, nil
+}

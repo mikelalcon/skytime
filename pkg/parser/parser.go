@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
@@ -221,6 +222,48 @@ func (p *Parser) FlowsInOrder() []*dag.Flow {
 			out = append(out, f)
 		}
 	}
+	return out
+}
+
+// Triggers returns the parser session's accumulated triggers in a
+// deterministic order (sorted by Source.Kind, FlowName, then Pos
+// string). The returned slice is freshly allocated; callers may mutate
+// without affecting parser state. Used by pkg/worker/boot.go (Plan 04)
+// to drain triggers into the TriggerRegistry.
+//
+// Empty slice when called before any ParseFile / ParseSource invocation,
+// or when no triggers have been registered.
+func (p *Parser) Triggers() []*dag.Trigger {
+	out := make([]*dag.Trigger, 0, len(p.triggers))
+	for _, t := range p.triggers {
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Source.Kind() != b.Source.Kind() {
+			return a.Source.Kind() < b.Source.Kind()
+		}
+		if a.FlowName != b.FlowName {
+			return a.FlowName < b.FlowName
+		}
+		// Tiebreaker: position string (filename:line:col). Stable
+		// across runs because all three fields are already filled
+		// by Starlark before Trigger is constructed.
+		return a.Pos.String() < b.Pos.String()
+	})
+	return out
+}
+
+// TriggerWarnings returns deferred parser warnings (e.g., D-07-13
+// byte-identical duplicate triggers). The returned slice is freshly
+// allocated. Empty when no warnings accumulated. Plan 04's worker boot
+// drains these via slog.Warn at server startup.
+func (p *Parser) TriggerWarnings() []string {
+	if len(p.triggerWarnings) == 0 {
+		return nil
+	}
+	out := make([]string, len(p.triggerWarnings))
+	copy(out, p.triggerWarnings)
 	return out
 }
 
