@@ -12,7 +12,7 @@ Requirements for the v1.43.0 milestone. Each maps to a roadmap phase.
 ### Trigger Primitive + Sources
 
 - [ ] **TRIG-01**: A `.star` file can declare a workflow trigger with `trigger(flow=str, source=TriggerSource, map=lambda payload: {...}, idempotency_key=lambda payload, headers: str, credential=str|None)` as a top-level builtin (separate from `flow()`). The trigger captures references but performs no I/O at parse time.
-- [ ] **TRIG-02**: Extensions can return a new `TriggerSource` value type (parallel to `ActionRef` for ops). The parser stores `TriggerSource` as an opaque payload on the `dag.Trigger` node; the runtime unpacks it via type-switch.
+- [x] **TRIG-02**: Extensions can return a new `TriggerSource` value type (parallel to `ActionRef` for ops). The parser stores `TriggerSource` as an opaque payload on the `dag.Trigger` node; the runtime unpacks it via type-switch.
 - [x] **TRIG-03**: A new `dag.Trigger` node type with stable JSON marshaling (`Kind`, `FlowName`, `Source`, `MapLambda`, `IdempotencyLambda`, `CredentialID`). Trigger nodes serialize/deserialize round-trip.
 - [ ] **TRIG-04**: Parse-time validation rejects malformed triggers (unknown flow name, mismatched source type, missing required source kwargs) with position-aware errors (`<file>:<line>:<col>: <msg>`).
 - [ ] **TRIG-05**: Boot registry walks `--rootdir` recursively for `*.star` files (skipping `*_test.star` per Phase 5 contract), parses each, and registers flows AND triggers found inside. Flow registry and trigger registry share the same scan — one source of truth.

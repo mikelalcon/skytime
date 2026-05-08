@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07-01-dag-trigger-node-PLAN.md
-last_updated: "2026-05-08T19:45:47.724Z"
-last_activity: 2026-05-08 -- Phase 07 execution started
+stopped_at: Completed 07-02-extension-triggersource-PLAN.md
+last_updated: "2026-05-08T19:49:48.312Z"
+last_activity: 2026-05-08
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 6
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07 (trigger-primitive-server-shell) — EXECUTING
-Plan: 1 of 6
-Status: Executing Phase 07
-Last activity: 2026-05-08 -- Phase 07 execution started
+Plan: 2 of 6
+Status: Ready to execute
+Last activity: 2026-05-08
 
 Progress: [          ] 0%
 
@@ -109,6 +109,7 @@ Progress: [          ] 0%
 | Phase 06 P09 | 2m | 2 tasks | 2 files |
 | Phase 06 P08 | 4min | 3 tasks | 5 files |
 | Phase 07 P01 | 7min | 2 tasks | 3 files |
+| Phase 07 P02 | 7min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -315,6 +316,8 @@ Recent decisions affecting current work:
 - [Phase 07]: Trigger does NOT implement dag.Node (Pitfall 11): Triggers are top-level decls, never inside flow.Body; doc comment in pkg/dag/trigger.go explains
 - [Phase 07]: TriggerSource is dag-local + structural (Kind + MarshalJSON only); full seal lives in pkg/extension to avoid pkg/dag importing pkg/extension
 - [Phase 07]: Default unmarshalTriggerSource returns explanatory error instead of nil panic (helps tests + diagnostics before pkg/extension wires the registry)
+- [Phase 07]: FakeTriggerSource lives in package extension (not pkg/extension/testing) — Go forbids sub-packages from satisfying parent-package unexported-method seals
+- [Phase 07]: Strict-collision on RegisterTriggerSourceFactory: any second registration of the same kind returns 'extension: trigger source kind %q already registered' (function-pointer equality is unreliable in Go)
 
 ### Pending Todos
 
@@ -345,6 +348,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-08T19:45:47.720Z
-Stopped at: Completed 07-01-dag-trigger-node-PLAN.md
+Last session: 2026-05-08T19:49:48.307Z
+Stopped at: Completed 07-02-extension-triggersource-PLAN.md
 Resume file: None
