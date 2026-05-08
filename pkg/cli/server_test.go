@@ -2,14 +2,23 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.starlark.net/syntax"
 	"go.temporal.io/sdk/client"
 
+	"github.com/mikelalcon/skytime/pkg/dag"
+	"github.com/mikelalcon/skytime/pkg/extension"
+	"github.com/mikelalcon/skytime/pkg/interpreter"
 	"github.com/mikelalcon/skytime/pkg/worker"
 )
 
@@ -176,4 +185,113 @@ func TestServerCmd_DrainTimeoutExpiry(t *testing.T) {
 // SDK-factory seam (and a testForceExit-override harness wired with it).
 func TestServerCmd_SecondSignalForceExit(t *testing.T) {
 	t.Skip("TODO(phase-7.1): same reachability blocker — also needs testForceExit override harness wired with the seam")
+}
+
+// =============================================================================
+// Phase 7 Plan 05 Task 7 — banner shape + json-log handler
+// =============================================================================
+
+// stringPtr returns &s — helper for syntax.MakePosition which takes
+// *string for the filename component.
+func stringPtr(s string) *string { return &s }
+
+// TestServerCmd_BannerSorted exercises printStartupBanner directly
+// against a Worker built via NewWorkerForTest. Three flows are
+// registered out of order ("zebra", "alpha", "middle") and two triggers
+// likewise ("zebra-flow", "alpha-flow"). The banner must emit:
+//
+//	"starting server"      (rootdir, task-queue, addr)
+//	"registered flows"     ([alpha, middle, zebra])
+//	"registered triggers"  ([{source,flow=alpha}, {source,flow=zebra}])
+//
+// Verifies SERVER-03 sorted output without booting a real Temporal
+// connection or invoking the SDK worker.
+func TestServerCmd_BannerSorted(t *testing.T) {
+	flowReg := interpreter.NewRegistry()
+	require.NoError(t, flowReg.Register("zebra", "h1", &interpreter.ParsedFlow{Flow: &dag.Flow{Name: "zebra"}}))
+	require.NoError(t, flowReg.Register("alpha", "h2", &interpreter.ParsedFlow{Flow: &dag.Flow{Name: "alpha"}}))
+	require.NoError(t, flowReg.Register("middle", "h3", &interpreter.ParsedFlow{Flow: &dag.Flow{Name: "middle"}}))
+	flowReg.Freeze()
+
+	trigReg := interpreter.NewTriggerRegistry()
+	require.NoError(t, trigReg.Register("h1", &dag.Trigger{
+		FlowName: "zebra",
+		Source:   &extension.FakeTriggerSource{KindName: "skytime.test.webhook", ReqFields: []string{"payload"}},
+		Pos:      syntax.MakePosition(stringPtr("flows.star"), 5, 1),
+	}))
+	require.NoError(t, trigReg.Register("h2", &dag.Trigger{
+		FlowName: "alpha",
+		Source:   &extension.FakeTriggerSource{KindName: "skytime.test.webhook", ReqFields: []string{"payload"}},
+		Pos:      syntax.MakePosition(stringPtr("flows.star"), 11, 1),
+	}))
+	trigReg.Freeze()
+
+	w := worker.NewWorkerForTest(flowReg, trigReg)
+
+	// Capture banner output via JSON handler against a buffer so each
+	// log record parses individually. setupServerLogging is intentionally
+	// not used here (it mutates slog.Default).
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	printStartupBanner(logger, w, "/some/dir", "demo-queue", ":8080")
+
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	require.Len(t, lines, 3, "banner emits 3 records: starting server, registered flows, registered triggers")
+
+	var startingServer, registeredFlows, registeredTriggers map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[0]), &startingServer))
+	require.NoError(t, json.Unmarshal([]byte(lines[1]), &registeredFlows))
+	require.NoError(t, json.Unmarshal([]byte(lines[2]), &registeredTriggers))
+
+	assert.Equal(t, "starting server", startingServer["msg"])
+	assert.Equal(t, "/some/dir", startingServer["rootdir"])
+	assert.Equal(t, "demo-queue", startingServer["task-queue"])
+	assert.Equal(t, ":8080", startingServer["addr"])
+
+	assert.Equal(t, "registered flows", registeredFlows["msg"])
+	flows, _ := registeredFlows["flows"].([]any)
+	assert.Equal(t, []any{"alpha", "middle", "zebra"}, flows)
+
+	assert.Equal(t, "registered triggers", registeredTriggers["msg"])
+	triggers, _ := registeredTriggers["triggers"].([]any)
+	require.Len(t, triggers, 2)
+	first, _ := triggers[0].(map[string]any)
+	assert.Equal(t, "alpha", first["flow"])
+	assert.Equal(t, "skytime.test.webhook", first["source"])
+	second, _ := triggers[1].(map[string]any)
+	assert.Equal(t, "zebra", second["flow"])
+	assert.Equal(t, "skytime.test.webhook", second["source"])
+}
+
+// TestServerCmd_JSONLog: setupServerLogging(debug=false, jsonMode=true)
+// returns a *slog.Logger backed by slog.NewJSONHandler writing to
+// os.Stderr. Capturing stderr via os.Pipe lets us assert the emitted
+// record parses as JSON with the expected shape.
+func TestServerCmd_JSONLog(t *testing.T) {
+	prevStderr := os.Stderr
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = prevStderr })
+
+	prevDefault := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prevDefault) })
+
+	logger := setupServerLogging(false, true)
+	require.NotNil(t, logger)
+	logger.Info("test record", "key1", "value1", "count", 42)
+
+	require.NoError(t, w.Close())
+	var buf bytes.Buffer
+	_, err = io.Copy(&buf, r)
+	require.NoError(t, err)
+
+	var rec map[string]any
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimRight(buf.String(), "\n")), &rec))
+	assert.Equal(t, "test record", rec["msg"])
+	assert.Equal(t, "value1", rec["key1"])
+	assert.Equal(t, float64(42), rec["count"])
+	assert.NotEmpty(t, rec["level"])
+	assert.NotEmpty(t, rec["time"])
 }
