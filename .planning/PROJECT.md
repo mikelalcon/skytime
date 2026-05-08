@@ -141,5 +141,11 @@ This document evolves at phase transitions and milestone boundaries.
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
 
+## Current State
+
+**Shipped:** v1.42.0 Foundation (2026-05-08) — 9 phases, 58 plans, 146 tasks, ~46k LOC Go. All 64 v1 requirements validated. See [`MILESTONES.md`](MILESTONES.md) for the full delivery summary and [`milestones/v1.42.0-MILESTONE-AUDIT.md`](milestones/v1.42.0-MILESTONE-AUDIT.md) for the audit.
+
+**Next:** v1.43.0 Durability + Triggers — `trigger(...)` Starlark primitive, `skytime server` long-running mode, HTTP webhook receiver + cron triggers, dashboard, auth docs. Closes the two gaps surfaced by Phase 6: no long-running worker (so Temporal can't replay after crash from a pure CLI demo) and no triggering primitive (so external events become workflow invocations). See [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md).
+
 ---
-*Last updated: 2026-05-07 after Phase 6 completion (Example project `examples/http-github-webhook/` ships as the dogfooding vehicle and proof-of-life: three real extensions (HTTP, GitHub, Webhook) with per-op `Idempotent *bool`; `webhook.post` explicitly non-idempotent and verified to one-action-per-activity-invocation inside `block`/`block_fn`; five `.star` flows mechanically pinned to cover every DSL primitive + every concern; one Tier-3 `.star` test exercising attempt-aware retry + credential routing + replay determinism — drove two latent-gap fixes to Phase 5 harness (sibling-flow registration + multiset replay-determinism fallback); `pkg/extension/credfile/` library credential resolver (TOML, sealed `Credential` + `Secret`); custom example CLI binary (`cmd/extbin`); README walkthrough takes reader from `git clone` to running flow in four commands; `.github/workflows/ci.yml` gates every push with four locked steps + walkthrough smoke extracted to `scripts/walkthrough_smoke.sh` for human/CI parity. v1 requirement coverage now complete — all milestone-level requirements validated)*
+*Last updated: 2026-05-08 after v1.42.0 Foundation milestone completion*
