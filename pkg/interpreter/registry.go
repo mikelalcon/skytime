@@ -145,3 +145,134 @@ func sortedHashKeys(m map[string]*ParsedFlow) []string {
 	sort.Strings(keys)
 	return keys
 }
+
+// =============================================================================
+// TriggerRegistry — Phase 7 Plan 04 (TRIG-05, D-07-11)
+// =============================================================================
+
+// ErrTriggerRegistryFrozen is returned by TriggerRegistry.Register after
+// Freeze has been called. Indicates a worker-boot bug: registration must
+// complete before Freeze.
+var ErrTriggerRegistryFrozen = errors.New("interpreter: trigger registry is frozen")
+
+// TriggerRegistry stores all *dag.Trigger values registered at boot.
+//
+// Why this shape diverges from FlowRegistry (§ Pitfall 1): Flows are
+// looked up per-workflow-start by (flow_name, content_hash) — that's
+// FlowRegistry's primary access pattern. Triggers have a different
+// lifecycle: registered once at boot, iterated wholesale once when the
+// HTTP router mounts handlers (Phase 7.1) or when the cron scheduler
+// reconciles schedules (Phase 7.2). NEVER looked up per-request.
+//
+// Therefore the primary access shape is a sorted slice plus a per-file
+// content_hash secondary index for future hot-reload diagnostics.
+//
+// Determinism: Freeze() sorts the internal slice by (Source.Kind,
+// FlowName, Pos) so All() returns the same order across runs. Plan 05's
+// startup banner depends on this sorted order.
+//
+// Concurrency: same RWMutex + frozen-after-boot model as FlowRegistry —
+// Register from worker boot (single goroutine), All from any number of
+// readers (HTTP router, cron, dashboard) post-Freeze.
+type TriggerRegistry struct {
+	mu       sync.RWMutex
+	frozen   bool
+	triggers []*dag.Trigger
+	// byContentHash groups triggers by the content_hash of their owning
+	// file. Phase 7 sets but doesn't read this index; future phases (hot
+	// reload, per-file diagnostics) consume it.
+	byContentHash map[string][]*dag.Trigger
+}
+
+// NewTriggerRegistry returns an empty, unfrozen TriggerRegistry. The
+// worker's boot step (pkg/worker/boot.go) fills it via Register() then
+// calls Freeze() before NewWorker returns.
+func NewTriggerRegistry() *TriggerRegistry {
+	return &TriggerRegistry{byContentHash: map[string][]*dag.Trigger{}}
+}
+
+// Register adds a trigger to the registry, indexed by the content_hash
+// of its owning file. Returns ErrTriggerRegistryFrozen post-Freeze. Safe
+// for concurrent calls during boot — but boot is single-goroutine in
+// practice, so contention is theoretical.
+//
+// Unlike FlowRegistry.Register, there is NO duplicate detection at the
+// (flow, hash) layer — D-07-13 explicitly allows multiple triggers per
+// (flow, source-kind) pair. The parser's warnDuplicateTriggers pass
+// (Plan 03) emits a warning for byte-identical duplicates; the registry
+// stores both.
+func (r *TriggerRegistry) Register(contentHash string, t *dag.Trigger) error {
+	if t == nil {
+		return errors.New("TriggerRegistry.Register: trigger required")
+	}
+	if contentHash == "" {
+		return errors.New("TriggerRegistry.Register: contentHash required")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.frozen {
+		return ErrTriggerRegistryFrozen
+	}
+	r.triggers = append(r.triggers, t)
+	r.byContentHash[contentHash] = append(r.byContentHash[contentHash], t)
+	return nil
+}
+
+// Freeze marks the registry as immutable AND sorts the internal slice by
+// (Source.Kind, FlowName, Pos) for deterministic All() output.
+// Idempotent: calling Freeze on an already-frozen registry is a no-op.
+func (r *TriggerRegistry) Freeze() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.frozen {
+		return
+	}
+	sort.SliceStable(r.triggers, func(i, j int) bool {
+		a, b := r.triggers[i], r.triggers[j]
+		if a.Source == nil || b.Source == nil {
+			// Defensive: nil sources sort last (shouldn't happen post-parse).
+			return a.Source != nil
+		}
+		if a.Source.Kind() != b.Source.Kind() {
+			return a.Source.Kind() < b.Source.Kind()
+		}
+		if a.FlowName != b.FlowName {
+			return a.FlowName < b.FlowName
+		}
+		// Tiebreaker: file:line:col — Pos.String() formats stably.
+		return a.Pos.String() < b.Pos.String()
+	})
+	r.frozen = true
+}
+
+// All returns a fresh slice of triggers in sorted order (by Source.Kind,
+// then FlowName, then Pos). Plan 05's startup banner reads this. Phase
+// 7.1's HTTP router groups by Source.Kind() for handler mounting. Phase
+// 7.2's cron reconciler filters by Source type-switch.
+//
+// Returns an empty (non-nil) slice when no triggers are registered.
+// Safe to call before Freeze (returns the slice in registration order
+// in that case — only post-Freeze guarantees sorted order).
+func (r *TriggerRegistry) All() []*dag.Trigger {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]*dag.Trigger, len(r.triggers))
+	copy(out, r.triggers)
+	return out
+}
+
+// ByContentHash returns the triggers declared in the file with the given
+// content_hash. Returns nil if no triggers were registered for that hash.
+// Used by future hot-reload diagnostics (Phase 7+); Phase 7 sets but
+// doesn't consume.
+func (r *TriggerRegistry) ByContentHash(hash string) []*dag.Trigger {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	triggers, ok := r.byContentHash[hash]
+	if !ok {
+		return nil
+	}
+	out := make([]*dag.Trigger, len(triggers))
+	copy(out, triggers)
+	return out
+}
