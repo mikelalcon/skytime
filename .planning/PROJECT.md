@@ -145,7 +145,30 @@ This document evolves at phase transitions and milestone boundaries.
 
 **Shipped:** v1.42.0 Foundation (2026-05-08) — 9 phases, 58 plans, 146 tasks, ~46k LOC Go. All 64 v1 requirements validated. See [`MILESTONES.md`](MILESTONES.md) for the full delivery summary and [`milestones/v1.42.0-MILESTONE-AUDIT.md`](milestones/v1.42.0-MILESTONE-AUDIT.md) for the audit.
 
-**Next:** v1.43.0 Durability + Triggers — `trigger(...)` Starlark primitive, `skytime server` long-running mode, HTTP webhook receiver + cron triggers, dashboard, auth docs. Closes the two gaps surfaced by Phase 6: no long-running worker (so Temporal can't replay after crash from a pure CLI demo) and no triggering primitive (so external events become workflow invocations). See [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md).
+## Current Milestone: v1.43.0 Durability + Triggers
+
+**Goal:** Close the durability proof gap (long-running worker mode for replay-after-crash) and add triggering primitives (Starlark `trigger(...)` builtin + `TriggerSource` extension type for HTTP webhooks and cron). Plus consolidate `extbin` boilerplate and document production auth integration patterns (WIF, IRSA, mTLS-reload).
+
+**Target features:**
+- `skytime server` long-running subcommand (worker + HTTP receiver + dashboard in one process)
+- Top-level `trigger(flow=, source=, map=, idempotency_key=, credential=)` Starlark primitive
+- HTTP webhook receiver with `github_webhook` and `generic_http_webhook` sources, signature validation via existing `CredentialHandler`, idempotency via Temporal `WorkflowIDReusePolicy`
+- Cron triggers backed by Temporal Schedules (durable, server-side; not in-process polling)
+- Stdlib-only dashboard (live workflow list + recent webhook deliveries + manual trigger form)
+- `extbin` consolidation → thin shim; lift `lazyCredfileHandler` into `pkg/cli`; add `WithBuildID(string)` and `WithCredentialHandler` options
+- Auth integration docs covering WIF→GSM (GCP), IRSA→Secrets Manager (AWS), Workload Identity (Azure), mTLS reload-on-SIGHUP
+- Rename `skytime dev-server` → `skytime dev-temporal` (clearer naming; the thing it spins up is Temporal's server, not Skytime's)
+
+**Key context:** This milestone is gap-driven, surfaced by Phase 6's example project. The dogfooding example could *claim* Temporal's replay-after-crash but couldn't *demonstrate* it because `skytime run` is a one-shot embedded transient worker. Adding the long-running server mode + dashboard makes the durability story visually demoable: trigger a flow, kill the server mid-execution, restart it, watch the workflow complete. Trigger primitives generalize "external event → workflow invocation" so customers don't roll their own HTTP/cron plumbing per source.
+
+**Locked design decisions** (from pre-milestone discussion, recorded in [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)):
+- Trigger primitive shape: top-level `trigger(...)` (not a kwarg on `flow()`) — decouples flow from triggers; one flow can fire from many sources
+- Trigger sources: extension-based (return new `TriggerSource` value type, parallel to `ActionRef` for ops) — customers add their own sources without parser changes
+- Cron engine: Temporal Schedules (durable; survives worker crash) — not in-process polling
+- Credentials: reuse `extension.CredentialHandler.Resolve()` for webhook signing secrets — same JIT resolution, same `Secret` wrapping, no new credential machinery
+- Single binary: worker + HTTP receiver + dashboard in one process (production deploys can split if they want)
+- Manual trigger UI: JSON textarea (not schema-aware form fields) — schema awareness is creep
+- Dashboard scope: stdlib only (`net/http` + `html/template`); no JS framework, no external CSS — teaching dashboard, not a Skytime product feature
 
 ---
-*Last updated: 2026-05-08 after v1.42.0 Foundation milestone completion*
+*Last updated: 2026-05-08 — v1.43.0 Durability + Triggers milestone opened*

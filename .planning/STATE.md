@@ -1,36 +1,36 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.42.0
-milestone_name: milestone
-status: executing
-stopped_at: Completed 06-08-PLAN.md (rich-example README + cross-doc additions)
-last_updated: "2026-05-08T15:26:07.947Z"
+milestone: v1.43.0
+milestone_name: Durability + Triggers
+status: defining_requirements
+stopped_at: v1.43.0 milestone opened — defining requirements
+last_updated: "2026-05-08T16:00:00.000Z"
 last_activity: 2026-05-08
 progress:
-  total_phases: 9
-  completed_phases: 9
-  total_plans: 58
-  completed_plans: 58
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-26)
+See: .planning/PROJECT.md (updated 2026-05-08)
 
-**Core value:** A consultant team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
-**Current focus:** Phase 06 — example-project-http-github-webhook
+**Core value:** A flow-author team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
+**Current focus:** v1.43.0 Durability + Triggers — defining requirements
 
 ## Current Position
 
-Phase: 06
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-05-08
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-08 — Milestone v1.43.0 opened
 
-Progress: [██████████] 100%
+Progress: [          ] 0%
 
 ## Performance Metrics
 
