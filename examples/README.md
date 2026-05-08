@@ -5,7 +5,7 @@ that exercise every shipped Skytime DSL feature. They serve three
 purposes:
 
 1. **Tutorial material** — readers run them to see Skytime work
-   end-to-end against a local Temporal dev-server.
+   end-to-end against a local Temporal dev server.
 2. **Regression coverage** — `tests/differential_test.go` runs every
    `.star` here through both the static validator AND a dry-run
    interpreter; drift fails CI (D4-07, VAL-02).
@@ -24,11 +24,11 @@ single concept. Read the files in this order if you're learning the DSL:
 
 ## How to Run Any Example
 
-All examples run against a local Temporal dev-server. One-time setup:
+All examples run against a local Temporal dev server. One-time setup:
 
 ```sh
 # Terminal 1: start the dev server (requires `temporal` CLI on PATH)
-skytime dev-server
+skytime dev-temporal
 ```
 
 Then in a second terminal, run any example:
@@ -44,7 +44,7 @@ to see what flows + inputs each file declares without opening the
 source.
 
 Don't have the `temporal` CLI? See
-[docs/reference/cli.md#skytime-dev-server](../docs/reference/cli.md#skytime-dev-server)
+[docs/reference/cli.md#skytime-dev-temporal](../docs/reference/cli.md#skytime-dev-temporal)
 for install instructions, or run examples through your own Temporal
 Cloud or self-hosted cluster (see
 [docs/reference/cli.md#skytime-run](../docs/reference/cli.md#skytime-run)
@@ -252,7 +252,7 @@ Demonstrates" bullets so readers can find it by feature.
 - [`docs/reference/builtins.md`](../docs/reference/builtins.md) —
   every DSL builtin documented
 - [`docs/reference/cli.md`](../docs/reference/cli.md) — `skytime` CLI
-  reference (`run`, `validate`, `info`, `dev-server`)
+  reference (`run`, `validate`, `info`, `server`, `dev-temporal`)
 - [`docs/architecture.md`](../docs/architecture.md) — parse/execute
   split, the project's foundational design
 - [`docs/for-flow-authors/`](../docs/for-flow-authors/) — landing page

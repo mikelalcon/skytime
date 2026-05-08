@@ -241,7 +241,7 @@ canonical implementation of Skytime's two-tier authoring model: import
 `pkg/cli`, register your extensions via `cli.WithExtensions(...)`, wire
 a credential resolver via `cli.WithCredentialHandler(...)`, and you have
 your own customer-specific Skytime binary with `validate` / `run` /
-`dev-server` / `test` subcommands. The whole wiring is ~120 lines and
+`dev-temporal` / `server` / `test` subcommands. The whole wiring is ~120 lines and
 inherits every subcommand from `pkg/cli` for free.
 
 A flow-author team specializing for one customer typically ships:
