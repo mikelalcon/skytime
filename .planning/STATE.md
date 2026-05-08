@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07-04-trigger-registry-and-boot-PLAN.md
-last_updated: "2026-05-08T20:23:25.919Z"
+stopped_at: Completed 07-05-server-subcommand-PLAN.md
+last_updated: "2026-05-08T20:36:33.927Z"
 last_activity: 2026-05-08
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07 (trigger-primitive-server-shell) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-05-08
 
@@ -112,6 +112,7 @@ Progress: [          ] 0%
 | Phase 07 P02 | 7min | 2 tasks | 4 files |
 | Phase 07 P03 | 13min | 7 tasks | 13 files |
 | Phase 07 P04 | 8min | 6 tasks | 7 files |
+| Phase 07 P05 | 8min | 7 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -329,6 +330,8 @@ Recent decisions affecting current work:
 - [Phase 07]: TriggerRegistry uses sorted-slice + byContentHash map shape (Pitfall 1) — diverges from FlowRegistry's per-(name,hash) lookup because triggers are iterated wholesale at HTTP-mount time, never per-request
 - [Phase 07]: Parser warning drain via slog.Default().Warn at boot — keeps parser pure (warnings accumulate on Parser.triggerWarnings); worker boot owns the slog surface
 - [Phase 07]: WorkerStopTimeout default 30s (D-07-17) matches Kubernetes terminationGracePeriodSeconds; Plan 05 server subcommand sets explicitly via --drain-timeout
+- [Phase 07]: skytime server subcommand uses signal.Notify (NOT NotifyContext) for two-signal escalation; six locked testDrainHook stages enable Phase 7.1 in-process drain testing once worker.WithSDKFactory ships
+- [Phase 07]: NewWorkerForTest exported test constructor in pkg/worker enables pkg/cli black-box tests to bypass package-private sdkWorkerNew seam; Worker.FlowNames + FlowRegistry.FlowNames sorted-slice accessors added for the startup banner
 
 ### Pending Todos
 
@@ -359,6 +362,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-08T20:23:16.725Z
-Stopped at: Completed 07-04-trigger-registry-and-boot-PLAN.md
+Last session: 2026-05-08T20:36:33.923Z
+Stopped at: Completed 07-05-server-subcommand-PLAN.md
 Resume file: None

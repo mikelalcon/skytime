@@ -24,9 +24,9 @@ Requirements for the v1.43.0 milestone. Each maps to a roadmap phase.
 
 ### Server Subcommand
 
-- [ ] **SERVER-01**: A new `skytime server --rootdir=... --task-queue=... --temporal=... --addr=... [--credfile=...]` subcommand runs a long-lived process: starts a Temporal worker registered against the task queue, mounts the HTTP listener (port from `--addr`), and stays up until SIGTERM/SIGINT.
-- [ ] **SERVER-02**: SIGTERM gracefully drains in-flight workflows up to a configurable `--drain-timeout` (default 30s, matching Kubernetes `terminationGracePeriodSeconds`). Refuses new HTTP requests during drain. Forces shutdown after timeout.
-- [ ] **SERVER-03**: `skytime server` startup logs the registered flows AND triggers in deterministic order (sorted by name). The reader can confirm at-a-glance what's mounted before any traffic flows.
+- [x] **SERVER-01**: A new `skytime server --rootdir=... --task-queue=... --temporal=... --addr=... [--credfile=...]` subcommand runs a long-lived process: starts a Temporal worker registered against the task queue, mounts the HTTP listener (port from `--addr`), and stays up until SIGTERM/SIGINT.
+- [x] **SERVER-02**: SIGTERM gracefully drains in-flight workflows up to a configurable `--drain-timeout` (default 30s, matching Kubernetes `terminationGracePeriodSeconds`). Refuses new HTTP requests during drain. Forces shutdown after timeout.
+- [x] **SERVER-03**: `skytime server` startup logs the registered flows AND triggers in deterministic order (sorted by name). The reader can confirm at-a-glance what's mounted before any traffic flows.
 
 ### Cron Triggers (Temporal Schedules)
 
