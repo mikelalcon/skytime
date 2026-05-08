@@ -86,7 +86,7 @@ type WorkerOptions struct {
 	// workflows will hang.
 	//
 	// Default false: dev workers and one-shot CLI runs (`skytime run`,
-	// `skytime dev-server`) work out of the box. Production long-running
+	// `skytime dev-temporal`) work out of the box. Production long-running
 	// workers explicitly set this to true once Build ID sets are
 	// configured for the task queue.
 	UseBuildIDVersioning bool

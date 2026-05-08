@@ -59,7 +59,7 @@ func NewRootCommand(opts ...Option) (*cobra.Command, error) {
 
 	root.AddCommand(newValidateCommand(cfg))
 	root.AddCommand(newRunCommand(cfg))
-	root.AddCommand(newDevTemporalCommand(cfg)) // renamed from dev-server in Phase 7 per D-07-21
+	root.AddCommand(newDevTemporalCommand(cfg)) // renamed in Phase 7 per D-07-21 (hard rename)
 	root.AddCommand(newServerCommand(cfg))      // NEW (Phase 7)
 	root.AddCommand(newInfoCommand(cfg))        // Quick 260504-k9c
 	root.AddCommand(newTestCommand(cfg))        // Phase 5 Plan 06

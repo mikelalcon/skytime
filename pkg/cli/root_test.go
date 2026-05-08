@@ -209,7 +209,7 @@ func TestRoot_HasServerSubcommand(t *testing.T) {
 // subcommand (Phase 7 Plan 06 hard rename per D-07-21). The presence
 // test pins the registration line in pkg/cli/root.go so a regression
 // that drops the AddCommand call (or accidentally re-introduces the
-// dev-server name) surfaces here rather than at runtime.
+// legacy name) surfaces here rather than at runtime.
 func TestRoot_HasDevTemporalSubcommand(t *testing.T) {
 	root, err := cli.NewRootCommand()
 	require.NoError(t, err)
