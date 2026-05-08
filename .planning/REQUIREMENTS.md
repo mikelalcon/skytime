@@ -48,7 +48,7 @@ Requirements for the v1.43.0 milestone. Each maps to a roadmap phase.
 - [ ] **CLI-10**: A new `pkg/testing.WithCredentialHandler(h)` option threads a credential handler into the Tier-3 test harness. Future tests using partial mocks against real credentials can satisfy `Resolve()` calls without spawning the full activity environment.
 - [ ] **CLI-11**: `pkg/cli/test.go` threads `cfg.credHandler` to `pkg/testing.RunCLI`. The CLI test path uses the same credential handler that `run` and `validate` use.
 - [ ] **CLI-12**: `examples/http-github-webhook/cmd/extbin/main.go` collapses to ≤30 lines after CLI-08 + CLI-09 land: extension registration + `cli.NewRootCommand(WithExtensions(...), WithCredfile(...), WithBuildID(...)).ExecuteContext(ctx)`. The "build your own binary" pattern is visibly tiny.
-- [ ] **CLI-13**: `skytime dev-server` renamed to `skytime dev-temporal`. All docs (README, getting-started.md, cli.md, extension docs, example READMEs), CI smoke scripts (`walkthrough_smoke.sh`), and tutorial examples updated. Pre-1.0 — no deprecation alias.
+- [x] **CLI-13**: `skytime dev-server` renamed to `skytime dev-temporal`. All docs (README, getting-started.md, cli.md, extension docs, example READMEs), CI smoke scripts (`walkthrough_smoke.sh`), and tutorial examples updated. Pre-1.0 — no deprecation alias.
 
 ### Example Project (continuing from EX-04)
 

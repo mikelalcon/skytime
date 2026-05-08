@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07-05-server-subcommand-PLAN.md
-last_updated: "2026-05-08T20:36:33.927Z"
+stopped_at: Completed 07-06-rename-and-firewalls-PLAN.md
+last_updated: "2026-05-08T20:56:16.210Z"
 last_activity: 2026-05-08
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07 (trigger-primitive-server-shell) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-05-08
 
@@ -113,6 +113,7 @@ Progress: [          ] 0%
 | Phase 07 P03 | 13min | 7 tasks | 13 files |
 | Phase 07 P04 | 8min | 6 tasks | 7 files |
 | Phase 07 P05 | 8min | 7 tasks | 10 files |
+| Phase 07 P06 | 14min | 9 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -332,6 +333,9 @@ Recent decisions affecting current work:
 - [Phase 07]: WorkerStopTimeout default 30s (D-07-17) matches Kubernetes terminationGracePeriodSeconds; Plan 05 server subcommand sets explicitly via --drain-timeout
 - [Phase 07]: skytime server subcommand uses signal.Notify (NOT NotifyContext) for two-signal escalation; six locked testDrainHook stages enable Phase 7.1 in-process drain testing once worker.WithSDKFactory ships
 - [Phase 07]: NewWorkerForTest exported test constructor in pkg/worker enables pkg/cli black-box tests to bypass package-private sdkWorkerNew seam; Worker.FlowNames + FlowRegistry.FlowNames sorted-slice accessors added for the startup banner
+- [Phase 07]: Hard rename dev-server -> dev-temporal (D-07-21); no deprecation alias. Pre-1.0, the cost of dragging the legacy name forward is higher than a CHANGELOG migration note.
+- [Phase 07]: tests/dev_server_grep_test.go (D-07-22) is the CI gate against re-introducing the legacy literal; allow-list = .planning/ + CHANGELOG.md + the gate file itself.
+- [Phase 07]: tests/firewall_credential_redaction_test.go (D-07-10) AST-walks pkg/dag + pkg/extension + pkg/extension/builtin and rejects %+v/%#v in production code; test files exempt; positive regression test guards against matcher over-broadening.
 
 ### Pending Todos
 
@@ -362,6 +366,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-08T20:36:33.923Z
-Stopped at: Completed 07-05-server-subcommand-PLAN.md
+Last session: 2026-05-08T20:56:07.145Z
+Stopped at: Completed 07-06-rename-and-firewalls-PLAN.md
 Resume file: None
