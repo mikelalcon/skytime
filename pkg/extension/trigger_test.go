@@ -11,19 +11,18 @@ import (
 
 	"github.com/mikelalcon/skytime/pkg/dag"
 	"github.com/mikelalcon/skytime/pkg/extension"
-	exttest "github.com/mikelalcon/skytime/pkg/extension/testing"
 )
 
 // Compile-time seal proof: *FakeTriggerSource satisfies BOTH the
 // extension.TriggerSource sealed interface AND the dag.TriggerSource
 // structural interface. Drift in either signature breaks the build here.
-var _ extension.TriggerSource = (*exttest.FakeTriggerSource)(nil)
-var _ dag.TriggerSource = (*exttest.FakeTriggerSource)(nil)
+var _ extension.TriggerSource = (*extension.FakeTriggerSource)(nil)
+var _ dag.TriggerSource = (*extension.FakeTriggerSource)(nil)
 
 // TestTriggerSource_Sealed asserts the FakeTriggerSource stub satisfies the
 // extension.TriggerSource sealed interface (compile-time + runtime).
 func TestTriggerSource_Sealed(t *testing.T) {
-	var src extension.TriggerSource = &exttest.FakeTriggerSource{
+	var src extension.TriggerSource = &extension.FakeTriggerSource{
 		KindName:  "x",
 		ReqFields: []string{"a"},
 	}
@@ -40,7 +39,7 @@ func TestTriggerSource_Sealed(t *testing.T) {
 // satisfies dag.TriggerSource (Kind + MarshalJSON only). This is the
 // compile-time bridge that lets *dag.Trigger.Source hold extension values.
 func TestTriggerSource_dagInterfaceSatisfied(t *testing.T) {
-	var src dag.TriggerSource = &exttest.FakeTriggerSource{KindName: "y"}
+	var src dag.TriggerSource = &extension.FakeTriggerSource{KindName: "y"}
 	require.NotNil(t, src)
 	assert.Equal(t, "y", src.Kind())
 	b, err := src.MarshalJSON()
@@ -63,7 +62,7 @@ func TestRegisterTriggerSourceFactory_RoundTrip(t *testing.T) {
 			if err := json.Unmarshal(data, &cfg); err != nil {
 				return nil, err
 			}
-			return &exttest.FakeTriggerSource{
+			return &extension.FakeTriggerSource{
 				KindName:             "skytime.test.roundtrip",
 				ReqFields:            cfg.ReqFields,
 				CredentialIDInConfig: cfg.CredentialIDInConfig,
@@ -73,7 +72,7 @@ func TestRegisterTriggerSourceFactory_RoundTrip(t *testing.T) {
 
 	trig := &dag.Trigger{
 		FlowName: "demo",
-		Source: &exttest.FakeTriggerSource{
+		Source: &extension.FakeTriggerSource{
 			KindName:             "skytime.test.roundtrip",
 			ReqFields:            []string{"payload", "headers"},
 			CredentialIDInConfig: "my-id",
@@ -88,7 +87,7 @@ func TestRegisterTriggerSourceFactory_RoundTrip(t *testing.T) {
 	require.NotNil(t, got.Source)
 	assert.Equal(t, "skytime.test.roundtrip", got.Source.Kind())
 
-	ftSrc, ok := got.Source.(*exttest.FakeTriggerSource)
+	ftSrc, ok := got.Source.(*extension.FakeTriggerSource)
 	require.True(t, ok, "Source should round-trip back to *FakeTriggerSource, got %T", got.Source)
 	assert.Equal(t, []string{"headers", "payload"}, ftSrc.ReqSchema(),
 		"ReqSchema must round-trip sorted")
@@ -155,7 +154,7 @@ func TestExtensionTriggerUnmarshaler_MissingKind(t *testing.T) {
 // emit credential_id as a plain string but never produce an extension.Secret
 // String() value ("<redacted>") in the bytes.
 func TestFakeTriggerSource_NoSecretInConfig(t *testing.T) {
-	src := &exttest.FakeTriggerSource{
+	src := &extension.FakeTriggerSource{
 		KindName:             "ext.k",
 		ReqFields:            []string{"payload"},
 		CredentialIDInConfig: "my-id",
