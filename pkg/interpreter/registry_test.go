@@ -10,6 +10,7 @@ import (
 	"go.starlark.net/syntax"
 
 	"github.com/mikelalcon/skytime/pkg/dag"
+	"github.com/mikelalcon/skytime/pkg/extension"
 )
 
 // helperNewParsedFlow returns a minimal *ParsedFlow for registry tests. The
@@ -187,4 +188,134 @@ func TestRegistry_RegisterRequiresAllFields(t *testing.T) {
 
 	err = r.Register("name", "h", nil)
 	require.Error(t, err)
+}
+
+// =============================================================================
+// TriggerRegistry — Phase 7 Plan 04 (TRIG-05)
+// =============================================================================
+
+// helperNewTestTrigger constructs a *dag.Trigger for registry tests. The
+// trigger uses an embedded *extension.FakeTriggerSource so the registry can
+// invoke Source.Kind() and the JSON marshaler if needed.
+func helperNewTestTrigger(kind, flowName string, line int32) *dag.Trigger {
+	fname := "fix.star"
+	return &dag.Trigger{
+		Pos:      syntax.MakePosition(&fname, line, 1),
+		FlowName: flowName,
+		Source:   &extension.FakeTriggerSource{KindName: kind, ReqFields: []string{"payload"}},
+	}
+}
+
+// TestTriggerRegistry_RegisterAfterFreeze: Register after Freeze returns
+// ErrTriggerRegistryFrozen.
+func TestTriggerRegistry_RegisterAfterFreeze(t *testing.T) {
+	r := NewTriggerRegistry()
+	require.NoError(t, r.Register("h1", helperNewTestTrigger("k", "flow", 10)))
+	r.Freeze()
+
+	err := r.Register("h2", helperNewTestTrigger("k", "flow2", 20))
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrTriggerRegistryFrozen),
+		"post-Freeze Register must return ErrTriggerRegistryFrozen, got: %v", err)
+}
+
+// TestTriggerRegistry_AllSorted: triggers come back sorted by (Source.Kind,
+// FlowName, Pos) post-Freeze regardless of registration order.
+func TestTriggerRegistry_AllSorted(t *testing.T) {
+	r := NewTriggerRegistry()
+	// Insert in reverse-of-expected order to prove sort kicks in:
+	// expected: (a,a,30) (a,z,20) (z,a,10)
+	require.NoError(t, r.Register("h", helperNewTestTrigger("z", "a", 10)))
+	require.NoError(t, r.Register("h", helperNewTestTrigger("a", "z", 20)))
+	require.NoError(t, r.Register("h", helperNewTestTrigger("a", "a", 30)))
+	r.Freeze()
+
+	got := r.All()
+	require.Len(t, got, 3)
+	assert.Equal(t, "a", got[0].Source.Kind())
+	assert.Equal(t, "a", got[0].FlowName)
+	assert.Equal(t, "a", got[1].Source.Kind())
+	assert.Equal(t, "z", got[1].FlowName)
+	assert.Equal(t, "z", got[2].Source.Kind())
+	assert.Equal(t, "a", got[2].FlowName)
+}
+
+// TestTriggerRegistry_ConcurrentRegister: 100 goroutines register
+// distinct triggers; no -race findings; all 100 land.
+func TestTriggerRegistry_ConcurrentRegister(t *testing.T) {
+	r := NewTriggerRegistry()
+	const N = 100
+	var wg sync.WaitGroup
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			err := r.Register("h", helperNewTestTrigger("k", "f", int32(i+1)))
+			assert.NoError(t, err)
+		}()
+	}
+	wg.Wait()
+	r.Freeze()
+	assert.Len(t, r.All(), N, "all 100 concurrent registrations must land")
+}
+
+// TestTriggerRegistry_ByContentHash: triggers are indexed by content hash.
+func TestTriggerRegistry_ByContentHash(t *testing.T) {
+	r := NewTriggerRegistry()
+	require.NoError(t, r.Register("h1", helperNewTestTrigger("k", "a", 10)))
+	require.NoError(t, r.Register("h1", helperNewTestTrigger("k", "b", 20)))
+	require.NoError(t, r.Register("h2", helperNewTestTrigger("k", "c", 30)))
+	r.Freeze()
+
+	assert.Len(t, r.ByContentHash("h1"), 2)
+	assert.Len(t, r.ByContentHash("h2"), 1)
+	assert.Nil(t, r.ByContentHash("h3"))
+}
+
+// TestTriggerRegistry_FreezeIdempotent: double Freeze does not panic; All()
+// content unchanged.
+func TestTriggerRegistry_FreezeIdempotent(t *testing.T) {
+	r := NewTriggerRegistry()
+	require.NoError(t, r.Register("h1", helperNewTestTrigger("k", "a", 10)))
+	require.NotPanics(t, func() {
+		r.Freeze()
+		r.Freeze()
+		r.Freeze()
+	})
+	assert.Len(t, r.All(), 1)
+}
+
+// TestTriggerRegistry_AllReturnsSnapshot: mutating the slice returned by
+// All() does not affect internal state.
+func TestTriggerRegistry_AllReturnsSnapshot(t *testing.T) {
+	r := NewTriggerRegistry()
+	require.NoError(t, r.Register("h1", helperNewTestTrigger("k", "a", 10)))
+	r.Freeze()
+
+	out := r.All()
+	require.Len(t, out, 1)
+	out[0] = nil // mutate caller's copy
+
+	again := r.All()
+	require.Len(t, again, 1)
+	require.NotNil(t, again[0], "internal state must be unaffected by caller mutating returned slice")
+}
+
+// TestTriggerRegistry_RegisterNilTrigger: nil trigger rejected with clear
+// error.
+func TestTriggerRegistry_RegisterNilTrigger(t *testing.T) {
+	r := NewTriggerRegistry()
+	err := r.Register("h1", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "trigger required")
+}
+
+// TestTriggerRegistry_RegisterEmptyHash: empty content hash rejected with
+// clear error.
+func TestTriggerRegistry_RegisterEmptyHash(t *testing.T) {
+	r := NewTriggerRegistry()
+	err := r.Register("", helperNewTestTrigger("k", "a", 10))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "contentHash required")
 }
