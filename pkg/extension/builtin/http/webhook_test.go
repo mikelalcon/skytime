@@ -325,3 +325,77 @@ func TestExtension_StarFileCallsHttpWebhook(t *testing.T) {
 	_, ok := v.(extension.TriggerSource)
 	require.True(t, ok, "http.webhook(...) result must satisfy extension.TriggerSource")
 }
+
+// =============================================================================
+// Plan 04 Task 1 — accessor methods + NewHTTPWebhookSourceForTest test
+// constructor. Plan 04b reads SignatureAlgo / SignatureHeader / SecretCredID
+// via type-assertion in handler.go::readSigningConfig, so this plan exposes
+// them without changing any production behavior.
+// =============================================================================
+
+// TestHTTPWebhook_AccessorRoundTrip asserts the three accessor methods
+// (SignatureAlgo, SignatureHeader, SecretCredID) round-trip the kwargs
+// passed to NewHTTPWebhookSourceForTest exactly. Plan 04b reads these
+// via type-assertion to a small interface; the names and signatures
+// must remain stable.
+func TestHTTPWebhook_AccessorRoundTrip(t *testing.T) {
+	src := NewHTTPWebhookSourceForTest("/x", "POST", "secret-id", "sha512", "X-Custom-Sig")
+
+	type accessors interface {
+		SignatureAlgo() string
+		SignatureHeader() string
+		SecretCredID() string
+	}
+	a, ok := src.(accessors)
+	require.True(t, ok, "NewHTTPWebhookSourceForTest result must expose SignatureAlgo/SignatureHeader/SecretCredID; got %T", src)
+
+	require.Equal(t, "sha512", a.SignatureAlgo())
+	require.Equal(t, "X-Custom-Sig", a.SignatureHeader())
+	require.Equal(t, "secret-id", a.SecretCredID())
+}
+
+// TestHTTPWebhook_AccessorEmptyDefaults builds a source via the parser
+// factory with secret_credential omitted (defaults to "" — unsigned mount
+// per D-7.1-04) and signature_header omitted (defaults to "X-Signature"
+// per D-7.1-03). The accessors return the parse-time defaults verbatim.
+//
+// This test goes through the parse-time factory (callHTTPWebhook), not
+// NewHTTPWebhookSourceForTest, because the defaults are applied in the
+// factory — the test constructor takes raw fields and applies no
+// defaults. The factory path is what production uses.
+func TestHTTPWebhook_AccessorEmptyDefaults(t *testing.T) {
+	v, err := callHTTPWebhook(t, `http.webhook(path="/x", method="POST")`)
+	require.NoError(t, err)
+
+	type accessors interface {
+		SignatureAlgo() string
+		SignatureHeader() string
+		SecretCredID() string
+	}
+	a, ok := v.(accessors)
+	require.True(t, ok, "factory result must expose accessors; got %T", v)
+
+	require.Equal(t, "sha256", a.SignatureAlgo(), "default signature_algo per D-7.1-03")
+	require.Equal(t, "X-Signature", a.SignatureHeader(), "default signature_header per D-7.1-03")
+	require.Equal(t, "", a.SecretCredID(), "unsigned mount when secret_credential omitted (D-7.1-04)")
+}
+
+// TestNewHTTPWebhookSourceForTest_SatisfiesContracts confirms the test
+// constructor returns a value satisfying extension.TriggerSource AND
+// receiver.HTTPMounter. Plan 04's mount tests use this constructor to
+// build trigger fixtures without going through the parser.
+func TestNewHTTPWebhookSourceForTest_SatisfiesContracts(t *testing.T) {
+	src := NewHTTPWebhookSourceForTest("/hooks/test", "PUT", "", "sha256", "X-Signature")
+	require.NotNil(t, src)
+
+	// extension.TriggerSource (sealed)
+	require.Equal(t, "http.webhook", src.Kind())
+	require.Equal(t, []string{"headers", "payload"}, src.ReqSchema())
+
+	// receiver.HTTPMounter
+	mounter, ok := src.(receiver.HTTPMounter)
+	require.True(t, ok, "value must satisfy receiver.HTTPMounter; got %T", src)
+	path, method := mounter.HTTPMount()
+	require.Equal(t, "/hooks/test", path)
+	require.Equal(t, "PUT", method)
+}

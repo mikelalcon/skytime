@@ -227,6 +227,41 @@ func sortedKeys(m map[string]bool) []string {
 	return out
 }
 
+// ----- Plan 04 accessors (consumed by pkg/extension/receiver) -----
+
+// SignatureAlgo returns the configured HMAC algorithm. Used by the
+// receiver dispatcher (pkg/extension/receiver) at request time to
+// pick the validator. Values are constrained at parse time to the
+// D-7.1-03 allowlist {sha256, sha1, sha512}.
+func (s *httpWebhookSource) SignatureAlgo() string { return s.signatureAlgo }
+
+// SignatureHeader returns the configured request header name from which
+// the receiver reads the signature value (default "X-Signature";
+// configurable via the signature_header kwarg).
+func (s *httpWebhookSource) SignatureHeader() string { return s.signatureHeader }
+
+// SecretCredID returns the credential ID, or "" when the mount is
+// unsigned. Plan 04's receiver reads this via type-assertion to
+// determine whether to skip signature validation.
+func (s *httpWebhookSource) SecretCredID() string { return s.secretCredID }
+
+// NewHTTPWebhookSourceForTest constructs an *httpWebhookSource directly
+// for tests in pkg/extension/receiver/ and other downstream packages.
+// Production callers use the parser-side factory webhookFactory; this
+// constructor bypasses the parser. Test-only — exported only because
+// Go has no out-of-package whitelist mechanism. No defaults are applied
+// here (the parser owns default kwarg resolution); callers must pass
+// every field explicitly.
+func NewHTTPWebhookSourceForTest(path, method, secretCredID, signatureAlgo, signatureHeader string) extension.TriggerSource {
+	return &httpWebhookSource{
+		path:            path,
+		method:          method,
+		secretCredID:    secretCredID,
+		signatureAlgo:   signatureAlgo,
+		signatureHeader: signatureHeader,
+	}
+}
+
 // init registers the http.webhook unmarshaler with the kind-keyed
 // factory registry (D-07-09). Round-trip path: dag.Trigger.MarshalJSON
 // → triggerJSON.Source bytes → on UnmarshalJSON, extension's installed
