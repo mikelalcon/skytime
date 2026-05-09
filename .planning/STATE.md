@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.1-02-PLAN.md (Wave 1, parallel)
-last_updated: "2026-05-09T12:12:29.068Z"
-last_activity: 2026-05-09 -- Phase 07.1 execution started
+stopped_at: Completed 07.1-05-PLAN.md
+last_updated: "2026-05-09T12:13:10.420Z"
+last_activity: 2026-05-09
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 15
-  completed_plans: 8
+  completed_plans: 9
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.1 (http-webhook-receiver-github-source) — EXECUTING
-Plan: 1 of 9
-Status: Executing Phase 07.1
-Last activity: 2026-05-09 -- Phase 07.1 execution started
+Plan: 2 of 9
+Status: Ready to execute
+Last activity: 2026-05-09
 
 Progress: [          ] 0%
 
@@ -116,6 +116,7 @@ Progress: [          ] 0%
 | Phase 07 P06 | 14min | 9 tasks | 22 files |
 | Phase 07.1 P01 | 5min | 3 tasks | 10 files |
 | Phase 07.1 P02 | 8min | 2 tasks | 4 files |
+| Phase 07.1 P05 | 9min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -344,6 +345,8 @@ Recent decisions affecting current work:
 - [Phase 07.1]: Plan 07.1-01: TDD RED+GREEN squashed into one commit for unexported primitives — white-box test files referencing unexported validateHMAC cannot compile-and-pass independently of the implementation file, so test+impl ship as a single GREEN commit (TDD intent preserved in execution order; artifact is one commit per task)
 - [Phase 07.1]: Plan 7.1-02: TriggerSourceSeal embeddable carrier (Rule 2 deviation) — pre-existing seal/sub-package contradiction blocked first concrete TriggerSource. Embedding pattern preserves seal intent (must import pkg/extension), unblocks Plan 03 + downstream extensions
 - [Phase 07.1]: Plan 7.1-02: factory unmarshaler receives inner config bytes only, not full envelope — extensionTriggerUnmarshaler already peels {kind, config} before dispatching. Fixed plan pseudocode
+- [Phase 07.1]: 07.1-05: worker.WithSDKFactory functional Option (D-7.1-13) ships; pkg/cli black-box tests inject fake SDK worker via testWorkerOptions seam; 3 Phase 7 t.Skip stubs (DrainOnSIGTERM, DrainTimeoutExpiry, SecondSignalForceExit) unskipped — SERVER-02 drain semantics now have unit-test coverage
+- [Phase 07.1]: 07.1-05: signal.Notify hoisted before hookStage("worker_started") in pkg/cli/server.go — establishes worker_started as deterministic sync point for black-box drain tests; production behavior unchanged
 
 ### Pending Todos
 
@@ -374,6 +377,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-09T12:12:29.063Z
-Stopped at: Completed 07.1-02-PLAN.md (Wave 1, parallel)
+Last session: 2026-05-09T12:13:01.717Z
+Stopped at: Completed 07.1-05-PLAN.md
 Resume file: None
