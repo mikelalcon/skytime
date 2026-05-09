@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.1-04b-PLAN.md (per-request handler pipeline + 13 tests + 7 fixtures)
-last_updated: "2026-05-09T13:10:46.955Z"
+stopped_at: Completed 07.1-06-PLAN.md (HTTP listener bind + receiver.Mount + listener-first drain — 7-stage testDrainHook + banner mount paths)
+last_updated: "2026-05-09T13:25:22.857Z"
 last_activity: 2026-05-09
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 15
-  completed_plans: 13
+  completed_plans: 14
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.1 (http-webhook-receiver-github-source) — EXECUTING
-Plan: 6 of 9
+Plan: 7 of 9
 Status: Ready to execute
 Last activity: 2026-05-09
 
@@ -121,6 +121,7 @@ Progress: [          ] 0%
 | Phase 07.1 P07 | 4min | 2 tasks | 3 files |
 | Phase 07.1 P04 | 7min | 2 tasks | 6 files |
 | Phase 07.1 P04b | 25min | 1 tasks | 9 files |
+| Phase 07.1 P06 | 7min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -361,6 +362,10 @@ Recent decisions affecting current work:
 - [Phase 07.1]: Plan 04b: 413 body-too-large written inline rather than amending Plan 01's locked status writer surface; same JSON envelope shape as writeBadRequestResponse.
 - [Phase 07.1]: Plan 04b: credentialBytes covers Bearer + Basic + APIKey at the type-switch boundary (only Bearer needed for HMAC today) — centralizes the .Reveal() leak inventory in ONE function for grep audit.
 - [Phase 07.1]: Plan 04b: Single squashed commit (479205f) instead of multi-step atomic landing — predecessor agent's stream timed out mid-edit; resuming from disk and squashing was simpler than slicing partial work into RED/GREEN sub-commits retroactively.
+- [Phase 07.1]: Plan 06: net.Listen pre-binds synchronously on the RunE foreground goroutine BEFORE the srv.Serve goroutine spawns (Pitfall 9) — 'address already in use' surfaces inline as a RunE error instead of a delayed log line; tests racing on the same port get a deterministic failure path
+- [Phase 07.1]: Plan 06: drainCtx is shared between srv.Shutdown AND the worker.Stop goroutine — single context.WithTimeout(--drain-timeout) caps total drain budget across both stages; if listener.Shutdown consumes 80% of the budget, worker.Stop has 20% before drain_timeout fires (D-7.1-11 edge case)
+- [Phase 07.1]: Plan 06: 9-stage testDrainHook seam (Plan 05's 6 + 3 new — listener_started, listener_shutdown_started, listener_shutdown_complete); Plan 05's 3 unskipped drain tests updated to expect the full 7-stage sequence per drain path; --addr=127.0.0.1:0 used in all 4 listener-binding tests to avoid port collisions on shared CI runners
+- [Phase 07.1]: Plan 06: printStartupBanner type-asserts receiver.HTTPMounter per-trigger and emits 'mount' key only for HTTP-shaped sources; cron (Phase 7.2) and queue (v1.44+) sources omit the key — no nil/empty pollution. Mount string format is '<METHOD> <path>' (e.g. 'POST /webhook/github').
 
 ### Pending Todos
 
@@ -391,6 +396,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-09T13:10:46.951Z
-Stopped at: Completed 07.1-04b-PLAN.md (per-request handler pipeline + 13 tests + 7 fixtures)
+Last session: 2026-05-09T13:25:22.853Z
+Stopped at: Completed 07.1-06-PLAN.md (HTTP listener bind + receiver.Mount + listener-first drain — 7-stage testDrainHook + banner mount paths)
 Resume file: None
