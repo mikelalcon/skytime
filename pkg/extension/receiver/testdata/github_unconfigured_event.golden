@@ -1,0 +1,11 @@
+{
+  "method": "POST",
+  "path": "/webhook/github",
+  "headers": {
+    "Content-Type": "application/json",
+    "X-GitHub-Event": "pull_request",
+    "X-GitHub-Delivery": "filtered-1",
+    "X-Hub-Signature-256": "COMPUTE_AT_TEST_TIME"
+  },
+  "body": "{\"action\":\"opened\",\"pull_request\":{\"number\":7},\"repository\":{\"full_name\":\"oct/test\"}}"
+}

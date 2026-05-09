@@ -1,0 +1,11 @@
+{
+  "method": "POST",
+  "path": "/webhook/github",
+  "headers": {
+    "Content-Type": "application/json",
+    "X-GitHub-Event": "issues",
+    "X-GitHub-Delivery": "redeliver-key",
+    "X-Hub-Signature-256": "COMPUTE_AT_TEST_TIME"
+  },
+  "body": "{\"action\":\"opened\",\"issue\":{\"number\":3},\"repository\":{\"full_name\":\"oct/test\"}}"
+}

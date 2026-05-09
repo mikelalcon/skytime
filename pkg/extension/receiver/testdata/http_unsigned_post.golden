@@ -1,0 +1,8 @@
+{
+  "method": "POST",
+  "path": "/hooks/x",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"hello\":\"world\"}"
+}

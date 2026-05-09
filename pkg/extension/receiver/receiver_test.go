@@ -107,8 +107,9 @@ func validDeps() Deps {
 //
 // After Mount returns we exercise the registered handlers with httptest to
 // confirm the paths are actually mounted (a missing mount would yield 404
-// from the stdlib mux's NotFound handler; we expect 501 since the handler
-// stub returns Not Implemented in this plan).
+// from the stdlib mux's NotFound handler; mounted handlers respond with
+// any non-404 code — Plan 04b's real handler returns 415 here because the
+// probe POSTs have no Content-Type set).
 func TestMount_FanOutGrouping(t *testing.T) {
 	gh1 := skygh.NewGithubWebhookSourceForTest([]string{"issues"}, "")
 	gh2 := skygh.NewGithubWebhookSourceForTest([]string{"pull_request"}, "")
@@ -125,35 +126,40 @@ func TestMount_FanOutGrouping(t *testing.T) {
 	mux := http.NewServeMux()
 	Mount(mux, w, validDeps())
 
-	// Probe each path. Mounted handlers stub-return 501; unmounted paths
-	// return 404 from the default NotFoundHandler.
+	// Probe each path. Mounted handlers respond with any non-404; the
+	// only "unmounted" signal is 404 from the default NotFoundHandler.
 	cases := []struct {
-		method     string
-		path       string
-		wantStatus int
-		why        string
+		method      string
+		path        string
+		wantMounted bool
+		why         string
 	}{
-		{"POST", "/webhook/github", http.StatusNotImplemented, "github.webhook mounted (collapsed gh1+gh2)"},
-		{"POST", "/hooks/x", http.StatusNotImplemented, "http.webhook mounted on /hooks/x"},
+		{"POST", "/webhook/github", true, "github.webhook mounted (collapsed gh1+gh2)"},
+		{"POST", "/hooks/x", true, "http.webhook mounted on /hooks/x"},
 		// No path was registered for the cron source.
-		{"POST", "/cron/nightly", http.StatusNotFound, "cron source must NOT mount any HTTP path"},
+		{"POST", "/cron/nightly", false, "cron source must NOT mount any HTTP path"},
 	}
 	for _, tc := range cases {
 		req := httptest.NewRequest(tc.method, tc.path, nil)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
-		require.Equal(t, tc.wantStatus, rec.Code, tc.why)
+		if tc.wantMounted {
+			require.NotEqual(t, http.StatusNotFound, rec.Code,
+				"%s — mounted path must NOT return 404 (got %d)", tc.why, rec.Code)
+		} else {
+			require.Equal(t, http.StatusNotFound, rec.Code,
+				"%s — unmounted path must return 404 (got %d)", tc.why, rec.Code)
+		}
 	}
 }
 
 // TestMount_GroupsByMountKey: two http.webhook triggers binding the same
 // (path="/x", method="POST") with different flows produce ONE handler
-// registration covering both flows. Verified indirectly: only one POST to
-// /x is needed; the response code is 501 from the stub. (Plan 04b will
-// assert workflow_ids contains both flows.)
-//
-// Verified directly via the unexported groupTriggers helper: the returned
-// map has exactly one mountKey entry whose slice contains both triggers.
+// registration covering both flows. Verified directly via the unexported
+// groupTriggers helper: the returned map has exactly one mountKey entry
+// whose slice contains both triggers. The mux registration is sanity-
+// checked by confirming /x doesn't 404 (Plan 04b's real handler now
+// processes the empty body and returns 415 for missing Content-Type).
 func TestMount_GroupsByMountKey(t *testing.T) {
 	hh1 := skyhttp.NewHTTPWebhookSourceForTest("/x", "POST", "", "sha256", "X-Signature")
 	hh2 := skyhttp.NewHTTPWebhookSourceForTest("/x", "POST", "", "sha256", "X-Signature")
@@ -172,13 +178,14 @@ func TestMount_GroupsByMountKey(t *testing.T) {
 		require.Len(t, trigs, 2, "both triggers share the group")
 	}
 
-	// Sanity-check the mux registration too.
+	// Sanity-check the mux registration: /x is reachable (not 404).
 	mux := http.NewServeMux()
 	Mount(mux, w, validDeps())
 	req := httptest.NewRequest("POST", "/x", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusNotImplemented, rec.Code)
+	require.NotEqual(t, http.StatusNotFound, rec.Code,
+		"mounted path /x must not 404 (got %d)", rec.Code)
 }
 
 // TestMount_DifferentMethodsSamePath: http.webhook(path="/x", method="POST")
@@ -212,19 +219,25 @@ func TestMount_DifferentMethodsSamePath(t *testing.T) {
 	mux := http.NewServeMux()
 	Mount(mux, w, validDeps())
 
-	// POST must hit the mounted handler (501 from stub).
+	// POST must hit the mounted handler (real handler reaches 415 on
+	// empty body without Content-Type — any non-404, non-405 proves
+	// the POST handler ran).
 	postReq := httptest.NewRequest("POST", "/x", nil)
 	postRec := httptest.NewRecorder()
 	mux.ServeHTTP(postRec, postReq)
-	require.Equal(t, http.StatusNotImplemented, postRec.Code,
-		"POST /x must reach the POST mount's handler (stub returns 501)")
+	require.NotEqual(t, http.StatusNotFound, postRec.Code,
+		"POST /x must reach the POST mount's handler (got %d)", postRec.Code)
+	require.NotEqual(t, http.StatusMethodNotAllowed, postRec.Code,
+		"POST /x must NOT 405 (POST is registered)")
 
-	// GET must hit the mounted handler (501 from stub).
+	// GET must hit the mounted handler too (sibling method group).
 	getReq := httptest.NewRequest("GET", "/x", nil)
 	getRec := httptest.NewRecorder()
 	mux.ServeHTTP(getRec, getReq)
-	require.Equal(t, http.StatusNotImplemented, getRec.Code,
-		"GET /x must reach the GET mount's handler (stub returns 501)")
+	require.NotEqual(t, http.StatusNotFound, getRec.Code,
+		"GET /x must reach the GET mount's handler (got %d)", getRec.Code)
+	require.NotEqual(t, http.StatusMethodNotAllowed, getRec.Code,
+		"GET /x must NOT 405 (GET is registered)")
 
 	// PUT must be 405 (no PUT registration for /x).
 	putReq := httptest.NewRequest("PUT", "/x", nil)
