@@ -187,6 +187,53 @@ func TestFlows_CoverageMatrix(t *testing.T) {
 	}
 }
 
+// TestWebhookDemo_BootsCleanly is the EX-05 / Plan 07 D-7.1-16 acceptance
+// gate for the crash-recovery demo. It asserts that webhook_demo.star:
+//
+//   - parses without error against the example's three-extension parser
+//     session (HTTP + GitHub + Webhook);
+//   - registers a flow named "webhook_demo";
+//   - registers at least one trigger pointing at "webhook_demo" whose
+//     Source.Kind() is "github.webhook" (i.e. the github.webhook(...)
+//     factory call resolved to the concrete *githubWebhookSource type
+//     shipped in Plan 03).
+//
+// This is the parses-and-boots gate the walkthrough docs (Plan 08)
+// reference by name. It is intentionally a separate test (not folded
+// into TestFlows_ParseAll) so a future regression that drops the trigger
+// from the demo flow surfaces with the precise failure message rather
+// than as a generic parse failure.
+func TestWebhookDemo_BootsCleanly(t *testing.T) {
+	const path = "webhook_demo.star"
+	p := newExampleParser(t)
+	parsed, err := p.ParseFile(path)
+	require.NoError(t, err, "parse %s", path)
+
+	// Flow must be registered under its declared name.
+	_, ok := parsed["webhook_demo"]
+	require.True(t, ok,
+		"expected flow %q in parsed map; got: %v",
+		"webhook_demo", mapKeys(parsed))
+
+	// Trigger registry must contain at least one entry whose FlowName
+	// is "webhook_demo" AND whose Source.Kind() is "github.webhook".
+	// Both halves matter: Plan 08's walkthrough copy promises the demo
+	// fires from a GitHub webhook delivery, so the kind must match.
+	triggers := p.Triggers()
+	require.NotEmpty(t, triggers, "expected at least one trigger registered")
+
+	var matched bool
+	for _, trig := range triggers {
+		if trig.FlowName == "webhook_demo" && trig.Source.Kind() == "github.webhook" {
+			matched = true
+			break
+		}
+	}
+	assert.True(t, matched,
+		"expected a trigger with FlowName=%q and Source.Kind()=%q; got triggers=%+v",
+		"webhook_demo", "github.webhook", triggers)
+}
+
 // primitiveSet walks a flow's Body (recursively into IfCond.Then/Else,
 // ForEachParallel.Steps) and returns the set of primitive kinds present.
 func primitiveSet(fl *dag.Flow) map[string]bool {
