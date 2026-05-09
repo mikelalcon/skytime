@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.1-05-PLAN.md
-last_updated: "2026-05-09T12:13:10.420Z"
+stopped_at: Completed 07.1-03-PLAN.md
+last_updated: "2026-05-09T12:14:14.521Z"
 last_activity: 2026-05-09
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 15
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.1 (http-webhook-receiver-github-source) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9
 Status: Ready to execute
 Last activity: 2026-05-09
 
@@ -117,6 +117,7 @@ Progress: [          ] 0%
 | Phase 07.1 P01 | 5min | 3 tasks | 10 files |
 | Phase 07.1 P02 | 8min | 2 tasks | 4 files |
 | Phase 07.1 P05 | 9min | 2 tasks | 5 files |
+| Phase 07.1 P03 | 9min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -347,6 +348,8 @@ Recent decisions affecting current work:
 - [Phase 07.1]: Plan 7.1-02: factory unmarshaler receives inner config bytes only, not full envelope — extensionTriggerUnmarshaler already peels {kind, config} before dispatching. Fixed plan pseudocode
 - [Phase 07.1]: 07.1-05: worker.WithSDKFactory functional Option (D-7.1-13) ships; pkg/cli black-box tests inject fake SDK worker via testWorkerOptions seam; 3 Phase 7 t.Skip stubs (DrainOnSIGTERM, DrainTimeoutExpiry, SecondSignalForceExit) unskipped — SERVER-02 drain semantics now have unit-test coverage
 - [Phase 07.1]: 07.1-05: signal.Notify hoisted before hookStage("worker_started") in pkg/cli/server.go — establishes worker_started as deterministic sync point for black-box drain tests; production behavior unchanged
+- [Phase 07.1]: Plan 03: Embedded extension.TriggerSourceSeal for seal satisfaction (Plan 02 added the carrier; Plan 03 consumed it). External packages cannot satisfy unexported method names of foreign packages — embedding is the only seam.
+- [Phase 07.1]: Plan 03: Pattern — locked-by-construction signature scheme. github.webhook does NOT expose signature_algo/signature_header kwargs (TRIG-09 + D-7.1-04). Source-grep firewall test (TestGithubWebhook_HardcodedAlgoAndHeader) reads webhook.go bytes to prove the kwargs are absent and the algo/header literals are present.
 
 ### Pending Todos
 
@@ -377,6 +380,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-09T12:13:01.717Z
-Stopped at: Completed 07.1-05-PLAN.md
+Last session: 2026-05-09T12:14:06.151Z
+Stopped at: Completed 07.1-03-PLAN.md
 Resume file: None
