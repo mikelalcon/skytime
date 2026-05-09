@@ -1,6 +1,7 @@
 // D-07-10 credential-redaction firewall — AST-walks production Go
-// files in pkg/dag, pkg/extension, and pkg/extension/builtin and
-// rejects fmt-family calls whose first arg is a string literal
+// files in pkg/dag, pkg/extension, pkg/extension/builtin,
+// pkg/extension/receiver, and examples/http-github-webhook/extensions/github
+// and rejects fmt-family calls whose first arg is a string literal
 // containing %+v or %#v.
 //
 // Why: %+v / %#v print struct fields exhaustively, which would defeat
@@ -10,10 +11,11 @@
 // trigger/credential code paths is a final-line-of-defense backstop
 // behind the type-level redaction in pkg/extension/secret.go.
 //
-// Scope: Phase 7 ships zero concrete TriggerSource — only
-// pkg/dag/trigger.go has the Trigger type. Phase 7.1 will extend the
-// firewall when github.WebhookSource lands by walking the new
-// extension subdirectory; today the directory list is conservative.
+// Scope: Phase 7 covered pkg/dag, pkg/extension, and
+// pkg/extension/builtin. Phase 7.1 extends to pkg/extension/receiver
+// (handler.go's .Reveal() call sites for HMAC computation) and
+// examples/http-github-webhook/extensions/github (Plan 03's
+// github.webhook source factory production files).
 //
 // Test files (_test.go) are exempt — tests legitimately use %+v for
 // diff output where the subject is not a Secret.
@@ -45,6 +47,8 @@ func TestCredentialRedactionFirewall(t *testing.T) {
 		filepath.Join(moduleRoot, "pkg", "dag"),
 		filepath.Join(moduleRoot, "pkg", "extension"),
 		filepath.Join(moduleRoot, "pkg", "extension", "builtin"),
+		filepath.Join(moduleRoot, "pkg", "extension", "receiver"),
+		filepath.Join(moduleRoot, "examples", "http-github-webhook", "extensions", "github"),
 	}
 
 	fset := token.NewFileSet()
@@ -87,7 +91,7 @@ func TestCredentialRedactionFirewall(t *testing.T) {
 			strings.Join(allViolations, "\n  "))
 	}
 
-	t.Logf("D-07-10 firewall: scanned %d target dir(s); no %%+v / %%#v in production code", len(targetDirs))
+	t.Logf("D-07-10 firewall: scanned %d target dir(s) (Phase 7 dag/extension/builtin + Phase 7.1 receiver/github extension); no %%+v / %%#v in production code", len(targetDirs))
 }
 
 // TestCredentialRedactionFirewall_AcceptsCleanCode is the positive
