@@ -35,6 +35,17 @@ var testDrainHook func(stage string)
 // to record the call without terminating the test process.
 var testForceExit = func(code int) { os.Exit(code) }
 
+// testWorkerOptions is the package-private test seam for injecting
+// worker.Option values into NewWorker calls during black-box tests
+// (D-7.1-13). Production: nil. Tests assign to inject
+// worker.WithSDKFactory(fakeFactory) so the signal-loop end-to-end
+// tests (TestServerCmd_DrainOnSIGTERM / DrainTimeoutExpiry /
+// SecondSignalForceExit) can run without a real Temporal SDK worker.
+//
+// Phase 7 Plan 05 named these tests with their final targets so this
+// seam wiring is the only late addition.
+var testWorkerOptions []worker.Option
+
 // hookStage is a nil-safe wrapper around testDrainHook.
 func hookStage(stage string) {
 	if testDrainHook != nil {
@@ -106,6 +117,8 @@ func newServerCommand(cfg *config) *cobra.Command {
 
 			// 5. Build worker with WorkerStopTimeout threaded through
 			//    so worker.Stop() blocks for at most --drain-timeout.
+			//    testWorkerOptions is nil in production; tests inject
+			//    worker.WithSDKFactory(fakeFactory) here (D-7.1-13).
 			w, err := worker.NewWorker(c, worker.WorkerOptions{
 				RootDir:           rootdir,
 				TaskQueue:         taskQueue,
@@ -113,7 +126,7 @@ func newServerCommand(cfg *config) *cobra.Command {
 				CredentialHandler: cfg.credHandler,
 				Logger:            cfg.sdkLogger,
 				WorkerStopTimeout: drainTimeout,
-			})
+			}, testWorkerOptions...)
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "worker init: %s\n", err.Error())
 				return errSilent
@@ -129,21 +142,25 @@ func newServerCommand(cfg *config) *cobra.Command {
 					"addr", addr)
 			}
 
-			// 7. Start (non-blocking per D3-18).
+			// 7. Two-signal escalation via signal.Notify (NOT
+			//    NotifyContext per § Pitfall 5 — NotifyContext is
+			//    single-shot, but we need to receive a SECOND signal
+			//    while drain is in-flight to escalate to forced exit).
+			//    Installed BEFORE hookStage("worker_started") so the
+			//    Phase 7.1 black-box drain tests can use that hook
+			//    stage as a deterministic sync point — the handler
+			//    must be live before any test-side syscall.Kill fires.
+			sigCh := make(chan os.Signal, 2)
+			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+			defer signal.Stop(sigCh)
+
+			// 8. Start (non-blocking per D3-18).
 			if err := w.Start(); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "worker start: %s\n", err.Error())
 				return errSilent
 			}
 			hookStage("worker_started")
 			logger.Info("worker started; SIGTERM/SIGINT to drain", "drain-timeout", drainTimeout)
-
-			// 8. Two-signal escalation via signal.Notify (NOT
-			//    NotifyContext per § Pitfall 5 — NotifyContext is
-			//    single-shot, but we need to receive a SECOND signal
-			//    while drain is in-flight to escalate to forced exit).
-			sigCh := make(chan os.Signal, 2)
-			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-			defer signal.Stop(sigCh)
 
 			<-sigCh
 			hookStage("signal_received")

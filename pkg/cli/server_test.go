@@ -2,19 +2,28 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
+	"time"
 
+	"github.com/nexus-rpc/sdk-go/nexus"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/syntax"
+	sdkactivity "go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
+	sdkworker "go.temporal.io/sdk/worker"
+	"go.temporal.io/sdk/workflow"
 
 	"github.com/mikelalcon/skytime/pkg/dag"
 	"github.com/mikelalcon/skytime/pkg/extension"
@@ -150,41 +159,387 @@ func TestServerCmd_ConnectClient_SelfHosted(t *testing.T) {
 }
 
 // =============================================================================
-// Phase 7 Plan 05 Task 6 — signal-loop test stubs (deferred to Phase 7.1)
+// Phase 7.1 Plan 05 — signal-loop end-to-end tests (D-7.1-13)
 // =============================================================================
 //
-// Reachability blocker: pkg/cli is a black-box consumer of pkg/worker. The
-// worker.sdkWorkerNew seam used by Plan 04's worker_test.go to inject a
-// fake SDK Worker is package-private. Without an exported
-// worker.WithSDKFactory(fn) Option, pkg/cli tests cannot construct a
-// Worker whose Stop() behavior is deterministic — and the signal-loop
-// tests need exactly that.
+// These three tests exercise the full RunE signal loop against a fake SDK
+// worker injected via worker.WithSDKFactory (Plan 05 Task 1). Each test
+// assigns testWorkerOptions to thread the option into the NewWorker call,
+// installs a testDrainHook recorder, sends real SIGTERM(s) to the test
+// process via syscall.Kill, and asserts the recorded six-stage sequence
+// matches the LOCKED stage names from Phase 7 Plan 05.
 //
-// The function NAMES below match VALIDATION.md's per-task verification
-// map so forward compatibility is preserved. The testDrainHook stage
-// names are LOCKED in source (regression-prevented by source grep on
-// server.go), and the manual-smoke verification in VALIDATION.md
-// covers actual end-to-end behavior. Phase 7.1 will drop the t.Skip
-// and implement the assertions once worker.WithSDKFactory ships.
+// Synchronization: signal.Notify is installed AFTER w.Start() succeeds
+// and BEFORE testDrainHook("worker_started") fires, so the
+// "worker_started" recording is the synchronization point — once it
+// lands, syscall.Kill(SIGTERM) is safe to dispatch.
 
-// TestServerCmd_DrainOnSIGTERM: SIGTERM during a running worker triggers
-// drain via worker.Stop. Skipped pending the Phase 7.1 SDK-factory seam.
+// fakeReceivingWorker is a minimal sdkworker.Worker stub used by the
+// drain-loop tests. Stop() behavior is parameterized via onStop so each
+// test can choose: no-op (drain_completed), sleep-longer-than-timeout
+// (drain_timeout), block-indefinitely (drain_forced via second signal).
+type fakeReceivingWorker struct {
+	onStop func()
+}
+
+func (*fakeReceivingWorker) RegisterWorkflow(_ interface{}) {}
+func (*fakeReceivingWorker) RegisterWorkflowWithOptions(_ interface{}, _ workflow.RegisterOptions) {
+}
+func (*fakeReceivingWorker) RegisterDynamicWorkflow(_ interface{}, _ workflow.DynamicRegisterOptions) {
+}
+func (*fakeReceivingWorker) RegisterActivity(_ interface{}) {}
+func (*fakeReceivingWorker) RegisterActivityWithOptions(_ interface{}, _ sdkactivity.RegisterOptions) {
+}
+func (*fakeReceivingWorker) RegisterDynamicActivity(_ interface{}, _ sdkactivity.DynamicRegisterOptions) {
+}
+func (*fakeReceivingWorker) RegisterNexusService(_ *nexus.Service) {}
+
+func (*fakeReceivingWorker) Start() error                   { return nil }
+func (*fakeReceivingWorker) Run(_ <-chan interface{}) error { return nil }
+
+func (f *fakeReceivingWorker) Stop() {
+	if f.onStop != nil {
+		f.onStop()
+	}
+}
+
+// Compile-time interface assertion.
+var _ sdkworker.Worker = (*fakeReceivingWorker)(nil)
+
+// stageRecorder is a thread-safe recorder for testDrainHook stages.
+type stageRecorder struct {
+	mu     sync.Mutex
+	stages []string
+	ch     chan string // buffered; one send per stage to enable Eventually waits
+}
+
+func newStageRecorder() *stageRecorder {
+	return &stageRecorder{ch: make(chan string, 16)}
+}
+
+func (r *stageRecorder) record(stage string) {
+	r.mu.Lock()
+	r.stages = append(r.stages, stage)
+	r.mu.Unlock()
+	// Non-blocking send; channel is buffered.
+	select {
+	case r.ch <- stage:
+	default:
+	}
+}
+
+func (r *stageRecorder) snapshot() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, len(r.stages))
+	copy(out, r.stages)
+	return out
+}
+
+// waitFor blocks until the recorder observes `target` or the deadline
+// elapses. Returns true if observed, false on timeout.
+func (r *stageRecorder) waitFor(target string, deadline time.Duration) bool {
+	timer := time.NewTimer(deadline)
+	defer timer.Stop()
+	for {
+		// Fast path: already recorded.
+		r.mu.Lock()
+		for _, s := range r.stages {
+			if s == target {
+				r.mu.Unlock()
+				return true
+			}
+		}
+		r.mu.Unlock()
+		select {
+		case s := <-r.ch:
+			if s == target {
+				return true
+			}
+		case <-timer.C:
+			return false
+		}
+	}
+}
+
+// makeServerTestDir writes a minimal .star file with one flow + one
+// trigger so bootRegistry succeeds. Returns the dir.
+func makeServerTestDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "flows.star"), []byte(`
+flow(name = "test_flow", steps = [])
+`), 0o644))
+	return dir
+}
+
+// installFakeClientFactory swaps defaultClientFactory to return a stub
+// nil-embedded client.Client (defer cleanup restores). Lets the connect
+// stage succeed without dialing Temporal.
+func installFakeClientFactory(t *testing.T) {
+	t.Helper()
+	prev := defaultClientFactory
+	stub := &stubClient{}
+	defaultClientFactory = clientFactory{
+		NewCloud:      func(_ worker.CloudOptions) (client.Client, error) { return stub, nil },
+		NewSelfHosted: func(_ worker.SelfHostedOptions) (client.Client, error) { return stub, nil },
+		NewDev:        func(_ worker.DevClientOptions) (client.Client, error) { return stub, nil },
+	}
+	t.Cleanup(func() { defaultClientFactory = prev })
+}
+
+// stubClient is a no-op client.Client that the server subcommand's
+// `defer c.Close()` can call safely.
+type stubClient struct{ client.Client }
+
+func (*stubClient) Close() {}
+
+// runServerInBackground starts cmd.Execute in a goroutine and returns a
+// channel that delivers the RunE return value when Execute returns.
+func runServerInBackground(t *testing.T, cmd *cobra.Command, args []string) <-chan error {
+	t.Helper()
+	cmd.SetArgs(args)
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Execute()
+	}()
+	return done
+}
+
+// nopCredHandler is a no-op CredentialHandler good enough for these
+// drain tests which never resolve a credential.
+type nopCredHandler struct{}
+
+func (nopCredHandler) Resolve(_ context.Context, _ string) (extension.Credential, error) {
+	return nil, errors.New("nopCredHandler: no credentials configured")
+}
+
+// TestServerCmd_DrainOnSIGTERM: first SIGTERM triggers drain; the fake
+// worker.Stop returns immediately so drain_completed fires. RunE returns
+// nil and testForceExit is NOT called.
 func TestServerCmd_DrainOnSIGTERM(t *testing.T) {
-	t.Skip("TODO(phase-7.1): pkg/cli tests cannot reach pkg/worker.sdkWorkerNew seam. Add exported worker.WithSDKFactory(fn) Option to enable in-process drain testing. Source-grep acceptance + testDrainHook stage names + manual smoke (VALIDATION.md § Manual-Only Verifications) cover this for Phase 7.")
+	installFakeClientFactory(t)
+
+	rec := newStageRecorder()
+	prevHook := testDrainHook
+	testDrainHook = rec.record
+	t.Cleanup(func() { testDrainHook = prevHook })
+
+	var forceExitCalls int
+	var forceExitMu sync.Mutex
+	prevForceExit := testForceExit
+	testForceExit = func(code int) {
+		forceExitMu.Lock()
+		forceExitCalls++
+		forceExitMu.Unlock()
+	}
+	t.Cleanup(func() { testForceExit = prevForceExit })
+
+	fake := &fakeReceivingWorker{onStop: func() { /* no-op: returns immediately */ }}
+	prevOpts := testWorkerOptions
+	testWorkerOptions = []worker.Option{
+		worker.WithSDKFactory(func(_ client.Client, _ string, _ sdkworker.Options) sdkworker.Worker {
+			return fake
+		}),
+	}
+	t.Cleanup(func() { testWorkerOptions = prevOpts })
+
+	dir := makeServerTestDir(t)
+	cmd := newServerCommand(&config{credHandler: nopCredHandler{}})
+	done := runServerInBackground(t, cmd, []string{
+		"--rootdir=" + dir,
+		"--drain-timeout=2s",
+	})
+
+	// Wait for the worker_started stage (signal handler installed).
+	require.True(t, rec.waitFor("worker_started", 5*time.Second),
+		"worker_started must be recorded before sending SIGTERM")
+
+	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
+
+	// Wait for drain_completed.
+	require.True(t, rec.waitFor("drain_completed", 5*time.Second),
+		"drain_completed must be recorded after SIGTERM with no-op Stop")
+
+	// RunE must return nil (clean drain).
+	select {
+	case err := <-done:
+		assert.NoError(t, err, "clean drain returns nil")
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunE did not return after drain_completed")
+	}
+
+	stages := rec.snapshot()
+	assert.Equal(t, []string{
+		"worker_started",
+		"signal_received",
+		"drain_started",
+		"drain_completed",
+	}, stages, "exact six-stage prefix for clean drain")
+
+	forceExitMu.Lock()
+	defer forceExitMu.Unlock()
+	assert.Zero(t, forceExitCalls, "testForceExit must NOT be called on clean drain")
 }
 
-// TestServerCmd_DrainTimeoutExpiry: drain that exceeds --drain-timeout
-// returns errSilent and logs the timeout diagnostic. Skipped pending
-// the Phase 7.1 SDK-factory seam.
+// TestServerCmd_DrainTimeoutExpiry: --drain-timeout fires before
+// fakeWorker.Stop returns. Sequence: worker_started → signal_received
+// → drain_started → drain_timeout. RunE returns errSilent.
 func TestServerCmd_DrainTimeoutExpiry(t *testing.T) {
-	t.Skip("TODO(phase-7.1): same reachability blocker as TestServerCmd_DrainOnSIGTERM — needs worker.WithSDKFactory")
+	installFakeClientFactory(t)
+
+	rec := newStageRecorder()
+	prevHook := testDrainHook
+	testDrainHook = rec.record
+	t.Cleanup(func() { testDrainHook = prevHook })
+
+	var forceExitCalls int
+	var forceExitMu sync.Mutex
+	prevForceExit := testForceExit
+	testForceExit = func(code int) {
+		forceExitMu.Lock()
+		forceExitCalls++
+		forceExitMu.Unlock()
+	}
+	t.Cleanup(func() { testForceExit = prevForceExit })
+
+	// Stop blocks longer than --drain-timeout. We use a channel so the
+	// test can release Stop on cleanup (avoids leaking goroutines).
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	fake := &fakeReceivingWorker{
+		onStop: func() {
+			select {
+			case <-release:
+			case <-time.After(5 * time.Second):
+			}
+		},
+	}
+	prevOpts := testWorkerOptions
+	testWorkerOptions = []worker.Option{
+		worker.WithSDKFactory(func(_ client.Client, _ string, _ sdkworker.Options) sdkworker.Worker {
+			return fake
+		}),
+	}
+	t.Cleanup(func() { testWorkerOptions = prevOpts })
+
+	dir := makeServerTestDir(t)
+	cmd := newServerCommand(&config{credHandler: nopCredHandler{}})
+	// drain-timeout=1s so the test stays fast; Stop blocks >5s.
+	done := runServerInBackground(t, cmd, []string{
+		"--rootdir=" + dir,
+		"--drain-timeout=1s",
+	})
+
+	require.True(t, rec.waitFor("worker_started", 5*time.Second))
+	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
+	require.True(t, rec.waitFor("drain_timeout", 5*time.Second),
+		"drain_timeout must fire when Stop blocks longer than --drain-timeout")
+
+	select {
+	case err := <-done:
+		assert.ErrorIs(t, err, errSilent, "drain timeout returns errSilent")
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunE did not return after drain_timeout")
+	}
+
+	stages := rec.snapshot()
+	assert.Equal(t, []string{
+		"worker_started",
+		"signal_received",
+		"drain_started",
+		"drain_timeout",
+	}, stages, "exact stage sequence for drain timeout")
+
+	forceExitMu.Lock()
+	defer forceExitMu.Unlock()
+	assert.Zero(t, forceExitCalls, "testForceExit must NOT be called on drain_timeout (only on second signal)")
 }
 
-// TestServerCmd_SecondSignalForceExit: a second SIGINT/SIGTERM during
-// drain calls testForceExit(1). Skipped pending the Phase 7.1
-// SDK-factory seam (and a testForceExit-override harness wired with it).
+// TestServerCmd_SecondSignalForceExit: first SIGTERM starts drain; second
+// SIGTERM during drain escalates via testForceExit(1). Sequence:
+// worker_started → signal_received → drain_started → drain_forced.
 func TestServerCmd_SecondSignalForceExit(t *testing.T) {
-	t.Skip("TODO(phase-7.1): same reachability blocker — also needs testForceExit override harness wired with the seam")
+	installFakeClientFactory(t)
+
+	rec := newStageRecorder()
+	prevHook := testDrainHook
+	testDrainHook = rec.record
+	t.Cleanup(func() { testDrainHook = prevHook })
+
+	var forceExitCalls int
+	var forceExitCode int
+	var forceExitMu sync.Mutex
+	prevForceExit := testForceExit
+	testForceExit = func(code int) {
+		forceExitMu.Lock()
+		forceExitCalls++
+		forceExitCode = code
+		forceExitMu.Unlock()
+	}
+	t.Cleanup(func() { testForceExit = prevForceExit })
+
+	// Stop blocks indefinitely (until t.Cleanup releases it). The test
+	// sends a SECOND signal during drain to escalate.
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	fake := &fakeReceivingWorker{
+		onStop: func() {
+			<-release
+		},
+	}
+	prevOpts := testWorkerOptions
+	testWorkerOptions = []worker.Option{
+		worker.WithSDKFactory(func(_ client.Client, _ string, _ sdkworker.Options) sdkworker.Worker {
+			return fake
+		}),
+	}
+	t.Cleanup(func() { testWorkerOptions = prevOpts })
+
+	dir := makeServerTestDir(t)
+	cmd := newServerCommand(&config{credHandler: nopCredHandler{}})
+	// drain-timeout=10s so timeout doesn't beat the second signal.
+	done := runServerInBackground(t, cmd, []string{
+		"--rootdir=" + dir,
+		"--drain-timeout=10s",
+	})
+
+	require.True(t, rec.waitFor("worker_started", 5*time.Second))
+	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
+	require.True(t, rec.waitFor("drain_started", 5*time.Second),
+		"drain_started must fire before sending second signal")
+
+	// Second signal — escalates to forced exit. The RunE select blocks
+	// on three channels (done, sigCh, drainCtx.Done). The buffered sigCh
+	// (size 2) must hold this second send while Stop() is still blocked.
+	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
+
+	require.True(t, rec.waitFor("drain_forced", 5*time.Second),
+		"drain_forced must fire on second signal")
+
+	select {
+	case err := <-done:
+		// RunE returns nil (unreachable in production but reachable in
+		// tests because testForceExit is overridden).
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunE did not return after drain_forced")
+	}
+
+	stages := rec.snapshot()
+	assert.Equal(t, []string{
+		"worker_started",
+		"signal_received",
+		"drain_started",
+		"drain_forced",
+	}, stages, "exact stage sequence for forced exit")
+
+	forceExitMu.Lock()
+	defer forceExitMu.Unlock()
+	assert.Equal(t, 1, forceExitCalls, "testForceExit called exactly once on second signal")
+	assert.Equal(t, 1, forceExitCode, "testForceExit code must be 1 (drain interrupted)")
 }
 
 // =============================================================================
