@@ -302,14 +302,26 @@ func TestExtension_InitializeIncludesEndpoint_Regression(t *testing.T) {
 	require.Equal(t, "http.endpoint", b.Name())
 }
 
-// TestExtension_StarFileCallsHttpWebhook is the load-bearing check that
-// a `.star`-shaped invocation `http.webhook(...)` flowing through the
-// initialize-result module produces a value satisfying
-// extension.TriggerSource. This mirrors what real flow files will do.
+// TestExtension_StarFileCallsHttpWebhook is the load-bearing Task 2
+// integration check: a `.star`-shaped invocation `http.webhook(...)`
+// flowing through the PRODUCTION skytimeHTTP{}.Initialize() module
+// produces a value satisfying extension.TriggerSource. This is distinct
+// from callHTTPWebhook (which manually constructs a minimal module to
+// keep Task 1 factory-level tests independent) — here we exercise the
+// real Initialize path that the parser will use.
 func TestExtension_StarFileCallsHttpWebhook(t *testing.T) {
-	v, err := callHTTPWebhook(t, `http.webhook(path="/star", method="POST")`)
+	mod, err := skytimeHTTP{}.Initialize(&starlark.Thread{Name: "init"}, nil)
 	require.NoError(t, err)
 
+	predeclared := starlark.StringDict{"http": mod}
+
+	thread := &starlark.Thread{Name: "exec"}
+	src := `result = http.webhook(path="/star", method="POST")` + "\n"
+	globals, err := starlark.ExecFile(thread, "star_file_call.star", src, predeclared)
+	require.NoError(t, err, "the production Initialize() module must expose .webhook reachable from a .star source")
+
+	v := globals["result"]
+	require.NotNil(t, v)
 	_, ok := v.(extension.TriggerSource)
 	require.True(t, ok, "http.webhook(...) result must satisfy extension.TriggerSource")
 }

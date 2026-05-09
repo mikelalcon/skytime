@@ -79,11 +79,16 @@ func (skytimeHTTP) Name() string { return "http" }
 // parser's globals dispatcher (pkg/parser/globals.go) gates on
 // starlark.HasAttrs and stores the return value under Name(); .star
 // authors then write `http.endpoint(...)` (attribute lookup → call).
+//
+// Phase 7.1 added `webhook` as a second module attribute (D-7.1-01) —
+// the inbound counterpart of the outbound `endpoint`. One coherent
+// `http.*` namespace, both directions of the HTTP boundary.
 func (skytimeHTTP) Initialize(thread *starlark.Thread, kwargs []starlark.Tuple) (starlark.Value, error) {
 	return &starlarkstruct.Module{
 		Name: "http",
 		Members: starlark.StringDict{
 			"endpoint": starlark.NewBuiltin("http.endpoint", endpointFactory),
+			"webhook":  starlark.NewBuiltin("http.webhook", webhookFactory),
 		},
 	}, nil
 }
