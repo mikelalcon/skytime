@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.1-06-PLAN.md (HTTP listener bind + receiver.Mount + listener-first drain — 7-stage testDrainHook + banner mount paths)
-last_updated: "2026-05-09T13:25:22.857Z"
+stopped_at: Completed 07.1-08-PLAN.md (walkthrough docs + firewall extensions + cross-package HMAC firewall — Phase 7.1 closed)
+last_updated: "2026-05-09T13:35:56.462Z"
 last_activity: 2026-05-09
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 15
-  completed_plans: 14
+  completed_plans: 15
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.1 (http-webhook-receiver-github-source) — EXECUTING
-Plan: 7 of 9
+Plan: 8 of 9
 Status: Ready to execute
 Last activity: 2026-05-09
 
@@ -122,6 +122,7 @@ Progress: [          ] 0%
 | Phase 07.1 P04 | 7min | 2 tasks | 6 files |
 | Phase 07.1 P04b | 25min | 1 tasks | 9 files |
 | Phase 07.1 P06 | 7min | 1 tasks | 2 files |
+| Phase 07.1 P08 | 5min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -366,6 +367,8 @@ Recent decisions affecting current work:
 - [Phase 07.1]: Plan 06: drainCtx is shared between srv.Shutdown AND the worker.Stop goroutine — single context.WithTimeout(--drain-timeout) caps total drain budget across both stages; if listener.Shutdown consumes 80% of the budget, worker.Stop has 20% before drain_timeout fires (D-7.1-11 edge case)
 - [Phase 07.1]: Plan 06: 9-stage testDrainHook seam (Plan 05's 6 + 3 new — listener_started, listener_shutdown_started, listener_shutdown_complete); Plan 05's 3 unskipped drain tests updated to expect the full 7-stage sequence per drain path; --addr=127.0.0.1:0 used in all 4 listener-binding tests to avoid port collisions on shared CI runners
 - [Phase 07.1]: Plan 06: printStartupBanner type-asserts receiver.HTTPMounter per-trigger and emits 'mount' key only for HTTP-shaped sources; cron (Phase 7.2) and queue (v1.44+) sources omit the key — no nil/empty pollution. Mount string format is '<METHOD> <path>' (e.g. 'POST /webhook/github').
+- [Phase 07.1]: Plan 08 — anti-claim assertion in heading-presence gate (bytes.Contains inverted to fail-on-presence) catches doc drift where the dropped '30 seconds later' claim might creep back
+- [Phase 07.1]: Plan 08 — cross-package AST firewall (TestReceiverFirewall_HMACOnly) extends Plan 01's in-package source-grep gate to defense in depth across all of pkg/extension/receiver/*.go
 
 ### Pending Todos
 
@@ -396,6 +399,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-09T13:25:22.853Z
-Stopped at: Completed 07.1-06-PLAN.md (HTTP listener bind + receiver.Mount + listener-first drain — 7-stage testDrainHook + banner mount paths)
+Last session: 2026-05-09T13:35:48.890Z
+Stopped at: Completed 07.1-08-PLAN.md (walkthrough docs + firewall extensions + cross-package HMAC firewall — Phase 7.1 closed)
 Resume file: None

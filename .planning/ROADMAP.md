@@ -71,7 +71,7 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
 - [x] 07.1-05-PLAN.md — worker.WithSDKFactory Option + unskip 3 Phase 7 signal-loop tests
 - [x] 07.1-06-PLAN.md — pkg/cli/server.go listener bind + listener-first shutdown + reasonable HTTP defaults
 - [x] 07.1-07-PLAN.md — examples/http-github-webhook/webhook_demo.star crash-recovery demo flow + trigger
-- [ ] 07.1-08-PLAN.md — walkthrough docs (5min README + full docs/walkthroughs/) + firewall extension + headings gate
+- [x] 07.1-08-PLAN.md — walkthrough docs (5min README + full docs/walkthroughs/) + firewall extension + headings gate
 **UI hint**: no
 
 ### Phase 7.2: Cron triggers via Temporal Schedules
