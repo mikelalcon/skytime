@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.1-03-PLAN.md
-last_updated: "2026-05-09T12:14:14.521Z"
+stopped_at: Completed 07.1-07-PLAN.md (parallel wave 2 with Plan 04)
+last_updated: "2026-05-09T12:22:58.201Z"
 last_activity: 2026-05-09
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 15
-  completed_plans: 10
+  completed_plans: 11
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.1 (http-webhook-receiver-github-source) — EXECUTING
-Plan: 3 of 9
+Plan: 4 of 9
 Status: Ready to execute
 Last activity: 2026-05-09
 
@@ -118,6 +118,7 @@ Progress: [          ] 0%
 | Phase 07.1 P02 | 8min | 2 tasks | 4 files |
 | Phase 07.1 P05 | 9min | 2 tasks | 5 files |
 | Phase 07.1 P03 | 9min | 2 tasks | 4 files |
+| Phase 07.1 P07 | 4min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -350,6 +351,8 @@ Recent decisions affecting current work:
 - [Phase 07.1]: 07.1-05: signal.Notify hoisted before hookStage("worker_started") in pkg/cli/server.go — establishes worker_started as deterministic sync point for black-box drain tests; production behavior unchanged
 - [Phase 07.1]: Plan 03: Embedded extension.TriggerSourceSeal for seal satisfaction (Plan 02 added the carrier; Plan 03 consumed it). External packages cannot satisfy unexported method names of foreign packages — embedding is the only seam.
 - [Phase 07.1]: Plan 03: Pattern — locked-by-construction signature scheme. github.webhook does NOT expose signature_algo/signature_header kwargs (TRIG-09 + D-7.1-04). Source-grep firewall test (TestGithubWebhook_HardcodedAlgoAndHeader) reads webhook.go bytes to prove the kwargs are absent and the algo/header literals are present.
+- [Phase 07.1]: Plan 07.1-07 webhook_demo.star — locked NO-explicit-sleep shape: durability proven via cross-activity continuation (kill between activities, restart, label still appears via Temporal event history); v1 has no first-class durable sleep primitive in .star DSL.
+- [Phase 07.1]: Plan 07.1-07 — added TestWebhookDemo_BootsCleanly as a dedicated function (not a parametric expansion of TestFlows_ParseAll) so regressions surface at the precise trigger-registration assertion line.
 
 ### Pending Todos
 
@@ -380,6 +383,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-09T12:14:06.151Z
-Stopped at: Completed 07.1-03-PLAN.md
+Last session: 2026-05-09T12:22:58.197Z
+Stopped at: Completed 07.1-07-PLAN.md (parallel wave 2 with Plan 04)
 Resume file: None

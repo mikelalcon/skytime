@@ -52,7 +52,7 @@ Requirements for the v1.43.0 milestone. Each maps to a roadmap phase.
 
 ### Example Project (continuing from EX-04)
 
-- [ ] **EX-05**: The example project's README gains a "GitHub webhook trigger walkthrough" section using `gh webhook forward` for installation. Reader can trigger flows via real GitHub events without setting up tunnels or registering OAuth apps. Includes the crash-recovery demo: open page, click trigger, kill server mid-flow, restart, watch workflow complete.
+- [x] **EX-05**: The example project's README gains a "GitHub webhook trigger walkthrough" section using `gh webhook forward` for installation. Reader can trigger flows via real GitHub events without setting up tunnels or registering OAuth apps. Includes the crash-recovery demo: open page, click trigger, kill server mid-flow, restart, watch workflow complete.
 
 ### Auth Documentation
 
