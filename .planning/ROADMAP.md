@@ -64,7 +64,7 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
   5. The crash-recovery demo runs as documented: a flow triggered via webhook continues from event history after `kill -9 $SERVER_PID` + restart; verifiable by watching the dashboard or `client.DescribeWorkflowExecution`
 **Plans**: 9 plans
 - [x] 07.1-01-PLAN.md — pkg/extension/receiver foundation (signature validation, WorkflowID composer, status mapping, log line shape, HTTPMounter sub-interface)
-- [ ] 07.1-02-PLAN.md — http.webhook source factory (configurable signature scheme; sha256/sha1/sha512 allowlist)
+- [x] 07.1-02-PLAN.md — http.webhook source factory (configurable signature scheme; sha256/sha1/sha512 allowlist)
 - [ ] 07.1-03-PLAN.md — github.webhook source factory (HMAC-SHA256 + X-Hub-Signature-256 hardcoded per TRIG-09; ShouldDispatch event filter)
 - [ ] 07.1-04-PLAN.md — receiver Mount + skeleton + Deps validation + http.webhook accessor methods
 - [ ] 07.1-04b-PLAN.md — receiver per-request handler pipeline (body limit, JIT credential, signature, lambda eval, ExecuteWorkflow with REJECT_DUPLICATE; .Reveal() leak gate)

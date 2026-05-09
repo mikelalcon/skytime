@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.1-01-PLAN.md (parallel agent)
-last_updated: "2026-05-09T12:08:38.035Z"
+stopped_at: Completed 07.1-02-PLAN.md (Wave 1, parallel)
+last_updated: "2026-05-09T12:12:29.068Z"
 last_activity: 2026-05-09 -- Phase 07.1 execution started
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 15
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -115,6 +115,7 @@ Progress: [          ] 0%
 | Phase 07 P05 | 8min | 7 tasks | 10 files |
 | Phase 07 P06 | 14min | 9 tasks | 22 files |
 | Phase 07.1 P01 | 5min | 3 tasks | 10 files |
+| Phase 07.1 P02 | 8min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -341,6 +342,8 @@ Recent decisions affecting current work:
 - [Phase 07.1]: Plan 07.1-01: errorClass taxonomy locked to exactly 7 strings (ok, signature_mismatch, bad_request, lambda_panic, dispatch_failed, event_filtered, duplicate_skipped) per D-7.1-15 — TestStatusMapping_LockedConstants pins values; additions require CONTEXT.md amendment
 - [Phase 07.1]: Plan 07.1-01: 415 unsupported_media_type writer ships in Plan 01 (not Plan 04) — D-7.1 'Body decoder negotiation' discretion locked at planning time to 415 over partial fall-through, so all 8 writers (200 success/duplicate/event-filtered, 400, 401, 415, 500, 502) ship together as one foundation primitive
 - [Phase 07.1]: Plan 07.1-01: TDD RED+GREEN squashed into one commit for unexported primitives — white-box test files referencing unexported validateHMAC cannot compile-and-pass independently of the implementation file, so test+impl ship as a single GREEN commit (TDD intent preserved in execution order; artifact is one commit per task)
+- [Phase 07.1]: Plan 7.1-02: TriggerSourceSeal embeddable carrier (Rule 2 deviation) — pre-existing seal/sub-package contradiction blocked first concrete TriggerSource. Embedding pattern preserves seal intent (must import pkg/extension), unblocks Plan 03 + downstream extensions
+- [Phase 07.1]: Plan 7.1-02: factory unmarshaler receives inner config bytes only, not full envelope — extensionTriggerUnmarshaler already peels {kind, config} before dispatching. Fixed plan pseudocode
 
 ### Pending Todos
 
@@ -371,6 +374,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-09T12:08:38.029Z
-Stopped at: Completed 07.1-01-PLAN.md (parallel agent)
+Last session: 2026-05-09T12:12:29.063Z
+Stopped at: Completed 07.1-02-PLAN.md (Wave 1, parallel)
 Resume file: None
