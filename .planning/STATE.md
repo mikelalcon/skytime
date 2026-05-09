@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.1-04-PLAN.md
-last_updated: "2026-05-09T12:27:07.264Z"
+stopped_at: Completed 07.1-04b-PLAN.md (per-request handler pipeline + 13 tests + 7 fixtures)
+last_updated: "2026-05-09T13:10:46.955Z"
 last_activity: 2026-05-09
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 15
-  completed_plans: 12
+  completed_plans: 13
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.1 (http-webhook-receiver-github-source) — EXECUTING
-Plan: 5 of 9
+Plan: 6 of 9
 Status: Ready to execute
 Last activity: 2026-05-09
 
@@ -120,6 +120,7 @@ Progress: [          ] 0%
 | Phase 07.1 P03 | 9min | 2 tasks | 4 files |
 | Phase 07.1 P07 | 4min | 2 tasks | 3 files |
 | Phase 07.1 P04 | 7min | 2 tasks | 6 files |
+| Phase 07.1 P04b | 25min | 1 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -356,6 +357,10 @@ Recent decisions affecting current work:
 - [Phase 07.1]: Plan 07.1-07 — added TestWebhookDemo_BootsCleanly as a dedicated function (not a parametric expansion of TestFlows_ParseAll) so regressions surface at the precise trigger-registration assertion line.
 - [Phase 07.1]: Path-level method dispatch via dispatchByMethod helper coalesces (kind, path, method) groups by path because stdlib http.ServeMux is path-only and panics on duplicate registration; method-dispatch happens inside one HandleFunc per path with 405 fallback (D-7.1-09)
 - [Phase 07.1]: Extended pkg/activity/firewall_test.go allowedPkgs slice with 'extension/receiver' (Rule 3 deviation) — receiver legitimately needs go.temporal.io/sdk/client for Deps.Client; mirrors prior phase precedent (cli in Phase 4, testing in Phase 5); directory-prefix match keeps pkg/extension and pkg/extension/builtin/* firewalled
+- [Phase 07.1]: Plan 04b: Custom buildReqStruct + callLambda over bridge.CallLambda — bridge recursive ToStarlarkStruct broke index access on hyphenated header keys (req.headers['X-...']). buildReqStruct produces Struct with payload (recursive struct, dot access) + headers (frozen *starlark.Dict, index access).
+- [Phase 07.1]: Plan 04b: 413 body-too-large written inline rather than amending Plan 01's locked status writer surface; same JSON envelope shape as writeBadRequestResponse.
+- [Phase 07.1]: Plan 04b: credentialBytes covers Bearer + Basic + APIKey at the type-switch boundary (only Bearer needed for HMAC today) — centralizes the .Reveal() leak inventory in ONE function for grep audit.
+- [Phase 07.1]: Plan 04b: Single squashed commit (479205f) instead of multi-step atomic landing — predecessor agent's stream timed out mid-edit; resuming from disk and squashing was simpler than slicing partial work into RED/GREEN sub-commits retroactively.
 
 ### Pending Todos
 
@@ -386,6 +391,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-09T12:27:07.259Z
-Stopped at: Completed 07.1-04-PLAN.md
+Last session: 2026-05-09T13:10:46.951Z
+Stopped at: Completed 07.1-04b-PLAN.md (per-request handler pipeline + 13 tests + 7 fixtures)
 Resume file: None
