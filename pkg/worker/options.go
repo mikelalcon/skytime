@@ -8,6 +8,9 @@ import (
 	"log/slog"
 	"time"
 
+	"go.temporal.io/sdk/client"
+	sdkworker "go.temporal.io/sdk/worker"
+
 	"github.com/mikelalcon/skytime/pkg/extension"
 )
 
@@ -179,4 +182,49 @@ func (o SelfHostedOptions) validate() error {
 		return fmt.Errorf("SelfHostedOptions: Namespace required")
 	}
 	return nil
+}
+
+// =============================================================================
+// Phase 7.1 Plan 05 — NewWorker functional-options surface (D-7.1-13)
+// =============================================================================
+
+// SDKFactory is the seam that lets tests inject a fake sdkworker.New.
+// Production uses sdkworker.New (the real SDK constructor); tests pass
+// a func that returns a fakeSDKWorker.
+//
+// Signature mirrors the actual sdkworker.New signature so production
+// callers can swap them transparently. Verified at compile time by
+// the `var _ SDKFactory = sdkworker.New` check in worker.go.
+type SDKFactory func(c client.Client, taskQueue string, opts sdkworker.Options) sdkworker.Worker
+
+// Option is a NewWorker functional-options surface (D-7.1-13). The
+// only Option in v1 is WithSDKFactory; future seams may add more
+// (e.g., a metrics-handler injector if v1.44+ telemetry needs one).
+type Option func(*workerOptions)
+
+// workerOptions is the internal state mutated by Option closures.
+// One field per Option. Distinct from the user-facing WorkerOptions
+// struct (which carries production config); workerOptions carries
+// test-only seams.
+type workerOptions struct {
+	sdkFactory SDKFactory
+}
+
+// WithSDKFactory returns an Option that overrides the SDK worker
+// constructor for ONE NewWorker call. Production callers don't pass
+// this option; the production sdkWorkerNew var (package-level) remains
+// the default.
+//
+// pkg/cli's server_test.go uses this option to inject a fake worker
+// whose Start/Stop behavior is deterministic — enabling the
+// previously-skipped DrainOnSIGTERM / DrainTimeoutExpiry /
+// SecondSignalForceExit tests to pass without subprocess plumbing
+// (D-7.1-13).
+//
+// Per-call scope: the option does NOT mutate the package-level
+// sdkWorkerNew var. A subsequent NewWorker call without the option
+// uses the original sdkWorkerNew. This isolation is what makes the
+// option safe to use in parallel test runs.
+func WithSDKFactory(f SDKFactory) Option {
+	return func(o *workerOptions) { o.sdkFactory = f }
 }

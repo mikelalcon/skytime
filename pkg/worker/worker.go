@@ -20,6 +20,11 @@ import (
 // worker.
 var sdkWorkerNew = sdkworker.New
 
+// Compile-time assertion that the package-level sdkWorkerNew matches
+// the SDKFactory signature exactly. Catches future SDK changes that
+// would silently break the WithSDKFactory seam.
+var _ SDKFactory = sdkWorkerNew
+
 // Worker is the Skytime worker. Wraps the SDK worker with registry boot,
 // sync.Once-protected Stop, and a Start that returns immediately (D3-18).
 type Worker struct {
@@ -37,9 +42,19 @@ type Worker struct {
 //
 // WORK-01: registers exactly one workflow ("SkytimeWorkflow") + one activity
 // ("ExecuteBatch").
-func NewWorker(c client.Client, opts WorkerOptions) (*Worker, error) {
+//
+// The variadic ...Option tail is for test seams (D-7.1-13). Production
+// callers pass zero options and inherit the package-level sdkWorkerNew.
+func NewWorker(c client.Client, opts WorkerOptions, options ...Option) (*Worker, error) {
 	if err := opts.applyDefaults(); err != nil {
 		return nil, err
+	}
+
+	// Apply functional options. Currently only WithSDKFactory consumes
+	// optState; future options follow the same pattern.
+	var optState workerOptions
+	for _, opt := range options {
+		opt(&optState)
 	}
 
 	flowReg, trigReg, err := bootRegistry(opts.RootDir, opts.Extensions)
@@ -81,7 +96,13 @@ func NewWorker(c client.Client, opts WorkerOptions) (*Worker, error) {
 	// it is informational only — opts.Logger is not consumed here.
 	_ = sdklog.NewStructuredLogger // import retained for future Logger-on-worker hook
 	_ = opts.Logger
-	sdkW := sdkWorkerNew(c, opts.TaskQueue, sdkOpts)
+
+	// Pick the factory: test override (per-call) > package-level default.
+	factory := SDKFactory(sdkWorkerNew)
+	if optState.sdkFactory != nil {
+		factory = optState.sdkFactory
+	}
+	sdkW := factory(c, opts.TaskQueue, sdkOpts)
 
 	// Register the single interpreter workflow.
 	wf := interpreter.NewWorkflow(flowReg)

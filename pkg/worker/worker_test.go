@@ -3,6 +3,7 @@ package worker
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -381,4 +382,103 @@ func TestNewWorkerForTest(t *testing.T) {
 	require.NotNil(t, w)
 	assert.Equal(t, []string{"foo"}, w.FlowNames())
 	assert.Empty(t, w.Triggers().All())
+}
+
+// =============================================================================
+// Phase 7.1 Plan 05 — WithSDKFactory functional option
+// =============================================================================
+
+// TestNewWorker_WithSDKFactoryThreadsThrough: WithSDKFactory injects a fake
+// SDK worker constructor for ONE NewWorker call. The captured (client,
+// taskQueue, sdkOpts) tuple matches the production sdkWorkerNew(...)
+// invocation that would have happened, and the returned *Worker wraps the
+// fake worker.
+func TestNewWorker_WithSDKFactoryThreadsThrough(t *testing.T) {
+	// Do NOT use withFakeSDKWorker here — we want the package-level
+	// sdkWorkerNew to remain UNTOUCHED. The Option scope is per-call only.
+	var capturedClient client.Client
+	var capturedTaskQueue string
+	var capturedOpts sdkworker.Options
+	fake := &fakeSDKWorker{}
+	factory := func(c client.Client, taskQueue string, opts sdkworker.Options) sdkworker.Worker {
+		capturedClient = c
+		capturedTaskQueue = taskQueue
+		capturedOpts = opts
+		return fake
+	}
+
+	dir := makeFlowsDir(t)
+	c := &fakeClient{}
+	w, err := NewWorker(c, WorkerOptions{
+		RootDir:           dir,
+		TaskQueue:         "wsk-tq",
+		BuildID:           "wsk-build",
+		CredentialHandler: noopHandler{},
+		WorkerStopTimeout: 7 * time.Second,
+	}, WithSDKFactory(factory))
+	require.NoError(t, err)
+	require.NotNil(t, w)
+
+	assert.Equal(t, c, capturedClient, "client passed verbatim to factory")
+	assert.Equal(t, "wsk-tq", capturedTaskQueue, "task queue passed verbatim to factory")
+	assert.Equal(t, "wsk-build", capturedOpts.BuildID)
+	assert.Equal(t, 7*time.Second, capturedOpts.WorkerStopTimeout)
+
+	// Fake worker is the underlying SDK worker; registration calls landed
+	// on it (one workflow + one activity).
+	assert.Equal(t, []string{"SkytimeWorkflow"}, fake.registeredWorkflows)
+	assert.Equal(t, []string{"ExecuteBatch"}, fake.registeredActivities)
+}
+
+// TestNewWorker_NoOptionUsesDefault: WITHOUT WithSDKFactory, NewWorker
+// falls back to the package-level sdkWorkerNew var. Indirectly verified
+// by all existing tests; the explicit assertion here pins the contract.
+func TestNewWorker_NoOptionUsesDefault(t *testing.T) {
+	fake, _, _, cleanup := withFakeSDKWorker(t)
+	defer cleanup()
+
+	dir := makeFlowsDir(t)
+	w, err := NewWorker(&fakeClient{}, WorkerOptions{
+		RootDir:           dir,
+		CredentialHandler: noopHandler{},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, w)
+
+	// Default sdkWorkerNew (overridden via withFakeSDKWorker) was used —
+	// the fake captured the registration calls.
+	assert.Equal(t, []string{"SkytimeWorkflow"}, fake.registeredWorkflows)
+	assert.Equal(t, []string{"ExecuteBatch"}, fake.registeredActivities)
+}
+
+// TestNewWorker_OptionDoesNotAffectGlobalSdkWorkerNew: a NewWorker call
+// WITH WithSDKFactory does NOT mutate the package-level sdkWorkerNew var.
+// A subsequent NewWorker call WITHOUT the option uses the original
+// sdkWorkerNew. This isolation is what makes the option safe to use in
+// parallel test runs.
+func TestNewWorker_OptionDoesNotAffectGlobalSdkWorkerNew(t *testing.T) {
+	beforePtr := reflect.ValueOf(sdkWorkerNew).Pointer()
+
+	dir := makeFlowsDir(t)
+
+	// First call WITH the option.
+	fakeA := &fakeSDKWorker{}
+	factory := func(_ client.Client, _ string, _ sdkworker.Options) sdkworker.Worker {
+		return fakeA
+	}
+	_, err := NewWorker(&fakeClient{}, WorkerOptions{
+		RootDir:           dir,
+		CredentialHandler: noopHandler{},
+	}, WithSDKFactory(factory))
+	require.NoError(t, err)
+
+	afterPtr := reflect.ValueOf(sdkWorkerNew).Pointer()
+	assert.Equal(t, beforePtr, afterPtr,
+		"package-level sdkWorkerNew var must NOT be mutated by WithSDKFactory option (per-call scope)")
+
+	// Second call WITHOUT the option uses the original sdkWorkerNew. We
+	// can't directly observe the call without overriding sdkWorkerNew,
+	// but the pointer-equality assertion above is the load-bearing
+	// guarantee — a subsequent NewWorker call would reach the same
+	// function pointer.
 }
