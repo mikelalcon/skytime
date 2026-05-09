@@ -24,6 +24,104 @@ The four authenticated flows need a TOML credfile at
 `~/.skytime-credentials` (a fine-grained GitHub PAT and a webhook URL
 from [webhook.site](https://webhook.site)).
 
+## GitHub webhook walkthrough (5 minutes)
+
+Open an issue → comment "received, processing..." appears → kill the
+worker with Ctrl-C → restart → label "processed" appears. The label
+step lives on Temporal's server as durable workflow state, so killing
+the worker between activities does not lose progress.
+
+For the long-form walkthrough (prerequisites, secret setup, full
+step-by-step, troubleshooting, and how to read the structured log
+line), see [`docs/walkthroughs/github-webhook.md`](../../docs/walkthroughs/github-webhook.md).
+
+### Prerequisites
+
+The walkthrough drives a real GitHub webhook through `gh webhook
+forward` against your local `skytime server` — no tunnels and no
+OAuth app registration.
+
+```bash
+# Required: install the gh-webhook extension. It is NOT built into gh.
+gh extension install cli/gh-webhook
+gh webhook forward --help   # confirm the extension is wired
+
+gh auth status              # must succeed (gh is authenticated)
+brew install temporal       # macOS — see https://docs.temporal.io/cli for other platforms
+```
+
+You also need a test GitHub repository where you have admin access
+(needed to receive webhook deliveries via `gh webhook forward`).
+
+### Setup
+
+Generate a random webhook signing secret and store it in your
+credfile. The SAME secret is passed to both `gh webhook forward
+--secret=...` and `~/.skytime-credentials` so the receiver's HMAC
+validation matches GitHub's signature.
+
+```bash
+# Generate the secret and export for this shell
+export GITHUB_WEBHOOK_SECRET=$(openssl rand -hex 32)
+
+# Append to your credfile (the example file already contains the schema)
+cat >> ~/.skytime-credentials <<EOF
+
+[credentials.github_webhook_secret]
+type = "bearer"
+token = "$GITHUB_WEBHOOK_SECRET"
+EOF
+chmod 600 ~/.skytime-credentials
+```
+
+### Run
+
+Open four terminals — one for each long-running process plus one for
+the `gh issue create` trigger.
+
+```bash
+# Terminal 1 — local Temporal dev cluster
+skytime dev-temporal
+```
+
+```bash
+# Terminal 2 — the skytime server hosting webhook_demo.star
+go run ./examples/http-github-webhook/cmd/extbin server --rootdir=examples/http-github-webhook/ --task-queue=demo --address=localhost:7233 --addr=:8080
+```
+
+```bash
+# Terminal 3 — gh forwards real webhook deliveries to your local server
+gh webhook forward --repo=$USER/test-repo --events=issues --url=http://localhost:8080/webhook/github --secret=$GITHUB_WEBHOOK_SECRET
+```
+
+```bash
+# Terminal 4 — trigger the demo
+gh issue create --repo=$USER/test-repo --title "test webhook" --body "hello"
+```
+
+A "received, processing..." comment appears on the issue within
+seconds. To see the durability demo, kill the worker (Ctrl-C in
+terminal 2) BEFORE running step 8 below, then restart.
+
+### Crash-recovery demo
+
+1. After the "received, processing..." comment lands, kill the worker
+   with Ctrl-C in terminal 2.
+2. Restart it with the same command.
+3. Watch the "processed" label appear shortly after restart — Temporal
+   continued the workflow from event history.
+
+The headline durability story: workflow progress lives on Temporal's
+server (event history), not in the worker process. Killing and
+restarting the worker does not lose progress; the second activity
+fires from event history continuation as soon as the worker reattaches.
+
+### Where to next
+
+- Full walkthrough — [`docs/walkthroughs/github-webhook.md`](../../docs/walkthroughs/github-webhook.md)
+- The demo flow source — [`./webhook_demo.star`](./webhook_demo.star)
+- HTTP webhook source factory docs — [`../../docs/for-flow-authors/`](../../docs/for-flow-authors/)
+
 ## Quick start
 
 After `git clone`, four commands take you from a fresh checkout to a

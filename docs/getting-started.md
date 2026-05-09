@@ -179,6 +179,16 @@ marker, and `skytime run` exits non-zero (1).
 Stop the dev server (Ctrl-C in terminal 1) when you're done
 experimenting.
 
+## Triggering flows from real events
+
+The basic walkthrough above invoked your flow via `skytime run`. To
+trigger flows from external events (GitHub webhooks, cron schedules,
+etc.), see the long-form walkthrough at
+[`docs/walkthroughs/github-webhook.md`](walkthroughs/github-webhook.md).
+It demonstrates Temporal's durability story end-to-end: kill the
+worker between activities, restart, watch the workflow continue from
+event history.
+
 ## What Just Happened?
 
 Four DSL features carried that one flow. Here's what each does and
