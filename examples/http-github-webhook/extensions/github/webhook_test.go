@@ -213,8 +213,9 @@ func TestGithubWebhook_RegisterFactoryRoundTrip(t *testing.T) {
 
 	// Use dag.Trigger.UnmarshalJSON via a synthetic envelope: the
 	// extension package's init() installs the dispatcher into dag,
-	// which keys on the {kind, config} envelope.
-	wrapped := []byte(`{"flow":"f","position":"f.star:1:1","source":` + string(marshaled) + `,"map_lambda":"l1","idem_lambda":"l2","credential_id":"c"}`)
+	// which keys on the {kind, config} envelope. The outer envelope
+	// uses dag.triggerJSON's discriminator "kind":"Trigger".
+	wrapped := []byte(`{"kind":"Trigger","flow_name":"f","source":` + string(marshaled) + `,"map_lambda_id":"l1","idempotency_lambda_id":"l2","credential_id":"c"}`)
 	var trig dag.Trigger
 	require.NoError(t, trig.UnmarshalJSON(wrapped))
 

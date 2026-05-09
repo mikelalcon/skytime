@@ -58,14 +58,22 @@ func New() extension.Extension { return skytimeGitHub{} }
 // not the local Starlark variable from `gh = github.client(...)`).
 func (skytimeGitHub) Name() string { return "github" }
 
-// Initialize returns the parse-time `github` namespace value with one
-// factory builtin: client(credential=...). Called ONCE per parser at
-// extension Register time per the Extension contract.
+// Initialize returns the parse-time `github` namespace value with two
+// factory builtins:
+//   - client(credential=...) — outbound REST client (Phase 6).
+//   - webhook(events=..., secret_credential=...) — inbound webhook source
+//     factory (Phase 7.1, D-7.1-02). Signature scheme is hardcoded
+//     HMAC-SHA256 + X-Hub-Signature-256 per TRIG-09 + D-7.1-04 — see
+//     webhook.go for the locked contract.
+//
+// Called ONCE per parser at extension Register time per the Extension
+// contract.
 func (skytimeGitHub) Initialize(thread *starlark.Thread, kwargs []starlark.Tuple) (starlark.Value, error) {
 	return &starlarkstruct.Module{
 		Name: "github",
 		Members: starlark.StringDict{
-			"client": starlark.NewBuiltin("github.client", clientFactory),
+			"client":  starlark.NewBuiltin("github.client", clientFactory),
+			"webhook": starlark.NewBuiltin("github.webhook", webhookFactory),
 		},
 	}, nil
 }
