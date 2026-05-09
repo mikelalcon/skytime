@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"sort"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/mikelalcon/skytime/pkg/extension/receiver"
 	"github.com/mikelalcon/skytime/pkg/worker"
 )
 
@@ -20,14 +23,15 @@ import (
 // 07-RESEARCH.md). Production: nil. Tests assign to observe drain
 // progression without subprocess plumbing.
 //
-// Stage names (LOCKED — tests pin against these strings): worker_started,
-// signal_received, drain_started, drain_completed, drain_timeout,
-// drain_forced.
+// Stage names (LOCKED — tests pin against these strings):
+// worker_started, listener_started, signal_received,
+// listener_shutdown_started, listener_shutdown_complete, drain_started,
+// drain_completed, drain_timeout, drain_forced.
 //
-// Phase 7.1 will reuse the same hook surface once the worker.WithSDKFactory
-// Option lands, allowing the currently-skipped TestServerCmd_DrainOnSIGTERM
-// / TestServerCmd_DrainTimeoutExpiry / TestServerCmd_SecondSignalForceExit
-// tests to drop their t.Skip and exercise the full signal loop.
+// Phase 7 Plan 05 locked the original 6: worker_started, signal_received,
+// drain_started, drain_completed, drain_timeout, drain_forced. Phase 7.1
+// Plan 06 adds 3 more for the HTTP listener lifecycle: listener_started,
+// listener_shutdown_started, listener_shutdown_complete.
 var testDrainHook func(stage string)
 
 // testForceExit is the package-private test seam for the second-signal
@@ -135,12 +139,9 @@ func newServerCommand(cfg *config) *cobra.Command {
 			// 6. Sorted startup banner BEFORE Start so operators see
 			//    what's about to come online. Three slog records:
 			//    "starting server", "registered flows", "registered
-			//    triggers".
+			//    triggers". Trigger entries now include mount paths
+			//    for HTTP-shaped sources (D-7.1 §Reusable Assets).
 			printStartupBanner(logger, w, rootdir, taskQueue, addr)
-			if cmd.Flags().Changed("addr") {
-				logger.Warn("note: --addr has no effect until Phase 7.1 ships the HTTP receiver",
-					"addr", addr)
-			}
 
 			// 7. Two-signal escalation via signal.Notify (NOT
 			//    NotifyContext per § Pitfall 5 — NotifyContext is
@@ -154,17 +155,82 @@ func newServerCommand(cfg *config) *cobra.Command {
 			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 			defer signal.Stop(sigCh)
 
-			// 8. Start (non-blocking per D3-18).
+			// 8. D-7.1-10 boot order: worker first (poll task queue),
+			//    THEN HTTP listener. K8s readinessProbe = TCP connect
+			//    to --addr is honest only if the listener binding
+			//    implies a polling worker.
 			if err := w.Start(); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "worker start: %s\n", err.Error())
 				return errSilent
 			}
 			hookStage("worker_started")
+
+			// 9. Mount HTTP receiver. receiver.Mount (Plan 04) walks
+			//    worker.Triggers().All(), groups by (kind, path,
+			//    method), and registers ONE handler per path that
+			//    method-dispatches internally. Plan 04b's per-request
+			//    pipeline is fully wired inside makeHandler.
+			mux := http.NewServeMux()
+			receiver.Mount(mux, w, receiver.Deps{
+				Client:            c,
+				CredentialHandler: cfg.credHandler,
+				TaskQueue:         taskQueue,
+				Logger:            logger,
+			})
+
+			// 10. Pitfall 9: pre-bind the listener synchronously so
+			//     "address already in use" surfaces inline (BEFORE the
+			//     listener goroutine swallows it). Tests that race two
+			//     processes on the same port get a deterministic error
+			//     here, not a delayed log line from a background
+			//     goroutine.
+			ln, err := net.Listen("tcp", addr)
+			if err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "listener bind %s: %s\n", addr, err.Error())
+				return errSilent
+			}
+
+			// 11. D-7.1-12 HTTP server defaults. Body-size limit (25MB)
+			//     is enforced per-handler via http.MaxBytesReader inside
+			//     receiver.makeHandler (Plan 04b), NOT at the server
+			//     level — server-level body caps would conflict with
+			//     the per-source GitHub 25MB ceiling.
+			srv := &http.Server{
+				Handler:           mux,
+				ReadHeaderTimeout: 10 * time.Second,
+				ReadTimeout:       30 * time.Second,
+				WriteTimeout:      30 * time.Second,
+				IdleTimeout:       60 * time.Second,
+				MaxHeaderBytes:    64 * 1024,
+			}
+			go func() {
+				if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+					logger.Error("listener exited unexpectedly", "err", err)
+				}
+			}()
+			hookStage("listener_started")
+			logger.Info("HTTP listener bound", "addr", addr)
 			logger.Info("worker started; SIGTERM/SIGINT to drain", "drain-timeout", drainTimeout)
 
 			<-sigCh
 			hookStage("signal_received")
 			logger.Info("server draining; second SIGINT/SIGTERM forces immediate exit")
+
+			drainCtx, cancel := context.WithTimeout(context.Background(), drainTimeout)
+			defer cancel()
+
+			// 12. D-7.1-11 listener-first shutdown. http.Server.Shutdown
+			//     refuses new requests immediately and lets in-flight
+			//     HTTP requests finish (which means in-flight
+			//     ExecuteWorkflow dispatch calls finish — the workflow
+			//     itself is now durable on the Temporal server). Shared
+			//     drainCtx caps total drain budget across listener +
+			//     worker stages.
+			hookStage("listener_shutdown_started")
+			if err := srv.Shutdown(drainCtx); err != nil {
+				logger.Warn("listener shutdown returned error", "err", err)
+			}
+			hookStage("listener_shutdown_complete")
 
 			done := make(chan struct{})
 			var stopOnce sync.Once
@@ -175,9 +241,6 @@ func newServerCommand(cfg *config) *cobra.Command {
 					close(done)
 				})
 			}()
-
-			drainCtx, cancel := context.WithTimeout(context.Background(), drainTimeout)
-			defer cancel()
 
 			select {
 			case <-done:
@@ -200,7 +263,7 @@ func newServerCommand(cfg *config) *cobra.Command {
 
 	cmd.Flags().StringVar(&rootdir, "rootdir", "", "directory containing .star files (required)")
 	cmd.Flags().StringVar(&taskQueue, "task-queue", "skytime", "Temporal task queue")
-	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "HTTP listener address (Phase 7.1+; ignored in Phase 7)")
+	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "HTTP listener address for webhook deliveries (e.g. :8080)")
 	cmd.Flags().StringVar(&credfilePath, "credfile", "", "credential file path (Phase 7.4+; rejected when binary has no credential handler)")
 	cmd.Flags().DurationVar(&drainTimeout, "drain-timeout", defaultDrainTimeout,
 		"max time to wait for in-flight workflows to complete on SIGTERM/SIGINT (1s..1h)")
@@ -216,9 +279,11 @@ func newServerCommand(cfg *config) *cobra.Command {
 //	"registered flows"       (count, flows []string sorted)
 //	"registered triggers"    (count, triggers []map[string]string)
 //
-// Trigger entries are shaped {source: <kind>, flow: <flow-name>}; sort
-// order is supplied by w.Triggers().All() which Plan 04's Freeze sorts
-// by (Source.Kind, FlowName, Pos).
+// Trigger entries are shaped {source: <kind>, flow: <flow-name>, mount:
+// "<METHOD> <path>"} for HTTP-shaped sources (D-7.1 §Reusable Assets);
+// non-HTTP sources (cron in 7.2, queue in v1.44+) omit the "mount" key.
+// Sort order is supplied by w.Triggers().All() which Plan 04's Freeze
+// sorts by (Source.Kind, FlowName, Pos).
 func printStartupBanner(logger *slog.Logger, w *worker.Worker, rootdir, taskQueue, addr string) {
 	logger.Info("starting server",
 		"rootdir", rootdir,
@@ -234,10 +299,19 @@ func printStartupBanner(logger *slog.Logger, w *worker.Worker, rootdir, taskQueu
 	trigs := w.Triggers().All() // already sorted by Plan 04's Freeze.
 	triggerLines := make([]map[string]string, len(trigs))
 	for i, t := range trigs {
-		triggerLines[i] = map[string]string{
+		entry := map[string]string{
 			"source": t.Source.Kind(),
 			"flow":   t.FlowName,
 		}
+		// D-7.1 §Reusable Assets: extend trigger lines with mount
+		// path for HTTP-shaped sources. Cron sources (Phase 7.2)
+		// and queue sources (v1.44+) won't satisfy receiver.HTTPMounter
+		// and their entries omit the "mount" key.
+		if mounter, ok := t.Source.(receiver.HTTPMounter); ok {
+			path, method := mounter.HTTPMount()
+			entry["mount"] = method + " " + path
+		}
+		triggerLines[i] = entry
 	}
 	logger.Info("registered triggers", "count", len(trigs), "triggers", triggerLines)
 }

@@ -27,6 +27,7 @@ import (
 
 	"github.com/mikelalcon/skytime/pkg/dag"
 	"github.com/mikelalcon/skytime/pkg/extension"
+	skyhttp "github.com/mikelalcon/skytime/pkg/extension/builtin/http"
 	"github.com/mikelalcon/skytime/pkg/interpreter"
 	"github.com/mikelalcon/skytime/pkg/worker"
 )
@@ -318,7 +319,11 @@ func (nopCredHandler) Resolve(_ context.Context, _ string) (extension.Credential
 
 // TestServerCmd_DrainOnSIGTERM: first SIGTERM triggers drain; the fake
 // worker.Stop returns immediately so drain_completed fires. RunE returns
-// nil and testForceExit is NOT called.
+// nil and testForceExit is NOT called. With Phase 7.1 Plan 06 the HTTP
+// listener also binds + drains, so the recorded sequence is now 7 stages
+// (worker_started → listener_started → signal_received →
+// listener_shutdown_started → listener_shutdown_complete → drain_started
+// → drain_completed).
 func TestServerCmd_DrainOnSIGTERM(t *testing.T) {
 	installFakeClientFactory(t)
 
@@ -350,12 +355,14 @@ func TestServerCmd_DrainOnSIGTERM(t *testing.T) {
 	cmd := newServerCommand(&config{credHandler: nopCredHandler{}})
 	done := runServerInBackground(t, cmd, []string{
 		"--rootdir=" + dir,
+		"--addr=127.0.0.1:0",
 		"--drain-timeout=2s",
 	})
 
-	// Wait for the worker_started stage (signal handler installed).
-	require.True(t, rec.waitFor("worker_started", 5*time.Second),
-		"worker_started must be recorded before sending SIGTERM")
+	// Wait for the listener_started stage so both the worker AND
+	// the HTTP listener are live before SIGTERM is dispatched.
+	require.True(t, rec.waitFor("listener_started", 5*time.Second),
+		"listener_started must be recorded before sending SIGTERM")
 
 	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
 
@@ -374,10 +381,13 @@ func TestServerCmd_DrainOnSIGTERM(t *testing.T) {
 	stages := rec.snapshot()
 	assert.Equal(t, []string{
 		"worker_started",
+		"listener_started",
 		"signal_received",
+		"listener_shutdown_started",
+		"listener_shutdown_complete",
 		"drain_started",
 		"drain_completed",
-	}, stages, "exact six-stage prefix for clean drain")
+	}, stages, "exact 7-stage sequence for clean drain (Plan 06 adds 3 listener stages)")
 
 	forceExitMu.Lock()
 	defer forceExitMu.Unlock()
@@ -385,8 +395,12 @@ func TestServerCmd_DrainOnSIGTERM(t *testing.T) {
 }
 
 // TestServerCmd_DrainTimeoutExpiry: --drain-timeout fires before
-// fakeWorker.Stop returns. Sequence: worker_started → signal_received
-// → drain_started → drain_timeout. RunE returns errSilent.
+// fakeWorker.Stop returns. With Plan 06's listener-first shutdown the
+// drainCtx is shared between srv.Shutdown and w.Stop; the empty mux
+// shuts down instantly, leaving the full drain budget for the worker.
+// Sequence: worker_started → listener_started → signal_received →
+// listener_shutdown_started → listener_shutdown_complete → drain_started
+// → drain_timeout. RunE returns errSilent.
 func TestServerCmd_DrainTimeoutExpiry(t *testing.T) {
 	installFakeClientFactory(t)
 
@@ -430,10 +444,11 @@ func TestServerCmd_DrainTimeoutExpiry(t *testing.T) {
 	// drain-timeout=1s so the test stays fast; Stop blocks >5s.
 	done := runServerInBackground(t, cmd, []string{
 		"--rootdir=" + dir,
+		"--addr=127.0.0.1:0",
 		"--drain-timeout=1s",
 	})
 
-	require.True(t, rec.waitFor("worker_started", 5*time.Second))
+	require.True(t, rec.waitFor("listener_started", 5*time.Second))
 	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
 	require.True(t, rec.waitFor("drain_timeout", 5*time.Second),
 		"drain_timeout must fire when Stop blocks longer than --drain-timeout")
@@ -448,10 +463,13 @@ func TestServerCmd_DrainTimeoutExpiry(t *testing.T) {
 	stages := rec.snapshot()
 	assert.Equal(t, []string{
 		"worker_started",
+		"listener_started",
 		"signal_received",
+		"listener_shutdown_started",
+		"listener_shutdown_complete",
 		"drain_started",
 		"drain_timeout",
-	}, stages, "exact stage sequence for drain timeout")
+	}, stages, "exact stage sequence for drain timeout (Plan 06 adds 3 listener stages)")
 
 	forceExitMu.Lock()
 	defer forceExitMu.Unlock()
@@ -460,7 +478,9 @@ func TestServerCmd_DrainTimeoutExpiry(t *testing.T) {
 
 // TestServerCmd_SecondSignalForceExit: first SIGTERM starts drain; second
 // SIGTERM during drain escalates via testForceExit(1). Sequence:
-// worker_started → signal_received → drain_started → drain_forced.
+// worker_started → listener_started → signal_received →
+// listener_shutdown_started → listener_shutdown_complete → drain_started
+// → drain_forced.
 func TestServerCmd_SecondSignalForceExit(t *testing.T) {
 	installFakeClientFactory(t)
 
@@ -503,10 +523,11 @@ func TestServerCmd_SecondSignalForceExit(t *testing.T) {
 	// drain-timeout=10s so timeout doesn't beat the second signal.
 	done := runServerInBackground(t, cmd, []string{
 		"--rootdir=" + dir,
+		"--addr=127.0.0.1:0",
 		"--drain-timeout=10s",
 	})
 
-	require.True(t, rec.waitFor("worker_started", 5*time.Second))
+	require.True(t, rec.waitFor("listener_started", 5*time.Second))
 	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
 	require.True(t, rec.waitFor("drain_started", 5*time.Second),
 		"drain_started must fire before sending second signal")
@@ -531,10 +552,13 @@ func TestServerCmd_SecondSignalForceExit(t *testing.T) {
 	stages := rec.snapshot()
 	assert.Equal(t, []string{
 		"worker_started",
+		"listener_started",
 		"signal_received",
+		"listener_shutdown_started",
+		"listener_shutdown_complete",
 		"drain_started",
 		"drain_forced",
-	}, stages, "exact stage sequence for forced exit")
+	}, stages, "exact stage sequence for forced exit (Plan 06 adds 3 listener stages)")
 
 	forceExitMu.Lock()
 	defer forceExitMu.Unlock()
@@ -553,14 +577,21 @@ func stringPtr(s string) *string { return &s }
 // TestServerCmd_BannerSorted exercises printStartupBanner directly
 // against a Worker built via NewWorkerForTest. Three flows are
 // registered out of order ("zebra", "alpha", "middle") and two triggers
-// likewise ("zebra-flow", "alpha-flow"). The banner must emit:
+// likewise. The banner must emit:
 //
 //	"starting server"      (rootdir, task-queue, addr)
 //	"registered flows"     ([alpha, middle, zebra])
-//	"registered triggers"  ([{source,flow=alpha}, {source,flow=zebra}])
+//	"registered triggers"  ([{source,flow=alpha,mount=POST /x},
+//	                        {source,flow=zebra,mount=POST /x}])
 //
-// Verifies SERVER-03 sorted output without booting a real Temporal
-// connection or invoking the SDK worker.
+// Plan 06 extends trigger lines with the "mount" key for HTTP-shaped
+// sources (D-7.1 §Reusable Assets). This test now uses the real
+// *httpWebhookSource (via NewHTTPWebhookSourceForTest) so the
+// type-assertion to receiver.HTTPMounter inside printStartupBanner
+// actually fires.
+//
+// Verifies SERVER-03 sorted output WITH the new mount-path extension,
+// without booting a real Temporal connection or invoking the SDK worker.
 func TestServerCmd_BannerSorted(t *testing.T) {
 	flowReg := interpreter.NewRegistry()
 	require.NoError(t, flowReg.Register("zebra", "h1", &interpreter.ParsedFlow{Flow: &dag.Flow{Name: "zebra"}}))
@@ -568,15 +599,20 @@ func TestServerCmd_BannerSorted(t *testing.T) {
 	require.NoError(t, flowReg.Register("middle", "h3", &interpreter.ParsedFlow{Flow: &dag.Flow{Name: "middle"}}))
 	flowReg.Freeze()
 
+	// Real *httpWebhookSource — kind is "http.webhook", HTTPMount()
+	// returns ("/x", "POST"). printStartupBanner type-asserts and
+	// emits "mount":"POST /x" per Plan 06.
+	httpSrc := skyhttp.NewHTTPWebhookSourceForTest("/x", "POST", "", "sha256", "X-Signature")
+
 	trigReg := interpreter.NewTriggerRegistry()
 	require.NoError(t, trigReg.Register("h1", &dag.Trigger{
 		FlowName: "zebra",
-		Source:   &extension.FakeTriggerSource{KindName: "skytime.test.webhook", ReqFields: []string{"payload"}},
+		Source:   httpSrc,
 		Pos:      syntax.MakePosition(stringPtr("flows.star"), 5, 1),
 	}))
 	require.NoError(t, trigReg.Register("h2", &dag.Trigger{
 		FlowName: "alpha",
-		Source:   &extension.FakeTriggerSource{KindName: "skytime.test.webhook", ReqFields: []string{"payload"}},
+		Source:   httpSrc,
 		Pos:      syntax.MakePosition(stringPtr("flows.star"), 11, 1),
 	}))
 	trigReg.Freeze()
@@ -613,10 +649,54 @@ func TestServerCmd_BannerSorted(t *testing.T) {
 	require.Len(t, triggers, 2)
 	first, _ := triggers[0].(map[string]any)
 	assert.Equal(t, "alpha", first["flow"])
-	assert.Equal(t, "skytime.test.webhook", first["source"])
+	assert.Equal(t, "http.webhook", first["source"])
+	assert.Equal(t, "POST /x", first["mount"], "Plan 06: trigger lines include mount path for HTTP-shaped sources")
 	second, _ := triggers[1].(map[string]any)
 	assert.Equal(t, "zebra", second["flow"])
-	assert.Equal(t, "skytime.test.webhook", second["source"])
+	assert.Equal(t, "http.webhook", second["source"])
+	assert.Equal(t, "POST /x", second["mount"], "Plan 06: trigger lines include mount path for HTTP-shaped sources")
+}
+
+// TestServerCmd_BannerSorted_NonHTTPSourceOmitsMount: cron sources (Phase
+// 7.2) and queue sources (v1.44+) won't satisfy receiver.HTTPMounter; the
+// banner must omit the "mount" key for those entries (no nil/empty value
+// pollution).
+func TestServerCmd_BannerSorted_NonHTTPSourceOmitsMount(t *testing.T) {
+	flowReg := interpreter.NewRegistry()
+	require.NoError(t, flowReg.Register("flow1", "h1", &interpreter.ParsedFlow{Flow: &dag.Flow{Name: "flow1"}}))
+	flowReg.Freeze()
+
+	trigReg := interpreter.NewTriggerRegistry()
+	// FakeTriggerSource does NOT implement receiver.HTTPMounter (it has
+	// no HTTPMount method). The banner must skip the "mount" key for
+	// this entry.
+	require.NoError(t, trigReg.Register("h1", &dag.Trigger{
+		FlowName: "flow1",
+		Source:   &extension.FakeTriggerSource{KindName: "skytime.test.webhook", ReqFields: []string{"payload"}},
+		Pos:      syntax.MakePosition(stringPtr("flows.star"), 5, 1),
+	}))
+	trigReg.Freeze()
+
+	w := worker.NewWorkerForTest(flowReg, trigReg)
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	printStartupBanner(logger, w, "/some/dir", "demo-queue", ":8080")
+
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	require.Len(t, lines, 3)
+
+	var registeredTriggers map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[2]), &registeredTriggers))
+
+	triggers, _ := registeredTriggers["triggers"].([]any)
+	require.Len(t, triggers, 1)
+	first, _ := triggers[0].(map[string]any)
+	assert.Equal(t, "flow1", first["flow"])
+	assert.Equal(t, "skytime.test.webhook", first["source"])
+	_, hasMount := first["mount"]
+	assert.False(t, hasMount, "non-HTTP source must omit the mount key")
 }
 
 // TestServerCmd_JSONLog: setupServerLogging(debug=false, jsonMode=true)
@@ -649,4 +729,162 @@ func TestServerCmd_JSONLog(t *testing.T) {
 	assert.Equal(t, float64(42), rec["count"])
 	assert.NotEmpty(t, rec["level"])
 	assert.NotEmpty(t, rec["time"])
+}
+
+// =============================================================================
+// Phase 7.1 Plan 06 — HTTP listener bind + drain tests (TRIG-06)
+// =============================================================================
+
+// TestServerCmd_ListenerBindsAfterWorkerStart: TRIG-06 boot-order proof.
+//
+// Asserts D-7.1-10 (worker first, then listener) AND D-7.1-11
+// (listener-first shutdown — srv.Shutdown BEFORE w.Stop) by recording the
+// LOCKED 9-stage testDrainHook sequence:
+//
+//	worker_started
+//	listener_started
+//	signal_received
+//	listener_shutdown_started
+//	listener_shutdown_complete
+//	drain_started
+//	drain_completed
+//
+// Order invariants verified explicitly:
+//   - worker_started < listener_started (boot order)
+//   - listener_shutdown_started < drain_started (shutdown order)
+//   - all 7 stages present, in this exact sequence (regression gate for
+//     any future reorder).
+func TestServerCmd_ListenerBindsAfterWorkerStart(t *testing.T) {
+	installFakeClientFactory(t)
+
+	rec := newStageRecorder()
+	prevHook := testDrainHook
+	testDrainHook = rec.record
+	t.Cleanup(func() { testDrainHook = prevHook })
+
+	// fakeReceivingWorker.Stop returns immediately so drain_completed
+	// fires cleanly. We're testing the boot+shutdown ORDER, not Stop
+	// blocking semantics (those are pinned by TestServerCmd_DrainTimeoutExpiry).
+	fake := &fakeReceivingWorker{onStop: func() { /* no-op */ }}
+	prevOpts := testWorkerOptions
+	testWorkerOptions = []worker.Option{
+		worker.WithSDKFactory(func(_ client.Client, _ string, _ sdkworker.Options) sdkworker.Worker {
+			return fake
+		}),
+	}
+	t.Cleanup(func() { testWorkerOptions = prevOpts })
+
+	dir := makeServerTestDir(t)
+	cmd := newServerCommand(&config{credHandler: nopCredHandler{}})
+	// :0 lets the OS assign a free port — avoids collisions when tests
+	// run in parallel and prevents "address already in use" flakes.
+	done := runServerInBackground(t, cmd, []string{
+		"--rootdir=" + dir,
+		"--addr=127.0.0.1:0",
+		"--drain-timeout=2s",
+	})
+
+	// Sync point: listener_started fires AFTER worker_started + after
+	// receiver.Mount + after net.Listen succeeds + after srv.Serve
+	// goroutine has been spawned.
+	require.True(t, rec.waitFor("listener_started", 5*time.Second),
+		"listener_started must be recorded; net.Listen + srv.Serve goroutine spawned")
+
+	// At this point the recorder MUST have worker_started before
+	// listener_started — pinned by D-7.1-10.
+	stagesAfterBoot := rec.snapshot()
+	require.GreaterOrEqual(t, len(stagesAfterBoot), 2,
+		"at minimum: [worker_started, listener_started]")
+	assert.Equal(t, "worker_started", stagesAfterBoot[0],
+		"D-7.1-10: worker_started must precede listener_started")
+	assert.Equal(t, "listener_started", stagesAfterBoot[1],
+		"D-7.1-10: listener_started must follow worker_started")
+
+	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
+	require.True(t, rec.waitFor("drain_completed", 5*time.Second))
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err, "clean drain returns nil")
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunE did not return after drain_completed")
+	}
+
+	stages := rec.snapshot()
+	assert.Equal(t, []string{
+		"worker_started",
+		"listener_started",
+		"signal_received",
+		"listener_shutdown_started",
+		"listener_shutdown_complete",
+		"drain_started",
+		"drain_completed",
+	}, stages, "Plan 06 LOCKED 9-stage testDrainHook sequence (3 new listener stages)")
+
+	// Spot-check the load-bearing order invariants individually so a
+	// future reorder produces a clear, named failure.
+	idx := func(s string) int {
+		for i, x := range stages {
+			if x == s {
+				return i
+			}
+		}
+		return -1
+	}
+	assert.Less(t, idx("worker_started"), idx("listener_started"),
+		"D-7.1-10: worker_started < listener_started (worker-first boot)")
+	assert.Less(t, idx("listener_shutdown_started"), idx("drain_started"),
+		"D-7.1-11: listener_shutdown_started < drain_started (listener-first drain)")
+	assert.Less(t, idx("listener_shutdown_complete"), idx("drain_started"),
+		"D-7.1-11: listener_shutdown_complete < drain_started (Shutdown returns before w.Stop)")
+}
+
+// TestServerCmd_HTTPServerDefaults: source-grep verification that
+// pkg/cli/server.go ships the LOCKED D-7.1-12 HTTP server timeouts.
+//
+// This is a regression-prevention test, not a behavioral test — the
+// httpServer struct is constructed inside RunE and is not directly
+// inspectable from a black-box test. The test reads server.go and
+// asserts the exact constants are present.
+//
+// Locked timeouts (D-7.1-12):
+//   - ReadHeaderTimeout: 10 * time.Second  (slowloris defense)
+//   - ReadTimeout:       30 * time.Second  (full request)
+//   - WriteTimeout:      30 * time.Second  (full response)
+//   - IdleTimeout:       60 * time.Second  (keep-alive ceiling)
+//   - MaxHeaderBytes:    64 * 1024         (header DoS defense)
+func TestServerCmd_HTTPServerDefaults(t *testing.T) {
+	src, err := os.ReadFile("server.go")
+	require.NoError(t, err, "server.go must be readable for source-grep verification")
+	body := string(src)
+
+	requiredLiterals := []string{
+		"ReadHeaderTimeout: 10 * time.Second",
+		"ReadTimeout:       30 * time.Second",
+		"WriteTimeout:      30 * time.Second",
+		"IdleTimeout:       60 * time.Second",
+		"MaxHeaderBytes:    64 * 1024",
+	}
+	for _, lit := range requiredLiterals {
+		assert.Contains(t, body, lit,
+			"D-7.1-12 HTTP server defaults: server.go MUST contain literal %q", lit)
+	}
+}
+
+// TestServerCmd_AddrFlagNoLongerWarns: Plan 06 removes the "no effect
+// until Phase 7.1" warning that Phase 7 emitted when --addr was set
+// explicitly. The warning is gone — the listener is now load-bearing.
+//
+// Source-grep verification: the warning string must not appear in
+// server.go (regression gate against a careless re-add during a future
+// edit).
+func TestServerCmd_AddrFlagNoLongerWarns(t *testing.T) {
+	src, err := os.ReadFile("server.go")
+	require.NoError(t, err)
+	body := string(src)
+
+	assert.NotContains(t, body, "no effect until Phase 7.1",
+		"Plan 06: the Phase 7 --addr warning must be removed (the listener is now load-bearing)")
+	assert.NotContains(t, body, `cmd.Flags().Changed("addr")`,
+		"Plan 06: the Changed(\"addr\") branch is no longer needed — listener always binds")
 }
