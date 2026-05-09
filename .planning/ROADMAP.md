@@ -62,11 +62,12 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
   3. Two GitHub deliveries with the same `X-GitHub-Delivery` ID, posted within the same retention window, dedupe: only the first triggers a workflow run; the second receives a 200 OK with a "duplicate; skipped" response and no second workflow appears in `client.ListWorkflow`
   4. The example project README's "GitHub webhook trigger walkthrough" section runs end-to-end against `skytime dev-temporal` + `gh webhook forward`, taking a reader from `git clone` to a webhook-triggered workflow in the documented commands
   5. The crash-recovery demo runs as documented: a flow triggered via webhook continues from event history after `kill -9 $SERVER_PID` + restart; verifiable by watching the dashboard or `client.DescribeWorkflowExecution`
-**Plans**: 8 plans
+**Plans**: 9 plans
 - [ ] 07.1-01-PLAN.md — pkg/extension/receiver foundation (signature validation, WorkflowID composer, status mapping, log line shape, HTTPMounter sub-interface)
 - [ ] 07.1-02-PLAN.md — http.webhook source factory (configurable signature scheme; sha256/sha1/sha512 allowlist)
 - [ ] 07.1-03-PLAN.md — github.webhook source factory (HMAC-SHA256 + X-Hub-Signature-256 hardcoded per TRIG-09; ShouldDispatch event filter)
-- [ ] 07.1-04-PLAN.md — receiver dispatch handler (Mount + per-request pipeline: body limit, JIT credential, signature, lambda eval, ExecuteWorkflow with REJECT_DUPLICATE)
+- [ ] 07.1-04-PLAN.md — receiver Mount + skeleton + Deps validation + http.webhook accessor methods
+- [ ] 07.1-04b-PLAN.md — receiver per-request handler pipeline (body limit, JIT credential, signature, lambda eval, ExecuteWorkflow with REJECT_DUPLICATE; .Reveal() leak gate)
 - [ ] 07.1-05-PLAN.md — worker.WithSDKFactory Option + unskip 3 Phase 7 signal-loop tests
 - [ ] 07.1-06-PLAN.md — pkg/cli/server.go listener bind + listener-first shutdown + reasonable HTTP defaults
 - [ ] 07.1-07-PLAN.md — examples/http-github-webhook/webhook_demo.star crash-recovery demo flow + trigger
