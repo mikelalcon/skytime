@@ -145,6 +145,8 @@ This document evolves at phase transitions and milestone boundaries.
 
 **Shipped:** v1.42.0 Foundation (2026-05-08) — 9 phases, 58 plans, 146 tasks, ~46k LOC Go. All 64 v1 requirements validated. See [`MILESTONES.md`](MILESTONES.md) for the full delivery summary and [`milestones/v1.42.0-MILESTONE-AUDIT.md`](milestones/v1.42.0-MILESTONE-AUDIT.md) for the audit.
 
+**v1.43.0 progress:** Phase 7 complete (2026-05-09) — trigger primitive + server shell. `dag.Trigger` node, `extension.TriggerSource` sealed interface, parser `trigger(...)` builtin with parse-time validation, worker `TriggerRegistry`, `skytime server` subcommand (sorted banner + SIGTERM drain), `dev-server` → `dev-temporal` rename. 9 requirements validated (TRIG-01..05, SERVER-01..03, CLI-13). 2 HUMAN-UAT items pending live SIGTERM smoke pending Phase 7.1 worker.WithSDKFactory seam.
+
 ## Current Milestone: v1.43.0 Durability + Triggers
 
 **Goal:** Close the durability proof gap (long-running worker mode for replay-after-crash) and add triggering primitives (Starlark `trigger(...)` builtin + `TriggerSource` extension type for HTTP webhooks and cron). Plus consolidate `extbin` boilerplate and document production auth integration patterns (WIF, IRSA, mTLS-reload).
@@ -171,4 +173,4 @@ This document evolves at phase transitions and milestone boundaries.
 - Dashboard scope: stdlib only (`net/http` + `html/template`); no JS framework, no external CSS — teaching dashboard, not a Skytime product feature
 
 ---
-*Last updated: 2026-05-08 — v1.43.0 Durability + Triggers milestone opened*
+*Last updated: 2026-05-09 — Phase 7 complete (trigger primitive + server shell)*
