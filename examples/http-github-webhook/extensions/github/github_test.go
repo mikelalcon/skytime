@@ -3,11 +3,15 @@ package github_test
 import (
 	"testing"
 
+	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	skygh "github.com/mikelalcon/skytime/examples/http-github-webhook/extensions/github"
 	"github.com/mikelalcon/skytime/pkg/dag"
+	"github.com/mikelalcon/skytime/pkg/extension"
 )
 
 // TestExtension_RegistersWithoutError verifies the extension constructs
@@ -85,4 +89,72 @@ func TestExtension_OutputsImplementOperationOutput(t *testing.T) {
 	skygh.GitHubCommentOutput{}.IsOperationOutput()
 	skygh.GitHubLabelsOutput{}.IsOperationOutput()
 	skygh.GitHubPRListOutput{}.IsOperationOutput()
+}
+
+// TestExtension_InitializeIncludesWebhook verifies Phase 7.1's wiring
+// (D-7.1-02): the github extension's Initialize() Members map exposes
+// `webhook` as a *starlark.Builtin whose .Name() == "github.webhook".
+// This is the entry point .star authors call as
+// `github.webhook(events=..., secret_credential=...)` to construct an
+// inbound webhook trigger source.
+func TestExtension_InitializeIncludesWebhook(t *testing.T) {
+	ext := skygh.New()
+	thread := &starlark.Thread{Name: "test-init-webhook"}
+	val, err := ext.Initialize(thread, nil)
+	require.NoError(t, err)
+
+	mod, ok := val.(*starlarkstruct.Module)
+	require.True(t, ok, "Initialize should return a *starlarkstruct.Module, got %T", val)
+
+	webhookEntry, ok := mod.Members["webhook"]
+	require.True(t, ok, "Members must contain a \"webhook\" entry")
+
+	b, ok := webhookEntry.(*starlark.Builtin)
+	require.True(t, ok, "Members[\"webhook\"] must be a *starlark.Builtin, got %T", webhookEntry)
+	assert.Equal(t, "github.webhook", b.Name())
+}
+
+// TestExtension_InitializeIncludesClient_Regression verifies that
+// adding the new `webhook` attribute did not displace the pre-existing
+// `client` attribute (Phase 6 surface). Anchors the Initialize Members
+// map invariant: BOTH attributes must be present after Phase 7.1.
+func TestExtension_InitializeIncludesClient_Regression(t *testing.T) {
+	ext := skygh.New()
+	thread := &starlark.Thread{Name: "test-init-client"}
+	val, err := ext.Initialize(thread, nil)
+	require.NoError(t, err)
+
+	mod, ok := val.(*starlarkstruct.Module)
+	require.True(t, ok)
+
+	clientEntry, ok := mod.Members["client"]
+	require.True(t, ok, "Members must still contain the \"client\" entry (Phase 6 regression)")
+
+	b, ok := clientEntry.(*starlark.Builtin)
+	require.True(t, ok, "Members[\"client\"] must be a *starlark.Builtin")
+	assert.Equal(t, "github.client", b.Name())
+}
+
+// TestExtension_StarFileCallsGithubWebhook is the load-bearing check
+// that a `.star`-shaped invocation `github.webhook(...)` flowing
+// through the Initialize-installed builtin actually constructs a
+// value satisfying extension.TriggerSource. End-to-end proof that
+// the wiring + factory + seal all line up.
+func TestExtension_StarFileCallsGithubWebhook(t *testing.T) {
+	ext := skygh.New()
+	thread := &starlark.Thread{Name: "test-star-call-webhook"}
+	mod, err := ext.Initialize(thread, nil)
+	require.NoError(t, err)
+
+	predeclared := starlark.StringDict{"github": mod}
+	globals, err := starlark.ExecFile(thread, "test_init.star",
+		`src = github.webhook(events=["issues"])`, predeclared)
+	require.NoError(t, err)
+
+	v, ok := globals["src"]
+	require.True(t, ok, "src global should be set")
+
+	src, ok := v.(extension.TriggerSource)
+	require.True(t, ok, ".star-produced value must satisfy extension.TriggerSource")
+	assert.Equal(t, "github.webhook", src.Kind())
 }
