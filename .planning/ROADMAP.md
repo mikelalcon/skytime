@@ -63,7 +63,7 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
   4. The example project README's "GitHub webhook trigger walkthrough" section runs end-to-end against `skytime dev-temporal` + `gh webhook forward`, taking a reader from `git clone` to a webhook-triggered workflow in the documented commands
   5. The crash-recovery demo runs as documented: a flow triggered via webhook continues from event history after `kill -9 $SERVER_PID` + restart; verifiable by watching the dashboard or `client.DescribeWorkflowExecution`
 **Plans**: 9 plans
-- [ ] 07.1-01-PLAN.md — pkg/extension/receiver foundation (signature validation, WorkflowID composer, status mapping, log line shape, HTTPMounter sub-interface)
+- [x] 07.1-01-PLAN.md — pkg/extension/receiver foundation (signature validation, WorkflowID composer, status mapping, log line shape, HTTPMounter sub-interface)
 - [ ] 07.1-02-PLAN.md — http.webhook source factory (configurable signature scheme; sha256/sha1/sha512 allowlist)
 - [ ] 07.1-03-PLAN.md — github.webhook source factory (HMAC-SHA256 + X-Hub-Signature-256 hardcoded per TRIG-09; ShouldDispatch event filter)
 - [ ] 07.1-04-PLAN.md — receiver Mount + skeleton + Deps validation + http.webhook accessor methods

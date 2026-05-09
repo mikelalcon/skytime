@@ -19,8 +19,8 @@ Requirements for the v1.43.0 milestone. Each maps to a roadmap phase.
 - [ ] **TRIG-06**: A built-in HTTP listener mounts an HTTP handler per registered HTTP-shaped trigger source. Handlers route incoming requests through signature validation → payload map → idempotency key → `client.ExecuteWorkflow`.
 - [ ] **TRIG-07**: A `triggers.github_webhook(events=[...], secret_credential=str|None)` source factory ships in `pkg/extension/builtin/triggers/`. Returns a `TriggerSource` that registers a `POST /webhook/github` handler.
 - [ ] **TRIG-08**: A `triggers.generic_http_webhook(path=str, method=str, secret_credential=str|None)` source factory ships alongside `github_webhook`. Returns a `TriggerSource` that registers an arbitrary HTTP path/method handler.
-- [ ] **TRIG-09**: GitHub webhook signature validation uses HMAC-SHA256 against the `X-Hub-Signature-256` header. The signing secret resolves JIT via the existing `CredentialHandler.Resolve(ctx, id)` — same plumbing as activity-side credentials, secrets stay wrapped in `extension.Secret`.
-- [ ] **TRIG-10**: Idempotency mapping: the `idempotency_key` lambda result becomes the Temporal `WorkflowID` with `WorkflowIDReusePolicy=REJECT_DUPLICATE`. GitHub redeliveries with the same `X-GitHub-Delivery` ID dedup automatically.
+- [x] **TRIG-09**: GitHub webhook signature validation uses HMAC-SHA256 against the `X-Hub-Signature-256` header. The signing secret resolves JIT via the existing `CredentialHandler.Resolve(ctx, id)` — same plumbing as activity-side credentials, secrets stay wrapped in `extension.Secret`.
+- [x] **TRIG-10**: Idempotency mapping: the `idempotency_key` lambda result becomes the Temporal `WorkflowID` with `WorkflowIDReusePolicy=REJECT_DUPLICATE`. GitHub redeliveries with the same `X-GitHub-Delivery` ID dedup automatically.
 
 ### Server Subcommand
 

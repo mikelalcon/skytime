@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Phase 7.1 context gathered
-last_updated: "2026-05-09T02:00:07.433Z"
-last_activity: 2026-05-09
+stopped_at: Completed 07.1-01-PLAN.md (parallel agent)
+last_updated: "2026-05-09T12:08:38.035Z"
+last_activity: 2026-05-09 -- Phase 07.1 execution started
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 15
+  completed_plans: 7
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A flow-author team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
-**Current focus:** Phase 07 — trigger-primitive-server-shell
+**Current focus:** Phase 07.1 — http-webhook-receiver-github-source
 
 ## Current Position
 
-Phase: 7.1
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-05-09
+Phase: 07.1 (http-webhook-receiver-github-source) — EXECUTING
+Plan: 1 of 9
+Status: Executing Phase 07.1
+Last activity: 2026-05-09 -- Phase 07.1 execution started
 
 Progress: [          ] 0%
 
@@ -114,6 +114,7 @@ Progress: [          ] 0%
 | Phase 07 P04 | 8min | 6 tasks | 7 files |
 | Phase 07 P05 | 8min | 7 tasks | 10 files |
 | Phase 07 P06 | 14min | 9 tasks | 22 files |
+| Phase 07.1 P01 | 5min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -336,6 +337,10 @@ Recent decisions affecting current work:
 - [Phase 07]: Hard rename dev-server -> dev-temporal (D-07-21); no deprecation alias. Pre-1.0, the cost of dragging the legacy name forward is higher than a CHANGELOG migration note.
 - [Phase 07]: tests/dev_server_grep_test.go (D-07-22) is the CI gate against re-introducing the legacy literal; allow-list = .planning/ + CHANGELOG.md + the gate file itself.
 - [Phase 07]: tests/firewall_credential_redaction_test.go (D-07-10) AST-walks pkg/dag + pkg/extension + pkg/extension/builtin and rejects %+v/%#v in production code; test files exempt; positive regression test guards against matcher over-broadening.
+- [Phase 07.1]: Plan 07.1-01: HTTPMounter sub-interface (in pkg/extension/receiver, not on extension.TriggerSource) keeps the Phase 7 sealed core minimal — cron sources opt out by simply not implementing; type assertion is the discriminator with no ok-bool
+- [Phase 07.1]: Plan 07.1-01: errorClass taxonomy locked to exactly 7 strings (ok, signature_mismatch, bad_request, lambda_panic, dispatch_failed, event_filtered, duplicate_skipped) per D-7.1-15 — TestStatusMapping_LockedConstants pins values; additions require CONTEXT.md amendment
+- [Phase 07.1]: Plan 07.1-01: 415 unsupported_media_type writer ships in Plan 01 (not Plan 04) — D-7.1 'Body decoder negotiation' discretion locked at planning time to 415 over partial fall-through, so all 8 writers (200 success/duplicate/event-filtered, 400, 401, 415, 500, 502) ship together as one foundation primitive
+- [Phase 07.1]: Plan 07.1-01: TDD RED+GREEN squashed into one commit for unexported primitives — white-box test files referencing unexported validateHMAC cannot compile-and-pass independently of the implementation file, so test+impl ship as a single GREEN commit (TDD intent preserved in execution order; artifact is one commit per task)
 
 ### Pending Todos
 
@@ -366,6 +371,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-09T02:00:07.422Z
-Stopped at: Phase 7.1 context gathered
-Resume file: .planning/phases/07.1-http-webhook-receiver-github-source/07.1-CONTEXT.md
+Last session: 2026-05-09T12:08:38.029Z
+Stopped at: Completed 07.1-01-PLAN.md (parallel agent)
+Resume file: None
