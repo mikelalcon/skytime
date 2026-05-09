@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.1-07-PLAN.md (parallel wave 2 with Plan 04)
-last_updated: "2026-05-09T12:22:58.201Z"
+stopped_at: Completed 07.1-04-PLAN.md
+last_updated: "2026-05-09T12:27:07.264Z"
 last_activity: 2026-05-09
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 15
-  completed_plans: 11
+  completed_plans: 12
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.1 (http-webhook-receiver-github-source) — EXECUTING
-Plan: 4 of 9
+Plan: 5 of 9
 Status: Ready to execute
 Last activity: 2026-05-09
 
@@ -119,6 +119,7 @@ Progress: [          ] 0%
 | Phase 07.1 P05 | 9min | 2 tasks | 5 files |
 | Phase 07.1 P03 | 9min | 2 tasks | 4 files |
 | Phase 07.1 P07 | 4min | 2 tasks | 3 files |
+| Phase 07.1 P04 | 7min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -353,6 +354,8 @@ Recent decisions affecting current work:
 - [Phase 07.1]: Plan 03: Pattern — locked-by-construction signature scheme. github.webhook does NOT expose signature_algo/signature_header kwargs (TRIG-09 + D-7.1-04). Source-grep firewall test (TestGithubWebhook_HardcodedAlgoAndHeader) reads webhook.go bytes to prove the kwargs are absent and the algo/header literals are present.
 - [Phase 07.1]: Plan 07.1-07 webhook_demo.star — locked NO-explicit-sleep shape: durability proven via cross-activity continuation (kill between activities, restart, label still appears via Temporal event history); v1 has no first-class durable sleep primitive in .star DSL.
 - [Phase 07.1]: Plan 07.1-07 — added TestWebhookDemo_BootsCleanly as a dedicated function (not a parametric expansion of TestFlows_ParseAll) so regressions surface at the precise trigger-registration assertion line.
+- [Phase 07.1]: Path-level method dispatch via dispatchByMethod helper coalesces (kind, path, method) groups by path because stdlib http.ServeMux is path-only and panics on duplicate registration; method-dispatch happens inside one HandleFunc per path with 405 fallback (D-7.1-09)
+- [Phase 07.1]: Extended pkg/activity/firewall_test.go allowedPkgs slice with 'extension/receiver' (Rule 3 deviation) — receiver legitimately needs go.temporal.io/sdk/client for Deps.Client; mirrors prior phase precedent (cli in Phase 4, testing in Phase 5); directory-prefix match keeps pkg/extension and pkg/extension/builtin/* firewalled
 
 ### Pending Todos
 
@@ -383,6 +386,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-09T12:22:58.197Z
-Stopped at: Completed 07.1-07-PLAN.md (parallel wave 2 with Plan 04)
+Last session: 2026-05-09T12:27:07.259Z
+Stopped at: Completed 07.1-04-PLAN.md
 Resume file: None

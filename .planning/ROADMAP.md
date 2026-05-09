@@ -66,7 +66,7 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
 - [x] 07.1-01-PLAN.md — pkg/extension/receiver foundation (signature validation, WorkflowID composer, status mapping, log line shape, HTTPMounter sub-interface)
 - [x] 07.1-02-PLAN.md — http.webhook source factory (configurable signature scheme; sha256/sha1/sha512 allowlist)
 - [x] 07.1-03-PLAN.md — github.webhook source factory (HMAC-SHA256 + X-Hub-Signature-256 hardcoded per TRIG-09; ShouldDispatch event filter)
-- [ ] 07.1-04-PLAN.md — receiver Mount + skeleton + Deps validation + http.webhook accessor methods
+- [x] 07.1-04-PLAN.md — receiver Mount + skeleton + Deps validation + http.webhook accessor methods
 - [ ] 07.1-04b-PLAN.md — receiver per-request handler pipeline (body limit, JIT credential, signature, lambda eval, ExecuteWorkflow with REJECT_DUPLICATE; .Reveal() leak gate)
 - [x] 07.1-05-PLAN.md — worker.WithSDKFactory Option + unskip 3 Phase 7 signal-loop tests
 - [ ] 07.1-06-PLAN.md — pkg/cli/server.go listener bind + listener-first shutdown + reasonable HTTP defaults
