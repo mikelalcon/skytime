@@ -30,7 +30,7 @@ Requirements for the v1.43.0 milestone. Each maps to a roadmap phase.
 
 ### Cron Triggers (Temporal Schedules)
 
-- [ ] **SCHED-01**: A `triggers.cron(schedule=str, timezone=str|None, overlap=str|None, catchup_window=duration|None)` source factory ships alongside webhook sources. `schedule` accepts standard 5-field POSIX cron syntax. Returns a `TriggerSource` not associated with HTTP.
+- [x] **SCHED-01**: A `triggers.cron(schedule=str, timezone=str|None, overlap=str|None, catchup_window=duration|None)` source factory ships alongside webhook sources. `schedule` accepts standard 5-field POSIX cron syntax. Returns a `TriggerSource` not associated with HTTP.
 - [ ] **SCHED-02**: Cron triggers are backed by Temporal Schedules (durable, server-side) — not in-process polling. The `skytime server` startup creates/updates Temporal Schedule resources matching each `cron(...)`-shaped trigger.
 - [ ] **SCHED-03**: Schedule reconciliation at boot creates/updates/deletes Temporal Schedules to match the parsed registry. A `--reconcile=strict|preserve|dry-run` flag controls deletion safety: `strict` deletes orphan Schedules, `preserve` leaves them in place, `dry-run` reports what would change without applying.
 

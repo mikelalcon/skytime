@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Phase 7.2 context gathered
-last_updated: "2026-05-11T17:58:26.611Z"
+stopped_at: Completed 07.2-01-core-cron-factory-PLAN.md
+last_updated: "2026-05-11T19:08:54.998Z"
 last_activity: 2026-05-11
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 15
-  completed_plans: 15
+  total_plans: 19
+  completed_plans: 16
   percent: 0
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A flow-author team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
-**Current focus:** Phase 07.1 — http-webhook-receiver-github-source
+**Current focus:** Phase 07.2 — cron-triggers-via-temporal-schedules
 
 ## Current Position
 
-Phase: 7.2
-Plan: Not started
+Phase: 07.2 (cron-triggers-via-temporal-schedules) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
 Last activity: 2026-05-11
 
@@ -123,6 +123,7 @@ Progress: [          ] 0%
 | Phase 07.1 P04b | 25min | 1 tasks | 9 files |
 | Phase 07.1 P06 | 7min | 1 tasks | 2 files |
 | Phase 07.1 P08 | 5min | 3 tasks | 6 files |
+| Phase 07.2 P01 | 6min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -369,6 +370,11 @@ Recent decisions affecting current work:
 - [Phase 07.1]: Plan 06: printStartupBanner type-asserts receiver.HTTPMounter per-trigger and emits 'mount' key only for HTTP-shaped sources; cron (Phase 7.2) and queue (v1.44+) sources omit the key — no nil/empty pollution. Mount string format is '<METHOD> <path>' (e.g. 'POST /webhook/github').
 - [Phase 07.1]: Plan 08 — anti-claim assertion in heading-presence gate (bytes.Contains inverted to fail-on-presence) catches doc drift where the dropped '30 seconds later' claim might creep back
 - [Phase 07.1]: Plan 08 — cross-package AST firewall (TestReceiverFirewall_HMACOnly) extends Plan 01's in-package source-grep gate to defense in depth across all of pkg/extension/receiver/*.go
+- [Phase 07.2]: Plan 01: ReqSchema returns semantic priority [scheduled_time, actual_time] (D-7.2-14 erratum); alphabetical sort is the walker's render-time job, verified by TestTrigger_CronReqAttrTypo's render-order assertion
+- [Phase 07.2]: Plan 01: time/tzdata blank import lives in core.go (NOT cron.go) so every binary registering skycore.New() pulls the embedded IANA zoneinfo for scratch/distroless container compatibility
+- [Phase 07.2]: Plan 01: fiveFieldParser INTENTIONALLY OMITS cron.Descriptor flag so @-macros are rejected per D-7.2-22 + success criterion #4 (Pitfall 6)
+- [Phase 07.2]: Plan 01: CronSource exported as a type alias of unexported cronSource — gives Plan 02 reconciler a type-assertion seam (*skycore.CronSource) without exposing struct/fields; only accessor methods cross the package boundary
+- [Phase 07.2]: Plan 01 [Rule 3 deviation]: go mod tidy deferred between Task 1 (// indirect) and Task 2 (import promotes to direct) — plan's tidy instruction contradicted Task 1's grep-based acceptance criteria; tools.go anchor explicitly rejected since robfig/cron/v3 is a runtime dep
 
 ### Pending Todos
 
@@ -399,6 +405,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-11T17:58:26.598Z
-Stopped at: Phase 7.2 context gathered
-Resume file: .planning/phases/07.2-cron-triggers-via-temporal-schedules/07.2-CONTEXT.md
+Last session: 2026-05-11T19:08:54.993Z
+Stopped at: Completed 07.2-01-core-cron-factory-PLAN.md
+Resume file: None
