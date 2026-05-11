@@ -7,6 +7,7 @@ require (
 	charm.land/log/v2 v2.0.0
 	github.com/charmbracelet/colorprofile v0.4.2
 	github.com/nexus-rpc/sdk-go v0.6.0
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
@@ -14,10 +15,7 @@ require (
 	golang.org/x/term v0.41.0
 )
 
-require (
-	github.com/google/go-querystring v1.1.0 // indirect
-	github.com/robfig/cron/v3 v3.0.1 // indirect
-)
+require github.com/google/go-querystring v1.1.0 // indirect
 
 require (
 	github.com/charmbracelet/ultraviolet v0.0.0-20251205161215-1948445e3318 // indirect
