@@ -2,6 +2,7 @@ package interpreter
 
 import (
 	"fmt"
+	"time"
 
 	"go.starlark.net/starlark"
 	"go.temporal.io/sdk/log"
@@ -36,7 +37,33 @@ func NewWorkflow(registry *FlowRegistry) func(workflow.Context, dag.WorkflowInpu
 			"content_hash", input.ContentHash,
 			"binary_checksum", info.BinaryChecksum,
 			"run_id", info.WorkflowExecution.RunID,
+			"workflow_id", info.WorkflowExecution.ID,
 		)
+
+		// Auto-inject schedule context for cron-fired workflows.
+		// Temporal Schedules suffix the ScheduleAction.ID with the
+		// scheduled RFC3339 timestamp (Pitfall 2 in 07.2-RESEARCH.md),
+		// so we can recover the scheduled time from the WorkflowID
+		// deterministically inside the workflow goroutine. actual_time
+		// uses workflow.Now (replay-safe). Only populates keys that
+		// the caller didn't already set — caller-supplied InitState
+		// always wins.
+		if scheduled, ok := extractScheduledTime(info.WorkflowExecution.ID); ok {
+			if input.InitState == nil {
+				input.InitState = map[string]any{}
+			}
+			if _, exists := input.InitState["scheduled_time"]; !exists {
+				input.InitState["scheduled_time"] = scheduled.UTC().Format(time.RFC3339)
+			}
+			if _, exists := input.InitState["actual_time"]; !exists {
+				input.InitState["actual_time"] = workflow.Now(ctx).UTC().Format(time.RFC3339)
+			}
+			logger.Info("skytime cron-fired workflow",
+				"flow_name", input.FlowName,
+				"scheduled_time", input.InitState["scheduled_time"],
+				"actual_time", input.InitState["actual_time"],
+			)
+		}
 
 		parsed, ok := registry.Lookup(input.FlowName, input.ContentHash)
 		if !ok {

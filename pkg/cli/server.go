@@ -104,6 +104,17 @@ func newServerCommand(cfg *config) *cobra.Command {
 			//    NOT the buildRoutedSlogLogger pattern from `skytime run`
 			//    — server startup events are not flow events.
 			logger := setupServerLogging(cfg.debug, jsonLog)
+
+			// Surface SDK + workflow lifecycle events in server stdout.
+			// The default cfg.sdkLogger (from buildSDKSlogLogger) routes
+			// to io.Discard so `skytime run` keeps CLI output clean. For
+			// long-running `skytime server`, operators NEED to see
+			// workflow.GetLogger output ("skytime workflow start",
+			// flow_start, flow_complete, etc.) and SDK chatter (task
+			// queue connectivity, schedule fires). Otherwise cron-fired
+			// workflow failures are invisible — operators only learn
+			// about them via `temporal workflow list`.
+			cfg.sdkLogger = logger
 			if drainTimeout > maxDrainTimeout {
 				logger.Warn("drain-timeout exceeds 1h; large drain windows may delay rolling deploys",
 					"value", drainTimeout)

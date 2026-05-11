@@ -288,7 +288,16 @@ func scheduleOptionsFor(t *dag.Trigger, flows *interpreter.FlowRegistry, taskQue
 	workflowInput := dag.WorkflowInput{
 		FlowName:    t.FlowName,
 		ContentHash: contentHash,
-		InitState:   nil, // map lambda eval deferred per D-7.2-20; default path (D-7.2-15)
+		// InitState left nil here: scheduled_time/actual_time can only
+		// be known at fire time, not at reconcile time. The interpreter
+		// (pkg/interpreter/cron_input.go::extractScheduledTime,
+		// applied inside NewWorkflow) recovers scheduled_time from the
+		// WorkflowID's Pitfall-2 RFC3339 suffix and stamps actual_time
+		// from workflow.Now at workflow start. Map lambda eval per
+		// D-7.2-20 stays deferred; this fallback is what makes the
+		// default path (D-7.2-15) usable for `inputs={scheduled_time,
+		// actual_time}` flows.
+		InitState: nil,
 	}
 
 	opts := client.ScheduleOptions{
