@@ -10,6 +10,10 @@ coverage.html
 /skytime
 # Stray binary from `go build ./cmd/skytime-docgen` at repo root
 /skytime-docgen
+# Stray example binaries from `go build -o ./extbin ./examples/...`
+# (the README + walkthroughs all show this as the canonical build path).
+/extbin
+/examples/http-github-webhook/extbin
 
 # Editor
 .idea/

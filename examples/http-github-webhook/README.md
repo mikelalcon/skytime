@@ -122,6 +122,47 @@ fires from event history continuation as soon as the worker reattaches.
 - The demo flow source — [`./webhook_demo.star`](./webhook_demo.star)
 - HTTP webhook source factory docs — [`../../docs/for-flow-authors/`](../../docs/for-flow-authors/)
 
+## Cron walkthrough (5 minutes)
+
+Schedule a flow to run on a recurring cron schedule, backed by Temporal
+Schedules (durable, server-side; survives worker crashes between
+firings). The example flow [`weekly_digest.star`](./weekly_digest.star)
+declares a `core.cron(...)` trigger that fires Mondays at 09:00
+America/New_York.
+
+```bash
+# 1. Start a local Temporal dev cluster (in a separate terminal)
+extbin dev-temporal
+```
+
+```bash
+# 2. Preview the cron plan (dry-run — zero cluster mutations)
+extbin cron-plan --rootdir=examples/http-github-webhook/ --address=localhost:7233
+```
+
+The output shows what would be created, updated, or deleted on the
+cluster — but applies nothing.
+
+```bash
+# 3. Apply the schedule via skytime server --cron-reconcile
+extbin server --rootdir=examples/http-github-webhook/ \
+              --task-queue=demo \
+              --address=localhost:7233 \
+              --cron-reconcile
+```
+
+```bash
+# 4. Verify the Schedule landed on the cluster
+temporal schedule list
+```
+
+You should see one row whose Schedule ID starts with
+`skytime/weekly_digest/`.
+
+For the full walkthrough — prerequisites, troubleshooting, the
+orphan-delete demo, and how to watch a cron actually fire end-to-end —
+see [`docs/walkthroughs/cron-schedules.md`](../../docs/walkthroughs/cron-schedules.md).
+
 ## Quick start
 
 After `git clone`, four commands take you from a fresh checkout to a

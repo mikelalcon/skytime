@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mikelalcon/skytime/pkg/dag"
+	skycore "github.com/mikelalcon/skytime/pkg/extension/builtin/core"
 	skyhttp "github.com/mikelalcon/skytime/pkg/extension/builtin/http"
 	"github.com/mikelalcon/skytime/pkg/parser"
 
@@ -34,12 +35,14 @@ import (
 // resolves to examples/http-github-webhook/.
 const exampleDir = "."
 
-// newExampleParser registers the example's three extensions and returns a
-// fresh parser. Mirrors the wiring done at runtime by cmd/extbin (Plan 06-05).
+// newExampleParser registers the example's four extensions and returns a
+// fresh parser. Mirrors the wiring done at runtime by cmd/extbin (Plans 6-05 +
+// 7.2-03 — the skycore extension lands core.cron(...) as a Skytime-native
+// trigger source factory for weekly_digest.star and any future cron flows).
 func newExampleParser(t *testing.T) *parser.Parser {
 	t.Helper()
 	p, err := parser.NewParser(
-		parser.WithExtensions(skyhttp.New(), skygh.New(), skyweb.New()),
+		parser.WithExtensions(skyhttp.New(), skycore.New(), skygh.New(), skyweb.New()),
 	)
 	require.NoError(t, err)
 	return p
