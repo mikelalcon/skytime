@@ -68,10 +68,37 @@ flow(
             ],
             max_concurrency = 4,
         ),
+        # Visible effect: the Starlark `print` builtin is routed to
+        # workflow.GetLogger by the interpreter (D3-22 / lambda_eval.go),
+        # so this line surfaces in `skytime server` stdout on every
+        # cron fire with the [skytime/print] tag. Lets operators confirm
+        # a fire produced output without leaving the terminal. Returns
+        # an empty dict so the script step has a state binding (Starlark
+        # `print` returns None; `None or {...}` yields the dict).
+        script(
+            id = "log_digest",
+            fn = lambda ctx: print(
+                "weekly digest complete: scheduled=" + ctx.scheduled_time +
+                " actual=" + ctx.actual_time +
+                " authors=" + str(len(ctx.grouped.authors)),
+            ) or {"logged": True},
+            output_alias = "_log",
+        ),
     ],
 )
 
-# Cron trigger declaration: fires Mondays at 09:00 America/New_York.
+# Cron trigger declaration.
+#
+# DEMO SCHEDULE: "* * * * *" fires every minute so a reader walking
+# through docs/walkthroughs/cron-schedules.md sees the [skytime/print]
+# log_digest line surface in `skytime server` stdout within ~60s of
+# `--cron-reconcile` — no patience required to verify the loop closed.
+#
+# FOR REAL USE: swap to a realistic weekly schedule like
+#   schedule = "0 9 * * 1"   (Mondays 09:00 in the configured timezone)
+# A per-minute schedule against a real downstream system (mail send,
+# DB write) will quickly exceed any reasonable rate budget.
+#
 # Per D-7.2-15, the map / idempotency_key lambdas are minimal — the cron
 # source's ReqSchema is [scheduled_time, actual_time], and the workflow
 # input mirrors those fields directly. idempotency_key uses
@@ -81,7 +108,7 @@ flow(
 trigger(
     flow = "weekly_digest",
     source = core.cron(
-        schedule = "0 9 * * 1",
+        schedule = "* * * * *",  # demo: every minute. Change to "0 9 * * 1" for real use.
         timezone = "America/New_York",
         overlap = "skip",
     ),

@@ -10,9 +10,10 @@ local dev cluster, in about ten minutes.
 
 The flow this walkthrough drives is
 [`examples/http-github-webhook/weekly_digest.star`](../../examples/http-github-webhook/weekly_digest.star).
-Its cron trigger fires Mondays at 09:00 America/New_York; the optional
-section near the end shows how to bump the schedule to `* * * * *` and
-watch a workflow execution land in the Temporal UI.
+Its cron trigger is configured to fire **every minute** so a reader
+running through this walkthrough sees a fire within ~60s — see the
+comment in the file for swapping to a realistic weekly schedule
+(`0 9 * * 1`) for production use.
 
 For the 5-minute version, see
 [`examples/http-github-webhook/README.md`](../../examples/http-github-webhook/README.md)
@@ -58,9 +59,9 @@ section "Cron walkthrough (5 minutes)".
 4. Verifying the Schedule was created via `temporal schedule list`.
 5. Removing the trigger and watching the orphan get deleted on the
    next reconcile.
-6. (Optional, ~80s) Watching a `* * * * *` (every-minute) schedule
-   fire and observing the workflow execution in `temporal workflow
-   list`.
+6. Watching the Schedule fire (~60s) and observing the workflow
+   execution in `temporal workflow list`, with the auto-injected
+   `scheduled_time` / `actual_time` visible in the server log.
 
 ## 1. Inspect the example flow
 
@@ -72,7 +73,7 @@ Open
 trigger(
     flow = "weekly_digest",
     source = core.cron(
-        schedule = "0 9 * * 1",
+        schedule = "* * * * *",  # demo: every minute. Change to "0 9 * * 1" for real use.
         timezone = "America/New_York",
         overlap  = "skip",
     ),
@@ -129,16 +130,28 @@ In **terminal 2**:
 extbin cron-plan --rootdir=examples/http-github-webhook/ --address=localhost:7233
 ```
 
-Expected output (one slog record per planned action; the example
-shows the human-readable charm-log format):
+Expected output (terraform-plan-style; your schedule ID hash will
+differ):
 
 ```
-[skytime] cron-plan reading examples/http-github-webhook/
-[skytime] cluster has 0 Skytime-managed schedules
-[skytime] CREATE skytime/weekly_digest/aGcRb2Q8   cron="0 9 * * 1" tz=America/New_York overlap=skip
-[skytime] plan: 1 create, 0 update, 0 delete
-[skytime] no changes applied (dry-run)
+INFO cron-plan reading rootdir=examples/http-github-webhook/
+
+Plan: 1 to add, 0 to change, 0 to destroy.
+
+  + skytime/weekly_digest/aGcRb2Q8
+      flow      weekly_digest
+      schedule  * * * * * (America/New_York)
+      when      Every minute
+      overlap   skip
+
+Dry-run: no changes applied. Run `skytime server --cron-reconcile` to apply.
+INFO cron-plan summary creates=1 updates=0 deletes=0 applied=false
 ```
+
+The `when` line is a plain-English rendering of the cron expression
+for common patterns (`Every Monday at 09:00`, `Daily at 06:00`,
+`Every weekday at 09:00`, etc.); unrecognized expressions print only
+the raw cron.
 
 `cron-plan` performs zero cluster mutations — safe to run in CI,
 pre-deploy review, manual sanity checks, etc. The exit code is 0 on
@@ -172,7 +185,7 @@ Expected startup output (your hash will differ; the schedule ID is
 ```
 [skytime] starting server (rootdir=examples/..., task-queue=demo, addr=127.0.0.1:18080)
 [skytime] registered 1 flows: [weekly_digest]
-[skytime] registered 1 triggers: [{source:core.cron flow:weekly_digest mount:"cron @ 0 9 * * 1 (America/New_York)"}]
+[skytime] registered 1 triggers: [{source:core.cron flow:weekly_digest mount:"cron @ * * * * * (America/New_York)"}]
 [skytime] cron-reconcile applied: 1 creates, 0 updates, 0 deletes
 [skytime] HTTP listener bound 127.0.0.1:18080
 [skytime] worker started; SIGTERM/SIGINT to drain
@@ -255,42 +268,59 @@ listed Schedules by prefix before the delete diff bucket is computed.
 
 Uncomment the trigger before continuing.
 
-## 7. (Optional) Watch a schedule fire
+## 7. Watch a fire
 
-Edit `examples/http-github-webhook/weekly_digest.star`: change
+The demo schedule (`* * * * *`) fires every minute. Within ~60s of
+the `--cron-reconcile` boot in terminal 3 you'll see a workflow
+execution land. Server stdout shows the full lifecycle:
 
-```python
-schedule = "0 9 * * 1",
+```
+INFO skytime workflow start flow_name=weekly_digest workflow_id=weekly_digest/aGcRb2Q8-2026-05-11T21:01:00Z ...
+INFO skytime cron-fired workflow scheduled_time=2026-05-11T21:01:00Z actual_time=2026-05-11T21:01:00Z
+INFO skytime event=flow_start flow_name=weekly_digest step_count=4
+INFO skytime event=step_complete kind=script label=grouped status=ok ...
+INFO skytime event=step_complete kind=step label="fetch repo info" status=ok duration_ms=237 ...
+INFO skytime event=step_complete kind=for_each_parallel label="items=1" status=ok ...
+INFO [skytime/print] weekly digest complete: scheduled=2026-05-11T21:01:00Z actual=2026-05-11T21:01:00Z authors=1 ...
+INFO skytime event=flow_complete ok_count=4 err_count=0 total_ms=237
 ```
 
-to
+The `scheduled_time` and `actual_time` are auto-injected by the
+interpreter — Temporal Schedules append the scheduled fire time as an
+RFC3339 suffix on the workflow ID (Pitfall 2 in the phase research
+notes), and `pkg/interpreter/cron_input.go::extractScheduledTime`
+recovers it inside the workflow goroutine. `actual_time` comes from
+`workflow.Now` (replay-safe). Both populate `ctx.scheduled_time` and
+`ctx.actual_time` for the flow body to use; the `inputs={...}` block
+on `flow(...)` declares the schema.
 
-```python
-schedule = "* * * * *",
-```
+The `[skytime/print]` line is the flow's own `print(...)` step — any
+Starlark `print(msg)` call inside a script is routed through
+`workflow.GetLogger` (D3-22) and surfaces in server stdout. Replace
+that step with real activities (mail send, DB write, dashboard
+update) to make the fire have an external effect.
 
-Stop the server (Ctrl-C in terminal 3, wait for drain). Restart with
-the same `--cron-reconcile` command. The startup log will show
-`cron-reconcile applied: 0 creates, 1 updates, 0 deletes` — the
-canonical config drifted, so reconcile fired an Update on the
-existing Schedule (operator-set State like Paused/Note survives the
-Update via the SDK's DoUpdate callback).
-
-Wait 60-80 seconds, then in terminal 2:
+Cross-check from terminal 2:
 
 ```bash
 temporal workflow list --address=localhost:7233 --query 'WorkflowType="SkytimeWorkflow"'
 ```
 
-A workflow execution should appear, with ID shaped
-`weekly_digest/<8-char-hash>-<timestamp>` — the timestamp suffix is
-appended server-side by Temporal Schedules for per-fire uniqueness.
+The most recent execution should have ID
+`weekly_digest/<8-char-hash>-<RFC3339-timestamp>` and Status
+`Completed`.
 
 [`docs/walkthroughs/cron-schedules-smoke.sh`](./cron-schedules-smoke.sh)
-automates this entire check end-to-end against a fresh ephemeral
+automates this end-to-end check against a fresh ephemeral
 dev-temporal — useful as a manual smoke or as a gated CI run.
 
-Restore `schedule = "0 9 * * 1"` before moving on.
+### Production note
+
+The demo's per-minute schedule is for the walkthrough only — see the
+comment on the `core.cron(...)` block in `weekly_digest.star`. Real
+flows should use realistic intervals (`0 9 * * 1` for weekly Monday
+9am, `0 * * * *` for hourly, etc.) — a per-minute schedule against
+any downstream system with rate limits will exhaust them quickly.
 
 ## Workflow ID format
 
