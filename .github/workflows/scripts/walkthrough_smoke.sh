@@ -110,9 +110,37 @@ echo "==> [m13 sanity] OK — both absolute and relative cwd forms produced 'flo
 # name; the renderer translates underscore → space when printing the terminator.
 if echo "$output" | grep -q "flow complete"; then
     echo "==> SUCCESS: 'flow complete' substring present in output"
-    exit 0
+    SMOKE_RC=0
 else
     echo "ERROR: 'flow complete' substring NOT found in extbin output"
     echo "       (Possible causes: rate-limiting, network down, regression in renderer)"
-    exit 1
+    SMOKE_RC=1
 fi
+
+# Phase 7.2 cron smoke — exercises the cron-reconcile → Schedule → workflow
+# execution path end-to-end against a fresh ephemeral dev-temporal. Wall
+# clock ~80 seconds; gated behind SKYTIME_RUN_CRON_SMOKE=1 so the default
+# CI run isn't burdened. Humans can invoke it locally to validate ROADMAP
+# Phase 7.2 success criterion #5. The exit code propagates: if the cron
+# smoke fails, the overall walkthrough smoke fails.
+if [[ "${SKYTIME_RUN_CRON_SMOKE:-}" == "1" ]]; then
+    # The existing temporal server start-dev process is still running
+    # under the EXIT trap above. Stop it so cron-schedules-smoke.sh can
+    # spawn its own clean instance without a port collision on 7233.
+    echo "==> [cron smoke] stopping the webhook walkthrough's temporal dev server before handoff"
+    kill "$TEMPORAL_PID" 2>/dev/null || true
+    wait "$TEMPORAL_PID" 2>/dev/null || true
+    TEMPORAL_PID=""  # disarm the cleanup trap's second kill attempt
+
+    echo "==> [cron smoke] running docs/walkthroughs/cron-schedules-smoke.sh (~80s)"
+    if EXTBIN="$EXTBIN" bash "$REPO_ROOT/docs/walkthroughs/cron-schedules-smoke.sh"; then
+        echo "==> [cron smoke] PASS"
+    else
+        echo "ERROR: cron-schedules-smoke.sh failed"
+        SMOKE_RC=1
+    fi
+else
+    echo "==> [cron smoke] skipping (set SKYTIME_RUN_CRON_SMOKE=1 to enable; ~80s wall clock)"
+fi
+
+exit "$SMOKE_RC"
