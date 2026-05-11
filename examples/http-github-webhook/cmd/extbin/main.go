@@ -10,6 +10,7 @@
 //	extbin run <file.star> ...       trigger a workflow against a Temporal cluster
 //	extbin dev-temporal              spawn a local Temporal dev server (renamed in Phase 7 per D-07-21)
 //	extbin server                    long-lived worker (Phase 7+)
+//	extbin cron-plan --rootdir=...   one-shot cron schedule diff (Phase 7.2)
 //	extbin test <dir>                discover + run *_test.star (Tier 3)
 //
 // Credentials live at $HOME/.skytime-credentials (TOML; see
@@ -27,6 +28,7 @@ import (
 
 	"github.com/mikelalcon/skytime/pkg/cli"
 	"github.com/mikelalcon/skytime/pkg/extension"
+	skycore "github.com/mikelalcon/skytime/pkg/extension/builtin/core"
 	skyhttp "github.com/mikelalcon/skytime/pkg/extension/builtin/http"
 	"github.com/mikelalcon/skytime/pkg/extension/credfile"
 
@@ -41,6 +43,7 @@ func main() {
 	root, err := cli.NewRootCommand(
 		cli.WithExtensions(
 			skyhttp.New(),
+			skycore.New(),
 			skygh.New(),
 			skyweb.New(),
 		),

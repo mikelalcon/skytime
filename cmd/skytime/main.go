@@ -1,7 +1,9 @@
 // skytime is the Skytime CLI binary: validate, run, dev-temporal,
-// server, info, and test subcommands wired against the baked-in HTTP
-// extension. Consultants who need additional extensions should build
-// their own binary by importing pkg/cli — see docs/cli-binary.md.
+// server, cron-plan, info, and test subcommands wired against the
+// baked-in HTTP extension and the core extension (Skytime-native
+// trigger primitives — cron in 7.2; future signal/queue). Consultants
+// who need additional extensions should build their own binary by
+// importing pkg/cli — see docs/cli-binary.md.
 //
 // The binary is intentionally thin per D4-13 — pkg/cli owns the cobra
 // tree and the renderer; cmd/skytime is the wiring + the CredentialHandler
@@ -17,6 +19,7 @@ import (
 
 	"github.com/mikelalcon/skytime/pkg/cli"
 	"github.com/mikelalcon/skytime/pkg/extension"
+	skycore "github.com/mikelalcon/skytime/pkg/extension/builtin/core"
 	skyhttp "github.com/mikelalcon/skytime/pkg/extension/builtin/http"
 )
 
@@ -31,7 +34,7 @@ func main() {
 	defer cancel()
 
 	root, err := cli.NewRootCommand(
-		cli.WithExtensions(skyhttp.New()),
+		cli.WithExtensions(skyhttp.New(), skycore.New()),
 		cli.WithCredentialHandler(noopCredentialHandler{}),
 	)
 	if err != nil {

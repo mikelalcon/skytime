@@ -3,6 +3,8 @@ package cli
 import (
 	"log/slog"
 
+	"go.temporal.io/sdk/client"
+
 	"github.com/mikelalcon/skytime/pkg/extension"
 )
 
@@ -21,8 +23,9 @@ type Option func(*config) error
 // invokes PersistentPreRunE — i.e., once per Execute call.
 type config struct {
 	// Construction-time fields (set via Option):
-	exts        []extension.Extension
-	credHandler extension.CredentialHandler
+	exts            []extension.Extension
+	credHandler     extension.CredentialHandler
+	scheduleFactory scheduleClientFactory // NEW (Phase 7.2 Plan 03) — test seam for ScheduleClient injection
 
 	// PersistentPreRunE-populated runtime fields:
 	debug      bool
@@ -54,6 +57,34 @@ func WithExtensions(exts ...extension.Extension) Option {
 func WithCredentialHandler(h extension.CredentialHandler) Option {
 	return func(c *config) error {
 		c.credHandler = h
+		return nil
+	}
+}
+
+// scheduleClientFactory is the package-private test seam for overriding
+// how the cron reconciler obtains a ScheduleClient from the Temporal
+// client. Production callers don't pass this option; tests use it to
+// inject a fake ScheduleClient that records Create / Update / Delete
+// calls.
+//
+// Per-call scope: this Option configures a single NewRootCommand
+// invocation. Mirrors worker.WithSDKFactory's per-call isolation
+// (Phase 7.1 D-7.1-13).
+type scheduleClientFactory func(c client.Client) client.ScheduleClient
+
+// WithScheduleClientFactory overrides how `skytime server
+// --cron-reconcile` (and `skytime cron-plan`) obtain a ScheduleClient.
+// Production: omit this option; the reconciler calls c.ScheduleClient()
+// on the live Temporal client. Tests inject a FakeScheduleClient
+// (pkg/extension/schedules.NewFakeScheduleClient) so the signal-loop
+// tests run without a real Temporal cluster.
+//
+// Symmetric to worker.WithSDKFactory but lives in pkg/cli — the schedule
+// client lifecycle is owned by the CLI subcommand, not the worker
+// subsystem.
+func WithScheduleClientFactory(f func(c client.Client) client.ScheduleClient) Option {
+	return func(c *config) error {
+		c.scheduleFactory = f
 		return nil
 	}
 }
