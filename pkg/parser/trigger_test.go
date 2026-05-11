@@ -3,6 +3,7 @@ package parser_test
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/mikelalcon/skytime/pkg/dag"
 	"github.com/mikelalcon/skytime/pkg/extension"
+	skycore "github.com/mikelalcon/skytime/pkg/extension/builtin/core"
 	"github.com/mikelalcon/skytime/pkg/parser"
 )
 
@@ -182,6 +184,49 @@ func TestTrigger_ReqAttrTypo(t *testing.T) {
 	assert.Regexp(t,
 		regexp.MustCompile(`trigger map lambda: req has no attribute "payloud"; available: \[headers payload\] \(declared by source kind "skytime\.test\.webhook"\)`),
 		err.Error())
+}
+
+// TestTrigger_CronReqAttrTypo exercises validateTriggerReqAccesses against
+// a *core.cronSource trigger source. Confirms the walker integrates with
+// the new Phase 7.2 extension by validating that req.payload (NOT in
+// core.cron's ReqSchema) surfaces a position-aware ValidationError listing
+// the valid set ["actual_time", "scheduled_time"] (sorted at render time)
+// and the source kind "core.cron".
+//
+// The render-time alphabetical-sort assertion guards the D-7.2-14 erratum:
+// ReqSchema() returns semantic priority order [scheduled_time, actual_time],
+// but the walker's error formatter MUST sort suggestions alphabetically so
+// error messages are deterministic regardless of ReqSchema() ordering.
+func TestTrigger_CronReqAttrTypo(t *testing.T) {
+	p, err := parser.NewParser(
+		parser.WithRoot("testdata/triggers"),
+		parser.WithExtensions(skycore.New(), fakeWebhookExt{}),
+	)
+	require.NoError(t, err)
+
+	// ParseFile runs finalize internally (per pkg/parser/parser.go); the
+	// validateTriggerReqAccesses pass surfaces the typo here.
+	_, err = p.ParseFile("testdata/triggers/cron_req_attr_typo.star")
+	require.Error(t, err, "ParseFile must return the req-walker validation error")
+
+	var ve *dag.ValidationError
+	require.ErrorAs(t, err, &ve, "expected *dag.ValidationError; got %T: %v", err, err)
+	msg := err.Error()
+	require.Contains(t, msg, `"payload"`, "error must name the invalid attribute")
+	require.Contains(t, msg, `core.cron`, "error must name the source kind")
+	require.Contains(t, msg, "actual_time", "error must list actual_time as a valid attribute")
+	require.Contains(t, msg, "scheduled_time", "error must list scheduled_time as a valid attribute")
+
+	// Determinism: the walker's error-render code MUST sort the suggested-
+	// attribute list at render time so messages are stable regardless of
+	// ReqSchema()'s semantic-priority return order (D-7.2-14 erratum).
+	// Assert "actual_time" appears BEFORE "scheduled_time" in the rendered
+	// message (alphabetical at render). validateTriggerReqAccesses already
+	// sorts via sortedKeysTrigger; this assertion locks that contract.
+	require.Less(t,
+		strings.Index(msg, "actual_time"),
+		strings.Index(msg, "scheduled_time"),
+		"walker error message must list suggested attributes in alphabetical order at render time: %s", msg)
 }
 
 // TestTrigger_BadArity exercises captureLambdaWithArity layer 2.

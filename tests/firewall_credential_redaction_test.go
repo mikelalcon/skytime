@@ -49,6 +49,14 @@ func TestCredentialRedactionFirewall(t *testing.T) {
 		filepath.Join(moduleRoot, "pkg", "extension", "builtin"),
 		filepath.Join(moduleRoot, "pkg", "extension", "receiver"),
 		filepath.Join(moduleRoot, "examples", "http-github-webhook", "extensions", "github"),
+		// Phase 7.2: core.cron + cron Schedule reconciler — defense in depth.
+		// core has no credentials (cron has no per-trigger secret); schedules
+		// operates on credential-free Schedule resources. Adding to the firewall
+		// sweep ensures any future %+v/%#v that incidentally surfaces a Trigger
+		// value gets rejected immediately. The schedules dir is forward-looking
+		// (Plan 02 creates it); until then the missing-dir branch handles it.
+		filepath.Join(moduleRoot, "pkg", "extension", "builtin", "core"),
+		filepath.Join(moduleRoot, "pkg", "extension", "schedules"),
 	}
 
 	fset := token.NewFileSet()
