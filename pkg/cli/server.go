@@ -14,8 +14,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"go.temporal.io/sdk/client"
 
+	skycore "github.com/mikelalcon/skytime/pkg/extension/builtin/core"
 	"github.com/mikelalcon/skytime/pkg/extension/receiver"
+	"github.com/mikelalcon/skytime/pkg/extension/schedules"
 	"github.com/mikelalcon/skytime/pkg/worker"
 )
 
@@ -24,14 +27,18 @@ import (
 // progression without subprocess plumbing.
 //
 // Stage names (LOCKED — tests pin against these strings):
-// worker_started, listener_started, signal_received,
-// listener_shutdown_started, listener_shutdown_complete, drain_started,
-// drain_completed, drain_timeout, drain_forced.
+// worker_started, cron_reconcile_complete, listener_started,
+// signal_received, listener_shutdown_started,
+// listener_shutdown_complete, drain_started, drain_completed,
+// drain_timeout, drain_forced.
 //
 // Phase 7 Plan 05 locked the original 6: worker_started, signal_received,
 // drain_started, drain_completed, drain_timeout, drain_forced. Phase 7.1
-// Plan 06 adds 3 more for the HTTP listener lifecycle: listener_started,
-// listener_shutdown_started, listener_shutdown_complete.
+// Plan 06 added 3 more for the HTTP listener lifecycle: listener_started,
+// listener_shutdown_started, listener_shutdown_complete. Phase 7.2 Plan
+// 03 adds 1 more: cron_reconcile_complete (only emitted when
+// --cron-reconcile is set; sits between worker_started and
+// listener_started).
 var testDrainHook func(stage string)
 
 // testForceExit is the package-private test seam for the second-signal
@@ -66,12 +73,13 @@ func hookStage(stage string) {
 // trigger handlers.
 func newServerCommand(cfg *config) *cobra.Command {
 	var (
-		rootdir      string
-		taskQueue    string
-		addr         string
-		credfilePath string
-		drainTimeout time.Duration
-		jsonLog      bool
+		rootdir        string
+		taskQueue      string
+		addr           string
+		credfilePath   string
+		drainTimeout   time.Duration
+		jsonLog        bool
+		cronReconcile bool
 	)
 
 	cmd := &cobra.Command{
@@ -180,6 +188,43 @@ func newServerCommand(cfg *config) *cobra.Command {
 			}
 			hookStage("worker_started")
 
+			// 8a. Phase 7.2: --cron-reconcile. Designated replica only
+			//     (D-7.2-10 single-flag opt-in). Failure exits non-zero
+			//     (D-7.2-11 fail-loud); no in-process retry (D-7.2-12 —
+			//     K8s CrashLoopBackoff is the retry layer). Boot-order
+			//     position (D-7.2-16): between worker.Start (the polling
+			//     worker must be live so workflows dispatched by
+			//     newly-created Schedules can be picked up) and listener
+			//     bind (failed reconcile must NOT bind the listener; K8s
+			//     readinessProbe = TCP connect to --addr stays "not
+			//     ready" until reconcile succeeds).
+			if cronReconcile {
+				var sc client.ScheduleClient
+				if cfg.scheduleFactory != nil {
+					sc = cfg.scheduleFactory(c)
+				} else {
+					sc = c.ScheduleClient()
+				}
+				plan, err := schedules.ReconcileCronSchedules(
+					cmd.Context(),
+					sc,
+					w.Triggers().All(),
+					w.Registry(),
+					taskQueue,
+					true, // apply
+					logger,
+				)
+				if err != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "cron-reconcile failed: %s\n", err.Error())
+					return errSilent
+				}
+				logger.Info("cron-reconcile applied",
+					"creates", len(plan.Creates),
+					"updates", len(plan.Updates),
+					"deletes", len(plan.Deletes))
+				hookStage("cron_reconcile_complete")
+			}
+
 			// 9. Mount HTTP receiver. receiver.Mount (Plan 04) walks
 			//    worker.Triggers().All(), groups by (kind, path,
 			//    method), and registers ONE handler per path that
@@ -284,6 +329,8 @@ func newServerCommand(cfg *config) *cobra.Command {
 	cmd.Flags().DurationVar(&drainTimeout, "drain-timeout", defaultDrainTimeout,
 		"max time to wait for in-flight workflows to complete on SIGTERM/SIGINT (1s..1h)")
 	cmd.Flags().BoolVar(&jsonLog, "json-log", false, "emit logs as JSON instead of charm-log Bazel-style")
+	cmd.Flags().BoolVar(&cronReconcile, "cron-reconcile", false,
+		"perform cron Schedule reconciliation against the connected Temporal cluster at boot (one replica only; see docs/walkthroughs/cron-schedules.md)")
 	_ = cmd.MarkFlagRequired("rootdir")
 	return cmd
 }
@@ -296,8 +343,10 @@ func newServerCommand(cfg *config) *cobra.Command {
 //	"registered triggers"    (count, triggers []map[string]string)
 //
 // Trigger entries are shaped {source: <kind>, flow: <flow-name>, mount:
-// "<METHOD> <path>"} for HTTP-shaped sources (D-7.1 §Reusable Assets);
-// non-HTTP sources (cron in 7.2, queue in v1.44+) omit the "mount" key.
+// "<METHOD> <path>"} for HTTP-shaped sources (D-7.1 §Reusable Assets) or
+// `cron @ {schedule} ({timezone})` for cron sources (Phase 7.2 Plan 03).
+// Queue sources (v1.44+) will omit the "mount" key unless they declare
+// their own rendering branch.
 // Sort order is supplied by w.Triggers().All() which Plan 04's Freeze
 // sorts by (Source.Kind, FlowName, Pos).
 func printStartupBanner(logger *slog.Logger, w *worker.Worker, rootdir, taskQueue, addr string) {
@@ -320,13 +369,18 @@ func printStartupBanner(logger *slog.Logger, w *worker.Worker, rootdir, taskQueu
 			"flow":   t.FlowName,
 		}
 		// D-7.1 §Reusable Assets: extend trigger lines with mount
-		// path for HTTP-shaped sources. Cron sources (Phase 7.2)
-		// and queue sources (v1.44+) won't satisfy receiver.HTTPMounter
-		// and their entries omit the "mount" key.
+		// path for HTTP-shaped sources.
 		if mounter, ok := t.Source.(receiver.HTTPMounter); ok {
 			path, method := mounter.HTTPMount()
 			entry["mount"] = method + " " + path
+		} else if src, ok := t.Source.(*skycore.CronSource); ok {
+			// Phase 7.2 Plan 03: cron triggers render schedule +
+			// timezone in the mount field for at-a-glance scanning.
+			// Format mirrors 07.2-CONTEXT.md Specifics:
+			// `cron @ 0 9 * * 1 (America/New_York) → weekly_digest`.
+			entry["mount"] = fmt.Sprintf("cron @ %s (%s)", src.Schedule(), src.Timezone())
 		}
+		// Future v1.44+ queue sources will add their own branch here.
 		triggerLines[i] = entry
 	}
 	logger.Info("registered triggers", "count", len(trigs), "triggers", triggerLines)

@@ -27,7 +27,9 @@ import (
 
 	"github.com/mikelalcon/skytime/pkg/dag"
 	"github.com/mikelalcon/skytime/pkg/extension"
+	skycore "github.com/mikelalcon/skytime/pkg/extension/builtin/core"
 	skyhttp "github.com/mikelalcon/skytime/pkg/extension/builtin/http"
+	"github.com/mikelalcon/skytime/pkg/extension/schedules"
 	"github.com/mikelalcon/skytime/pkg/interpreter"
 	"github.com/mikelalcon/skytime/pkg/worker"
 )
@@ -50,6 +52,7 @@ func TestServerCmd_Flags(t *testing.T) {
 		{"credfile", "string", ""},
 		{"drain-timeout", "duration", "30s"},
 		{"json-log", "bool", "false"},
+		{"cron-reconcile", "bool", "false"},
 	}
 	for _, spec := range flagSpecs {
 		f := cmd.Flags().Lookup(spec.name)
@@ -887,4 +890,318 @@ func TestServerCmd_AddrFlagNoLongerWarns(t *testing.T) {
 		"Plan 06: the Phase 7 --addr warning must be removed (the listener is now load-bearing)")
 	assert.NotContains(t, body, `cmd.Flags().Changed("addr")`,
 		"Plan 06: the Changed(\"addr\") branch is no longer needed — listener always binds")
+}
+
+// =============================================================================
+// Phase 7.2 Plan 03 — --cron-reconcile flag + cron banner rendering (SCHED-03)
+// =============================================================================
+
+// makeCronServerTestDir writes a temp rootdir with one flow and one
+// core.cron(...) trigger so bootRegistry produces a *dag.Trigger whose
+// Source is a *skycore.CronSource.
+func makeCronServerTestDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	// The `trigger(...)` primitive requires map= and idempotency_key=
+	// kwargs (parser/builtins.go::builtinTrigger). For cron triggers the
+	// req surface is [scheduled_time, actual_time]; the test fixture
+	// uses a no-op map and a deterministic idempotency_key built from
+	// scheduled_time so parsing succeeds.
+	starContent := `flow(name = "weekly_digest", steps = [])
+trigger(
+    flow = "weekly_digest",
+    source = core.cron(schedule = "0 9 * * 1", timezone = "America/New_York"),
+    map = lambda req: {},
+    idempotency_key = lambda req: str(req.scheduled_time),
+)
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "weekly_digest.star"), []byte(starContent), 0o644))
+	return dir
+}
+
+// TestServerCmd_CronReconcileWiresThrough exercises the full end-to-end
+// --cron-reconcile wiring: server boots → worker_started →
+// cron_reconcile_complete → listener_started → SIGTERM → drain_completed.
+// Asserts the FakeScheduleClient saw exactly one Create with the expected
+// ID prefix + workflow name (SCHED-03 success criterion #1).
+func TestServerCmd_CronReconcileWiresThrough(t *testing.T) {
+	installFakeClientFactory(t)
+
+	rec := newStageRecorder()
+	prevHook := testDrainHook
+	testDrainHook = rec.record
+	t.Cleanup(func() { testDrainHook = prevHook })
+
+	prevForceExit := testForceExit
+	testForceExit = func(_ int) {}
+	t.Cleanup(func() { testForceExit = prevForceExit })
+
+	fake := &fakeReceivingWorker{onStop: func() { /* no-op */ }}
+	prevOpts := testWorkerOptions
+	testWorkerOptions = []worker.Option{
+		worker.WithSDKFactory(func(_ client.Client, _ string, _ sdkworker.Options) sdkworker.Worker {
+			return fake
+		}),
+	}
+	t.Cleanup(func() { testWorkerOptions = prevOpts })
+
+	fakeSC := schedules.NewFakeScheduleClient()
+	dir := makeCronServerTestDir(t)
+
+	cfg := &config{
+		exts:            []extension.Extension{skyhttp.New(), skycore.New()},
+		credHandler:     nopCredHandler{},
+		scheduleFactory: func(_ client.Client) client.ScheduleClient { return fakeSC },
+	}
+	cmd := newServerCommand(cfg)
+	done := runServerInBackground(t, cmd, []string{
+		"--rootdir=" + dir,
+		"--task-queue=demo",
+		"--addr=127.0.0.1:0",
+		"--drain-timeout=2s",
+		"--cron-reconcile",
+	})
+
+	require.True(t, rec.waitFor("listener_started", 5*time.Second),
+		"listener_started must follow cron_reconcile_complete")
+
+	// Verify the reconciler was called exactly once and produced the
+	// expected create.
+	require.Len(t, fakeSC.CreateCalls, 1, "exactly one Create call (1 cron trigger in fixture)")
+	createdOpts := fakeSC.CreateCalls[0]
+	assert.True(t, strings.HasPrefix(createdOpts.ID, "skytime/weekly_digest/"),
+		"Schedule ID prefixed with skytime/<flow>/; got %q", createdOpts.ID)
+	wfAction, ok := createdOpts.Action.(*client.ScheduleWorkflowAction)
+	require.True(t, ok, "Action must be *ScheduleWorkflowAction; got %T", createdOpts.Action)
+	assert.Equal(t, "SkytimeWorkflow", wfAction.Workflow)
+
+	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
+	require.True(t, rec.waitFor("drain_completed", 5*time.Second))
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err, "clean exit on drain_completed")
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunE did not return after drain_completed")
+	}
+}
+
+// TestServerCmd_CronReconcileFailureExitsNonZero: when the
+// ScheduleClient.List returns an error, the reconciler fails, the
+// listener is NEVER bound, RunE returns errSilent, and stderr contains
+// "cron-reconcile failed" (D-7.2-11 fail-loud).
+func TestServerCmd_CronReconcileFailureExitsNonZero(t *testing.T) {
+	installFakeClientFactory(t)
+
+	rec := newStageRecorder()
+	prevHook := testDrainHook
+	testDrainHook = rec.record
+	t.Cleanup(func() { testDrainHook = prevHook })
+
+	fake := &fakeReceivingWorker{onStop: func() { /* no-op */ }}
+	prevOpts := testWorkerOptions
+	testWorkerOptions = []worker.Option{
+		worker.WithSDKFactory(func(_ client.Client, _ string, _ sdkworker.Options) sdkworker.Worker {
+			return fake
+		}),
+	}
+	t.Cleanup(func() { testWorkerOptions = prevOpts })
+
+	fakeSC := schedules.NewFakeScheduleClient()
+	fakeSC.ListErr = errors.New("permission denied")
+
+	dir := makeCronServerTestDir(t)
+
+	cfg := &config{
+		exts:            []extension.Extension{skyhttp.New(), skycore.New()},
+		credHandler:     nopCredHandler{},
+		scheduleFactory: func(_ client.Client) client.ScheduleClient { return fakeSC },
+	}
+	cmd := newServerCommand(cfg)
+	cmd.SetArgs([]string{
+		"--rootdir=" + dir,
+		"--task-queue=demo",
+		"--addr=127.0.0.1:0",
+		"--drain-timeout=2s",
+		"--cron-reconcile",
+	})
+
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+	cmd.SetOut(io.Discard)
+
+	err := cmd.Execute()
+	require.Error(t, err, "reconcile failure must propagate as error")
+	assert.ErrorIs(t, err, errSilent)
+	assert.Contains(t, stderr.String(), "cron-reconcile failed",
+		"stderr must surface the reconcile failure (D-7.2-11 fail-loud)")
+
+	stages := rec.snapshot()
+	assert.NotContains(t, stages, "cron_reconcile_complete",
+		"cron_reconcile_complete must NOT fire when reconcile errors")
+	assert.NotContains(t, stages, "listener_started",
+		"listener must NOT bind when reconcile fails (K8s readinessProbe stays unready)")
+
+	// Worker started before reconcile attempted but the worker.Stop
+	// path runs via defer'd flows. No explicit drain hooks since RunE
+	// returns errSilent before the sigCh wait.
+	assert.Contains(t, stages, "worker_started",
+		"worker_started fires before reconcile is attempted")
+}
+
+// TestServerCmd_CronReconcileBootOrder pins the LOCKED stage sequence
+// for --cron-reconcile=true: worker_started precedes
+// cron_reconcile_complete which precedes listener_started (D-7.2-16
+// boot order).
+func TestServerCmd_CronReconcileBootOrder(t *testing.T) {
+	installFakeClientFactory(t)
+
+	rec := newStageRecorder()
+	prevHook := testDrainHook
+	testDrainHook = rec.record
+	t.Cleanup(func() { testDrainHook = prevHook })
+
+	fake := &fakeReceivingWorker{onStop: func() { /* no-op */ }}
+	prevOpts := testWorkerOptions
+	testWorkerOptions = []worker.Option{
+		worker.WithSDKFactory(func(_ client.Client, _ string, _ sdkworker.Options) sdkworker.Worker {
+			return fake
+		}),
+	}
+	t.Cleanup(func() { testWorkerOptions = prevOpts })
+
+	fakeSC := schedules.NewFakeScheduleClient()
+	dir := makeCronServerTestDir(t)
+
+	cfg := &config{
+		exts:            []extension.Extension{skyhttp.New(), skycore.New()},
+		credHandler:     nopCredHandler{},
+		scheduleFactory: func(_ client.Client) client.ScheduleClient { return fakeSC },
+	}
+	cmd := newServerCommand(cfg)
+	done := runServerInBackground(t, cmd, []string{
+		"--rootdir=" + dir,
+		"--task-queue=demo",
+		"--addr=127.0.0.1:0",
+		"--drain-timeout=2s",
+		"--cron-reconcile",
+	})
+
+	require.True(t, rec.waitFor("listener_started", 5*time.Second))
+	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
+	require.True(t, rec.waitFor("drain_completed", 5*time.Second))
+	<-done
+
+	stages := rec.snapshot()
+	require.GreaterOrEqual(t, len(stages), 3)
+	assert.Equal(t, "worker_started", stages[0])
+	assert.Equal(t, "cron_reconcile_complete", stages[1])
+	assert.Equal(t, "listener_started", stages[2])
+
+	idx := func(s string) int {
+		for i, x := range stages {
+			if x == s {
+				return i
+			}
+		}
+		return -1
+	}
+	assert.Less(t, idx("worker_started"), idx("cron_reconcile_complete"),
+		"D-7.2-16: worker_started < cron_reconcile_complete")
+	assert.Less(t, idx("cron_reconcile_complete"), idx("listener_started"),
+		"D-7.2-16: cron_reconcile_complete < listener_started")
+}
+
+// TestServerCmd_CronReconcileSkippedWithoutFlag: without
+// --cron-reconcile, ZERO ScheduleClient API calls happen and
+// cron_reconcile_complete is NOT emitted (D-7.2-17).
+func TestServerCmd_CronReconcileSkippedWithoutFlag(t *testing.T) {
+	installFakeClientFactory(t)
+
+	rec := newStageRecorder()
+	prevHook := testDrainHook
+	testDrainHook = rec.record
+	t.Cleanup(func() { testDrainHook = prevHook })
+
+	fake := &fakeReceivingWorker{onStop: func() { /* no-op */ }}
+	prevOpts := testWorkerOptions
+	testWorkerOptions = []worker.Option{
+		worker.WithSDKFactory(func(_ client.Client, _ string, _ sdkworker.Options) sdkworker.Worker {
+			return fake
+		}),
+	}
+	t.Cleanup(func() { testWorkerOptions = prevOpts })
+
+	fakeSC := schedules.NewFakeScheduleClient()
+	dir := makeCronServerTestDir(t)
+
+	cfg := &config{
+		exts:            []extension.Extension{skyhttp.New(), skycore.New()},
+		credHandler:     nopCredHandler{},
+		scheduleFactory: func(_ client.Client) client.ScheduleClient { return fakeSC },
+	}
+	cmd := newServerCommand(cfg)
+	done := runServerInBackground(t, cmd, []string{
+		"--rootdir=" + dir,
+		"--task-queue=demo",
+		"--addr=127.0.0.1:0",
+		"--drain-timeout=2s",
+		// NO --cron-reconcile flag.
+	})
+
+	require.True(t, rec.waitFor("listener_started", 5*time.Second))
+	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
+	require.True(t, rec.waitFor("drain_completed", 5*time.Second))
+	<-done
+
+	stages := rec.snapshot()
+	assert.NotContains(t, stages, "cron_reconcile_complete",
+		"cron_reconcile_complete must NOT fire without --cron-reconcile (D-7.2-17)")
+
+	assert.Empty(t, fakeSC.CreateCalls, "no Create when --cron-reconcile is absent")
+	assert.Empty(t, fakeSC.UpdateCalls, "no Update when --cron-reconcile is absent")
+	assert.Empty(t, fakeSC.DeleteCalls, "no Delete when --cron-reconcile is absent")
+	// The fake's ListErr is unused; whether List was hit is recorded
+	// implicitly — the reconciler never runs, so List can never be
+	// called by our code.
+}
+
+// TestServerCmd_BannerSorted_CronSourceRendersScheduleInMount asserts
+// printStartupBanner renders cron triggers with `cron @ {schedule}
+// ({timezone})` in the mount field — distinct from the HTTP-shaped
+// `METHOD path` format.
+func TestServerCmd_BannerSorted_CronSourceRendersScheduleInMount(t *testing.T) {
+	flowReg := interpreter.NewRegistry()
+	require.NoError(t, flowReg.Register("weekly_digest", "h1", &interpreter.ParsedFlow{Flow: &dag.Flow{Name: "weekly_digest"}}))
+	flowReg.Freeze()
+
+	cronSource := skycore.NewCronSourceForTest("0 9 * * 1", "America/New_York", "skip", nil)
+	trigReg := interpreter.NewTriggerRegistry()
+	require.NoError(t, trigReg.Register("h1", &dag.Trigger{
+		FlowName: "weekly_digest",
+		Source:   cronSource,
+		Pos:      syntax.MakePosition(stringPtr("weekly_digest.star"), 5, 1),
+	}))
+	trigReg.Freeze()
+
+	w := worker.NewWorkerForTest(flowReg, trigReg)
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	printStartupBanner(logger, w, "/tmp/rootdir", "demo", ":8080")
+
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	require.Len(t, lines, 3, "banner emits 3 records")
+
+	var registeredTriggers map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[2]), &registeredTriggers))
+
+	triggers, _ := registeredTriggers["triggers"].([]any)
+	require.Len(t, triggers, 1)
+	first, _ := triggers[0].(map[string]any)
+	assert.Equal(t, "weekly_digest", first["flow"])
+	assert.Equal(t, "core.cron", first["source"])
+	assert.Equal(t, "cron @ 0 9 * * 1 (America/New_York)", first["mount"],
+		"Phase 7.2 Plan 03: cron triggers render schedule + timezone in mount field")
 }
