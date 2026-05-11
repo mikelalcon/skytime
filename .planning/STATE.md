@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.2-02-schedules-package-PLAN.md
-last_updated: "2026-05-11T19:25:14.193Z"
+stopped_at: Completed 07.2-03-cli-wiring-PLAN.md
+last_updated: "2026-05-11T19:40:37.565Z"
 last_activity: 2026-05-11
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 19
-  completed_plans: 17
+  completed_plans: 18
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.2 (cron-triggers-via-temporal-schedules) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-05-11
 
@@ -125,6 +125,7 @@ Progress: [          ] 0%
 | Phase 07.1 P08 | 5min | 3 tasks | 6 files |
 | Phase 07.2 P01 | 6min | 3 tasks | 9 files |
 | Phase 07.2 P02 | 9min | 3 tasks | 10 files |
+| Phase 07.2 P03 | 10min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -380,6 +381,7 @@ Recent decisions affecting current work:
 - [Phase 07.2]: MemoUpdate gap pinned as documented limitation via TestReconcile_UpdateMemoStaysStale_DocumentedLimitation (idempotent thrash bounded; workarounds forfeit operator-State preservation)
 - [Phase 07.2]: FakeScheduleClient lives in production code so Plan 03's pkg/cli tests can consume it across package boundaries
 - [Phase 07.2]: ContentHash inclusion in canonical config (Pitfall 7): flow .star edits trigger Schedule Updates even when cron config byte-identical, ensuring fired workflows resolve the correct FlowRegistry entry
+- [Phase 07.2]: Phase 7.2 Plan 03: loadRegistries lives in pkg/cli (not pkg/worker) — worker.LoadRegistries is one-line public wrapper; pkg/cli adds CLI-side empty-rootdir check + error wrapping. cli.WithScheduleClientFactory parallels worker.WithSDKFactory for cluster-side test seam. Cron banner format: cron @ {schedule} ({timezone}) — distinct from HTTP triggers' {METHOD} {path}.
 
 ### Pending Todos
 
@@ -410,6 +412,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-11T19:25:14.188Z
-Stopped at: Completed 07.2-02-schedules-package-PLAN.md
+Last session: 2026-05-11T19:40:37.560Z
+Stopped at: Completed 07.2-03-cli-wiring-PLAN.md
 Resume file: None
