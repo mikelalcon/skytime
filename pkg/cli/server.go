@@ -191,6 +191,7 @@ func newServerCommand(cfg *config) *cobra.Command {
 				CredentialHandler: cfg.credHandler,
 				TaskQueue:         taskQueue,
 				Logger:            logger,
+				FlowRegistry:      w.Registry(),
 			})
 
 			// 10. Pitfall 9: pre-bind the listener synchronously so

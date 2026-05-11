@@ -91,7 +91,24 @@ func validDeps() Deps {
 		CredentialHandler: &fakeCredentialHandler{},
 		TaskQueue:         "test-queue",
 		Logger:            discardLogger(),
+		FlowRegistry:      testFlowRegistry("issue_triage", "noop_flow", "noop", "batch_label_issues", "demo", "sha512_flow", "f1", "f2", "fanA", "fanB", "post_flow", "get_flow", "z_flow", "a_flow", "shared_flow"),
 	}
+}
+
+// testFlowRegistry returns a frozen FlowRegistry populated with the given
+// flow names, each mapped to a synthetic content_hash. The hash is enough
+// to satisfy ContentHashFor (which only checks single-version cardinality);
+// the ParsedFlow itself is a stub since handler tests never reach the
+// workflow tick path — they only verify the receiver's dispatch shape.
+func testFlowRegistry(flowNames ...string) *interpreter.FlowRegistry {
+	r := interpreter.NewRegistry()
+	for _, name := range flowNames {
+		if err := r.Register(name, "testhash-"+name, &interpreter.ParsedFlow{}); err != nil {
+			panic("testFlowRegistry: Register " + name + ": " + err.Error())
+		}
+	}
+	r.Freeze()
+	return r
 }
 
 // =============================================================================

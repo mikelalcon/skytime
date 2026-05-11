@@ -8,6 +8,7 @@ import (
 
 	"github.com/mikelalcon/skytime/pkg/dag"
 	"github.com/mikelalcon/skytime/pkg/extension"
+	"github.com/mikelalcon/skytime/pkg/interpreter"
 	"github.com/mikelalcon/skytime/pkg/worker"
 )
 
@@ -38,6 +39,13 @@ type Deps struct {
 	// startup banner (charm-log default; --json-log routes to JSON).
 	// Required — nil here would NPE inside emit() at request time.
 	Logger *slog.Logger
+
+	// FlowRegistry resolves a trigger's FlowName to the content_hash of
+	// the .star file that declared it. Required: SkytimeWorkflow keys its
+	// in-memory flow lookup by (FlowName, ContentHash), so dispatching
+	// without the hash produces "flow @ not found in worker registry"
+	// (D3-04). Populated from worker.Worker.Registry() in server.go.
+	FlowRegistry *interpreter.FlowRegistry
 }
 
 // validate panics on missing required Deps fields. Called once from
@@ -57,6 +65,9 @@ func (d Deps) validate() {
 	}
 	if d.Logger == nil {
 		panic("receiver.Deps: Logger is required")
+	}
+	if d.FlowRegistry == nil {
+		panic("receiver.Deps: FlowRegistry is required (SkytimeWorkflow keys flow lookup by (FlowName, ContentHash))")
 	}
 }
 

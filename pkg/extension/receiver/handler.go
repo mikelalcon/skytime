@@ -192,7 +192,7 @@ func makeHandler(key mountKey, trigs []*dag.Trigger, deps Deps) http.HandlerFunc
 			duplicateID     string
 		)
 		for _, t := range matchedTriggers {
-			input, lamErr := evalLambdaToMap(r.Context(), t.MapLambda, reqStruct)
+			initState, lamErr := evalLambdaToMap(r.Context(), t.MapLambda, reqStruct)
 			if lamErr != nil {
 				anyInternalFail = true
 				continue
@@ -202,6 +202,14 @@ func makeHandler(key mountKey, trigs []*dag.Trigger, deps Deps) http.HandlerFunc
 				anyInternalFail = true
 				continue
 			}
+			// SkytimeWorkflow keys its in-memory flow lookup by
+			// (FlowName, ContentHash) per dag.WorkflowInput / D3-04.
+			// Dispatching without the hash yields "flow @ not found".
+			contentHash, ok := deps.FlowRegistry.ContentHashFor(t.FlowName)
+			if !ok {
+				anyDispatchFail = true
+				continue
+			}
 			workflowID := composeWorkflowID(t, userKey)
 			opts := client.StartWorkflowOptions{
 				ID:                                       workflowID,
@@ -209,7 +217,12 @@ func makeHandler(key mountKey, trigs []*dag.Trigger, deps Deps) http.HandlerFunc
 				WorkflowIDReusePolicy:                    enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
 				WorkflowExecutionErrorWhenAlreadyStarted: true, // CRITICAL — Pitfall 1
 			}
-			_, execErr := deps.Client.ExecuteWorkflow(r.Context(), opts, "SkytimeWorkflow", input)
+			workflowInput := dag.WorkflowInput{
+				FlowName:    t.FlowName,
+				ContentHash: contentHash,
+				InitState:   initState,
+			}
+			_, execErr := deps.Client.ExecuteWorkflow(r.Context(), opts, "SkytimeWorkflow", workflowInput)
 			if execErr == nil {
 				anyOK = true
 				workflowIDs = append(workflowIDs, workflowID)

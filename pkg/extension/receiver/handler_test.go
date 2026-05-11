@@ -258,8 +258,9 @@ func makeGithubTrigDeps(t *testing.T, events []string, credID string) ([]*dag.Tr
 				credID: &extension.BearerCredential{ID_: credID, Token: extension.NewSecret(testSecret)},
 			},
 		},
-		TaskQueue: "test-queue",
-		Logger:    discardLogger(),
+		TaskQueue:    "test-queue",
+		Logger:       discardLogger(),
+		FlowRegistry: testFlowRegistry("issue_triage", "noop_flow", "noop", "demo", "sha512_flow", "f1", "f2", "fanA", "fanB"),
 	}
 	return []*dag.Trigger{tr}, deps, mock
 }
@@ -284,7 +285,7 @@ func TestHandler_GitHubValidSignature(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Contains(t, resp, "workflow_id", "single-trigger response uses 'workflow_id' key")
 
-	ids, opts, _ := mock.snapshot()
+	ids, opts, inputs := mock.snapshot()
 	require.Len(t, ids, 1, "exactly 1 ExecuteWorkflow call")
 	require.Equal(t, opts[0].ID, ids[0])
 	// Pitfall 1 / 6: WorkflowExecutionErrorWhenAlreadyStarted=true is
@@ -297,6 +298,16 @@ func TestHandler_GitHubValidSignature(t *testing.T) {
 		"WorkflowID prefix from FlowName: %s", opts[0].ID)
 	require.True(t, strings.HasSuffix(opts[0].ID, "/abc-123"),
 		"WorkflowID suffix from idempotency_key: %s", opts[0].ID)
+
+	// SkytimeWorkflow keys (FlowName, ContentHash) registry lookup per
+	// dag.WorkflowInput / D3-04. Without this wrapping the workflow side
+	// reports "flow @ not found in worker registry". Lock the contract.
+	wi, ok := inputs[0].(dag.WorkflowInput)
+	require.True(t, ok, "ExecuteWorkflow input must be dag.WorkflowInput, got %T", inputs[0])
+	require.Equal(t, "issue_triage", wi.FlowName)
+	require.Equal(t, "testhash-issue_triage", wi.ContentHash,
+		"ContentHash must come from FlowRegistry.ContentHashFor(FlowName)")
+	require.NotEmpty(t, wi.InitState["repo"], "map lambda result lands in InitState")
 }
 
 // TestHandler_GitHubBadSignature: deadbeef sig → 401 unauthorized; no
@@ -362,6 +373,7 @@ func TestHandler_UnsignedHTTPWebhook(t *testing.T) {
 		CredentialHandler: &mockCredentialHandler{},
 		TaskQueue:         "test-queue",
 		Logger:            discardLogger(),
+		FlowRegistry:      testFlowRegistry("issue_triage", "noop_flow", "noop", "demo", "sha512_flow", "f1", "f2", "fanA", "fanB"),
 	}
 
 	req := httptest.NewRequest(gold.Method, gold.Path, bytes.NewReader([]byte(gold.Body)))
@@ -393,8 +405,9 @@ func TestSignature_SHA512(t *testing.T) {
 				"sha512-cred": &extension.BearerCredential{ID_: "sha512-cred", Token: extension.NewSecret(testSecret)},
 			},
 		},
-		TaskQueue: "test-queue",
-		Logger:    discardLogger(),
+		TaskQueue:    "test-queue",
+		Logger:       discardLogger(),
+		FlowRegistry: testFlowRegistry("issue_triage", "noop_flow", "noop", "demo", "sha512_flow", "f1", "f2", "fanA", "fanB"),
 	}
 
 	body := []byte(gold.Body)
@@ -498,8 +511,9 @@ func TestHandler_FanOutDifferentWorkflowIDs(t *testing.T) {
 				testCredID: &extension.BearerCredential{ID_: testCredID, Token: extension.NewSecret(testSecret)},
 			},
 		},
-		TaskQueue: "test-queue",
-		Logger:    discardLogger(),
+		TaskQueue:    "test-queue",
+		Logger:       discardLogger(),
+		FlowRegistry: testFlowRegistry("issue_triage", "noop_flow", "noop", "demo", "sha512_flow", "f1", "f2", "fanA", "fanB"),
 	}
 
 	body := []byte(gold.Body)
@@ -589,6 +603,7 @@ func TestHandler_NonJSONContentType(t *testing.T) {
 		CredentialHandler: &mockCredentialHandler{},
 		TaskQueue:         "test-queue",
 		Logger:            discardLogger(),
+		FlowRegistry:      testFlowRegistry("issue_triage", "noop_flow", "noop", "demo", "sha512_flow", "f1", "f2", "fanA", "fanB"),
 	}
 
 	req := httptest.NewRequest("POST", "/hooks/x", strings.NewReader("<xml/>"))
@@ -655,8 +670,9 @@ func TestHandler_LambdaError(t *testing.T) {
 				testCredID: &extension.BearerCredential{ID_: testCredID, Token: extension.NewSecret(testSecret)},
 			},
 		},
-		TaskQueue: "test-queue",
-		Logger:    discardLogger(),
+		TaskQueue:    "test-queue",
+		Logger:       discardLogger(),
+		FlowRegistry: testFlowRegistry("issue_triage", "noop_flow", "noop", "demo", "sha512_flow", "f1", "f2", "fanA", "fanB"),
 	}
 
 	gold := loadGolden(t, "github_valid_signature.golden")
