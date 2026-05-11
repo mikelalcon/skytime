@@ -52,6 +52,19 @@ func TestRootCommand_HasValidateSubcommand(t *testing.T) {
 	require.True(t, found, "expected validate subcommand on root")
 }
 
+// TestRoot_HasCronPlanSubcommand asserts skytime has the cron-plan
+// subcommand wired (Phase 7.2 Plan 03 / SCHED-03).
+func TestRoot_HasCronPlanSubcommand(t *testing.T) {
+	root, err := cli.NewRootCommand()
+	require.NoError(t, err)
+	cmds := root.Commands()
+	names := make([]string, 0, len(cmds))
+	for _, c := range cmds {
+		names = append(names, c.Name())
+	}
+	require.Contains(t, names, "cron-plan")
+}
+
 // TestRootCommand_SilencesErrorsAndUsage verifies D4-18: cobra's
 // built-in error printing is disabled so the renderer owns output.
 func TestRootCommand_SilencesErrorsAndUsage(t *testing.T) {

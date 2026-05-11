@@ -16,6 +16,24 @@ import (
 	"github.com/mikelalcon/skytime/pkg/parser"
 )
 
+// LoadRegistries is the public wrapper around bootRegistry. Reads rootDir,
+// parses every .star file (recursively), and returns frozen flow + trigger
+// registries. Used by clients that need the parser output WITHOUT
+// constructing a full *Worker — notably pkg/cli's cron-plan subcommand
+// (Phase 7.2 Plan 03), which needs the parsed registries to compute a
+// dry-run diff against the cluster's Schedules.
+//
+// Per D-7.2-21 (test seam discretion): this is the parse-side seam that
+// lets cron-plan be unit-testable without a Temporal client connection.
+// NewWorker's existing path continues to call bootRegistry internally.
+//
+// The function signature intentionally omits the Temporal client +
+// task-queue arguments NewWorker requires: this is a pure parse step.
+// Callers that need to RUN flows must use NewWorker.
+func LoadRegistries(rootDir string, exts []extension.Extension) (*interpreter.FlowRegistry, *interpreter.TriggerRegistry, error) {
+	return bootRegistry(rootDir, exts)
+}
+
 // bootRegistry walks rootDir, parses every .star file (recursively), computes
 // each file's content_hash (sha256 of file bytes), and registers the flows
 // AND triggers it declares in fresh registries. Returns the frozen registries
