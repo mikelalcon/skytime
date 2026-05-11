@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 
 	"github.com/spf13/cobra"
@@ -91,7 +92,7 @@ func newCronPlanCommand(cfg *config) *cobra.Command {
 				return errSilent
 			}
 
-			renderCronPlan(logger, plan, rootdir)
+			renderCronPlan(logger, cmd.OutOrStdout(), plan, rootdir, jsonLog)
 			return nil
 		},
 	}
@@ -104,26 +105,35 @@ func newCronPlanCommand(cfg *config) *cobra.Command {
 	return cmd
 }
 
-// renderCronPlan emits the plan via the supplied slog.Logger. The output
-// shape is identical regardless of --json-log; the only thing the flag
-// controls is the underlying handler (charm-log Bazel-style by default;
-// JSON via slog.NewJSONHandler when --json-log is set, plumbed by
-// setupServerLogging upstream).
+// renderCronPlan emits the plan in two modes:
 //
-// One slog.Info record per entry (one per create / update / delete) so
-// charm-log produces one bullet per line and JSON consumers can stream
-// the records.
+//   - default: terraform-style human-readable block to `w` (stdout), plus
+//     one-line slog breadcrumbs ("cron-plan reading", "cron-plan summary")
+//     to stderr for operators tailing logs.
+//   - jsonLog=true: one slog.Info record per entry so JSON consumers can
+//     stream the records; no pretty output to `w`.
 //
-// Output matches RESEARCH.md § Specifics example:
-//
-//	cron-plan reading {rootdir}
-//	cluster Skytime-managed schedules     (creates, updates, deletes)
-//	cron-plan entry action=CREATE schedule_id=... cron=... timezone=... overlap=...
-//	cron-plan entry action=UPDATE schedule_id=... reason=...
-//	cron-plan entry action=DELETE schedule_id=... reason="no matching trigger in registry"
-//	cron-plan summary creates=N updates=M deletes=K applied=false
-func renderCronPlan(logger *slog.Logger, plan *schedules.Plan, rootdir string) {
+// Either mode logs "cron-plan summary" via slog so operators see a single
+// machine-tailable line regardless of formatting choice.
+func renderCronPlan(logger *slog.Logger, w io.Writer, plan *schedules.Plan, rootdir string, jsonLog bool) {
 	logger.Info("cron-plan reading", "rootdir", rootdir)
+
+	if jsonLog {
+		emitCronPlanRecords(logger, plan)
+	} else {
+		writeCronPlanPretty(w, plan)
+	}
+
+	logger.Info("cron-plan summary",
+		"creates", len(plan.Creates),
+		"updates", len(plan.Updates),
+		"deletes", len(plan.Deletes),
+		"applied", false)
+}
+
+// emitCronPlanRecords writes one slog record per plan entry. Used when
+// --json-log is set so machine consumers get a parseable stream.
+func emitCronPlanRecords(logger *slog.Logger, plan *schedules.Plan) {
 	logger.Info("cluster Skytime-managed schedules",
 		"creates", len(plan.Creates),
 		"updates", len(plan.Updates),
@@ -156,9 +166,58 @@ func renderCronPlan(logger *slog.Logger, plan *schedules.Plan, rootdir string) {
 			"schedule_id", id,
 			"reason", "no matching trigger in registry")
 	}
-	logger.Info("cron-plan summary",
-		"creates", len(plan.Creates),
-		"updates", len(plan.Updates),
-		"deletes", len(plan.Deletes),
-		"applied", false)
+}
+
+// writeCronPlanPretty renders a terraform-plan-style block:
+//
+//	Plan: 1 to add, 0 to change, 1 to destroy.
+//
+//	  + skytime/weekly_digest/a1b2c3d4
+//	      flow      weekly_digest
+//	      schedule  0 9 * * 1 (America/New_York)
+//	      overlap   skip
+//
+//	  - skytime/old_flow/deadbeef
+//	      reason    no matching trigger in registry
+//
+//	Dry-run: no changes applied. Run `skytime server --cron-reconcile` to apply.
+func writeCronPlanPretty(w io.Writer, plan *schedules.Plan) {
+	nC, nU, nD := len(plan.Creates), len(plan.Updates), len(plan.Deletes)
+
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "Plan: %d to add, %d to change, %d to destroy.\n\n", nC, nU, nD)
+
+	if nC+nU+nD == 0 {
+		fmt.Fprintln(w, "No changes. Cluster schedules match parsed triggers.")
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Dry-run: no changes applied.")
+		return
+	}
+
+	for _, t := range plan.Creates {
+		fmt.Fprintf(w, "  + %s\n", schedules.ComposeScheduleID(t))
+		fmt.Fprintf(w, "      flow      %s\n", t.FlowName)
+		if src, ok := t.Source.(*skycore.CronSource); ok {
+			fmt.Fprintf(w, "      schedule  %s (%s)\n", src.Schedule(), src.Timezone())
+			fmt.Fprintf(w, "      overlap   %s\n", src.Overlap())
+		}
+		fmt.Fprintln(w)
+	}
+	for _, up := range plan.Updates {
+		fmt.Fprintf(w, "  ~ %s\n", up.ScheduleID)
+		fmt.Fprintf(w, "      flow      %s\n", up.Trigger.FlowName)
+		if src, ok := up.Trigger.Source.(*skycore.CronSource); ok {
+			fmt.Fprintf(w, "      schedule  %s (%s)\n", src.Schedule(), src.Timezone())
+			fmt.Fprintf(w, "      overlap   %s\n", src.Overlap())
+		}
+		fmt.Fprintf(w, "      reason    %s\n", up.Reason)
+		fmt.Fprintln(w)
+	}
+	for _, id := range plan.Deletes {
+		fmt.Fprintf(w, "  - %s\n", id)
+		fmt.Fprintln(w, "      reason    no matching trigger in registry")
+		fmt.Fprintln(w)
+	}
+
+	fmt.Fprintln(w, "Dry-run: no changes applied. Run `skytime server --cron-reconcile` to apply.")
 }

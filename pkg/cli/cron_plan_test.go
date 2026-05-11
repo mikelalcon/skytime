@@ -82,10 +82,10 @@ func TestCronPlanCmd_DryRun(t *testing.T) {
 	require.Empty(t, fakeSC.DeleteCalls, "cron-plan must not call Delete")
 
 	combined := captured.String() + cmdStdout.String() + cmdStderr.String()
-	require.Contains(t, combined, "CREATE",
-		"plan output must mention CREATE action; got: %s", combined)
-	require.Contains(t, combined, "skytime/weekly_digest/",
-		"plan output must include the composed Schedule ID; got: %s", combined)
+	require.Contains(t, combined, "1 to add",
+		"pretty plan must show terraform-style header counting creates; got: %s", combined)
+	require.Contains(t, combined, "  + skytime/weekly_digest/",
+		"pretty plan must show '+' marker plus the composed Schedule ID; got: %s", combined)
 }
 
 // TestCronPlanCmd_OutputFormat: with --json-log, plan records are
