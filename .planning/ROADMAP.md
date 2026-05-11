@@ -129,6 +129,21 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
 **Plans**: TBD
 **UI hint**: no
 
+## Backlog
+
+### Phase 999.1: Structured logging step builtin (BACKLOG)
+
+**Goal**: Replace the `print()` footgun with a first-class `log.info(...) / log.warn(...) / log.error(...) / log.debug(...)` step type that reuses Skytime's existing string-interpolation pattern and routes through `workflow.GetLogger` at the matching slog level. Surfaced during Phase 7.2 cron-trigger UAT (2026-05-11): operators wanted visible side-effects in `skytime server` stdout, but the available primitive (Starlark `print()` via D3-22) requires the `print() or {...}` dict-return hack to satisfy a script step's contract — and has no level control or structured fields. A proper log step is a real `Step` type (no mandatory `output_alias`), replay-safe (same constraint as print), and uses the existing DSL interpolation surface for `{key}` substitution.
+
+**Out of scope (initial cut)**: `log.fatal(...)` — fatal semantics need workflow-cancellation design first; defer until a use case lands.
+
+**Depends on**: TBD (likely Phase 7 trigger + server shell to be merged so we have the surface to log INTO; revisit at promotion)
+**Requirements**: TBD (promote with `/gsd:review-backlog` when ready)
+**Plans**: 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd:review-backlog when ready)
+
 ## Progress
 
 **Execution Order:**
