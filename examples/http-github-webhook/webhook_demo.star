@@ -50,7 +50,15 @@ trigger(
         events = ["issues"],
         secret_credential = "github_webhook_secret",
     ),
+    # `events=["issues"]` matches X-GitHub-Event=issues which covers ALL
+    # issue actions (opened, labeled, closed, edited, ...) — not just opens.
+    # The flow's add_label activity below fires another `issues` delivery
+    # with action=labeled, which would re-trigger this same flow and double
+    # the comment. The action field is passed through here so the flow body
+    # can guard with `if_cond(cond = lambda ctx: ctx.action == "opened", ...)`
+    # and skip the recursive deliveries cleanly.
     map = lambda req: {
+        "action": req.payload.action,
         "repo": req.payload.repository.full_name,
         "issue_number": req.payload.issue.number,
     },
@@ -65,39 +73,52 @@ trigger(
 flow(
     name = "webhook_demo",
     inputs = {
+        "action": "string",        # req.payload.action — "opened", "labeled", "closed", ...
         "repo": "string",          # "owner/repo" full_name from req.payload.repository
         "issue_number": "int",     # req.payload.issue.number
     },
     steps = [
-        # Step 1: post the "received, processing..." comment immediately.
-        # Uses action_fn + ctx.repo.split() to derive owner/repo (matches
-        # the action_fn pattern from issue_triage.star).
-        step(
-            name = "Post received comment",
-            action_fn = lambda ctx: gh.add_comment(
-                owner = ctx.repo.split("/")[0],
-                repo = ctx.repo.split("/")[1],
-                number = ctx.issue_number,
-                body = "received, processing...",
-            ),
-            retry = {"max_attempts": 3, "initial_interval": "1s"},
-            timeout = {"start_to_close": "30s"},
-        ),
+        # Guard the comment + label activities behind action == "opened".
+        # Without this guard, the add_label step below triggers a fresh
+        # `issues` delivery (action="labeled"), which would re-run the
+        # whole flow and double the comment. Filtering on action keeps
+        # the demo idempotent against GitHub's issue-event coverage.
+        if_cond(
+            cond = lambda ctx: ctx.action == "opened",
+            then = [
+                # Step 1: post the "received, processing..." comment.
+                # Uses action_fn + ctx.repo.split() to derive owner/repo
+                # (matches the action_fn pattern from issue_triage.star).
+                step(
+                    name = "Post received comment",
+                    action_fn = lambda ctx: gh.add_comment(
+                        owner = ctx.repo.split("/")[0],
+                        repo = ctx.repo.split("/")[1],
+                        number = ctx.issue_number,
+                        body = "received, processing...",
+                    ),
+                    retry = {"max_attempts": 3, "initial_interval": "1s"},
+                    timeout = {"start_to_close": "30s"},
+                ),
 
-        # Step 2: post the "processed" label. The kill-restart happens
-        # BETWEEN step 1 and step 2 in the walkthrough — Temporal's
-        # event history records step 1's completion, restart picks up
-        # at step 2. NO explicit sleep needed for the durability demo.
-        step(
-            name = "Apply processed label",
-            action_fn = lambda ctx: gh.add_label(
-                owner = ctx.repo.split("/")[0],
-                repo = ctx.repo.split("/")[1],
-                number = ctx.issue_number,
-                label = "processed",
-            ),
-            retry = {"max_attempts": 3, "initial_interval": "1s"},
-            timeout = {"start_to_close": "30s"},
+                # Step 2: post the "processed" label. The kill-restart
+                # happens BETWEEN step 1 and step 2 in the walkthrough —
+                # Temporal's event history records step 1's completion,
+                # restart picks up at step 2. NO explicit sleep needed
+                # for the durability demo.
+                step(
+                    name = "Apply processed label",
+                    action_fn = lambda ctx: gh.add_label(
+                        owner = ctx.repo.split("/")[0],
+                        repo = ctx.repo.split("/")[1],
+                        number = ctx.issue_number,
+                        label = "processed",
+                    ),
+                    retry = {"max_attempts": 3, "initial_interval": "1s"},
+                    timeout = {"start_to_close": "30s"},
+                ),
+            ],
+            else_ = [],
         ),
     ],
 )
