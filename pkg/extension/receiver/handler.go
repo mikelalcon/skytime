@@ -321,10 +321,13 @@ func credentialBytes(cred extension.Credential) ([]byte, bool) {
 //   - req.payload  — *starlarkstruct.Struct from the JSON body (recursive
 //     via bridge.ToStarlarkStruct), enabling `req.payload.repository
 //     .full_name` dot access for arbitrary JSON depth.
-//   - req.headers  — *starlark.Dict keyed by Go-canonical header name
-//     (http.Header.Set canonicalizes to "X-Github-Delivery"), enabling
-//     `req.headers["X-Github-Delivery"]` index access. A struct will NOT
-//     work here — Starlark struct attribute names cannot contain hyphens.
+//   - req.headers  — *httpHeaders (case-insensitive map of canonicalized
+//     keys to string values). Lookups via `req.headers["X-GitHub-Delivery"]`
+//     work regardless of casing (RFC 7230 §3.2 makes header names
+//     case-insensitive; Go's net/http canonicalizes on parse and we
+//     canonicalize on lookup, so any casing the user writes resolves to
+//     the same entry). A struct will NOT work here — Starlark struct
+//     attribute names cannot contain hyphens.
 //
 // We bypass bridge.CallLambda's wrap-state-as-struct convenience because
 // it would recursively wrap headers as a struct too, breaking index access.
@@ -334,22 +337,9 @@ func buildReqStruct(payload map[string]any, headers http.Header) (*starlarkstruc
 		return nil, fmt.Errorf("buildReqStruct: payload: %w", err)
 	}
 
-	headerDict := starlark.NewDict(len(headers))
-	for k, vv := range headers {
-		if len(vv) == 0 {
-			continue
-		}
-		// First value only — webhook providers send single-valued headers
-		// in practice. http.Header.Set has already canonicalized k.
-		if err := headerDict.SetKey(starlark.String(k), starlark.String(vv[0])); err != nil {
-			return nil, fmt.Errorf("buildReqStruct: header %q: %w", k, err)
-		}
-	}
-	headerDict.Freeze()
-
 	sd := starlark.StringDict{
 		"payload": payloadStruct,
-		"headers": headerDict,
+		"headers": newHTTPHeaders(headers),
 	}
 	return starlarkstruct.FromStringDict(starlarkstruct.Default, sd), nil
 }
