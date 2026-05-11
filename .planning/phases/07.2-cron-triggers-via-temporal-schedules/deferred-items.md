@@ -19,3 +19,11 @@ Discovered during Task 3 verification (`go test ./... -count=1 -race`).
 **Likely cause (hypothesis only):** Stale `content_hash` mismatch between the .star file bytes loaded by the embedded transient worker vs. the workflow already in temporal dev-server history — probably stale state in `~/.temporal/...` from a prior run.
 
 **Owner:** Out of scope for Plan 07.2-01. Belongs to a quick fix in Phase 04/05 territory (worker boot / build ID) — file a `/gsd:quick` if this blocks future work.
+
+## Plan 07.2-02 (schedules-package)
+
+### Pre-existing E2E test failures (re-confirmed, NOT introduced by this plan)
+
+Re-verified during Plan 02 final verification (`go test ./... -count=1 -race`). Same two failures (`TestE2E_SkytimeRun_Happy`, `TestE2E_SkytimeRun_Unhappy`) with identical `FlowNotInRegistry` symptom. Confirmed via `git stash -u && go test ./tests/ -run TestE2E_SkytimeRun_Happy` against the post-Plan-01 HEAD (which still contains the failure). Plan 02 introduced no code under `pkg/cli/`, `pkg/worker/`, or `tests/` — only `pkg/extension/schedules/` (new), `pkg/extension/builtin/core/cron.go` (added `NewCronSourceForTest` test helper), and `pkg/activity/firewall_test.go` (one allowlist entry). None of these touch the worker registry or build-ID plumbing.
+
+**Owner:** Same as Plan 01 — out of scope.

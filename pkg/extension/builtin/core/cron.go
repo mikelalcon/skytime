@@ -139,6 +139,26 @@ func (s *cronSource) CatchupWindow() (time.Duration, bool) {
 var _ extension.TriggerSource = (*cronSource)(nil)
 var _ starlark.Value = (*cronSource)(nil)
 
+// NewCronSourceForTest constructs a *CronSource directly for tests in
+// downstream packages (notably pkg/extension/schedules) that need to
+// build cron triggers without going through the parser-side cronFactory.
+// Production callers MUST use the factory so parse-time validation
+// (Pitfall 6 @-macro rejection, IANA timezone validation, overlap
+// allowlist, non-negative catchup) is enforced; this helper bypasses
+// those checks because callers are expected to pass already-validated
+// values or test deliberately-invalid ones.
+//
+// Test-only — exported only because Go has no out-of-package whitelist.
+// Mirrors Phase 7.1 Plan 04's NewHTTPWebhookSourceForTest shape.
+func NewCronSourceForTest(schedule, timezone, overlap string, catchupWindow *time.Duration) *CronSource {
+	return &cronSource{
+		schedule:      schedule,
+		timezone:      timezone,
+		overlap:       overlap,
+		catchupWindow: catchupWindow,
+	}
+}
+
 // ----- parser-side factory -----
 
 // cronFactory implements core.cron(schedule=, timezone=, overlap=, catchup_window=).
