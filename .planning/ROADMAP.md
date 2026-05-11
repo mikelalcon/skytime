@@ -84,7 +84,11 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
   3. `skytime server --rootdir=... --reconcile=dry-run` reports a plan listing schedule creates / updates / deletes that would happen, exits without applying any change to the cluster, and exits with status 0
   4. A 5-field POSIX cron string is accepted at parse time; a 6-field (with-seconds) string or a malformed string produces a position-aware parse error before any Schedule API call
   5. With a server up and a cron trigger fired by Temporal, the corresponding workflow appears in `client.ListWorkflow` at the scheduled time, verified by an end-to-end test or smoke against `skytime dev-temporal`
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 07.2-01-core-cron-factory-PLAN.md — core.cron(...) source factory + parse-time validation + extension registration
+- [ ] 07.2-02-schedules-package-PLAN.md — Schedule ID composition + Reconciler (Plan/Diff/apply/fake client)
+- [ ] 07.2-03-cli-wiring-PLAN.md — --cron-reconcile flag + cron-plan subcommand + skycore.New() registration
+- [ ] 07.2-04-example-walkthrough-PLAN.md — weekly_digest.star + docs/walkthroughs/cron-schedules.md + smoke script + human UAT
 **UI hint**: no
 
 ### Phase 7.3: Dashboard + manual trigger page
@@ -143,11 +147,11 @@ Phases execute in numeric order: 7 → 7.1 / 7.2 (parallel) → 7.3 → 7.4; 7.5
 | 6. Example project | v1.42.0 | 9/9 | Complete | 2026-05-07 |
 | 7. Trigger primitive + server shell | v1.43.0 | 0/TBD | Not started | — |
 | 7.1. HTTP webhook receiver | v1.43.0 | 0/8 | Not started | — |
-| 7.2. Cron triggers | v1.43.0 | 0/TBD | Not started | — |
+| 7.2. Cron triggers | v1.43.0 | 0/4 | Not started | — |
 | 7.3. Dashboard | v1.43.0 | 0/TBD | Not started | — |
 | 7.4. extbin consolidation | v1.43.0 | 0/TBD | Not started | — |
 | 7.5. Auth docs | v1.43.0 | 0/TBD | Not started | — |
 
 ---
 *Roadmap created: 2026-04-26*
-*Last updated: 2026-05-08 — v1.43.0 phase details populated (6 phases, 31 requirements mapped)*
+*Last updated: 2026-05-11 — Phase 7.2 planned (4 plans for SCHED-01/02/03)*
