@@ -86,7 +86,7 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
   5. With a server up and a cron trigger fired by Temporal, the corresponding workflow appears in `client.ListWorkflow` at the scheduled time, verified by an end-to-end test or smoke against `skytime dev-temporal`
 **Plans**: 4 plans
 - [x] 07.2-01-core-cron-factory-PLAN.md — core.cron(...) source factory + parse-time validation + extension registration
-- [ ] 07.2-02-schedules-package-PLAN.md — Schedule ID composition + Reconciler (Plan/Diff/apply/fake client)
+- [x] 07.2-02-schedules-package-PLAN.md — Schedule ID composition + Reconciler (Plan/Diff/apply/fake client)
 - [ ] 07.2-03-cli-wiring-PLAN.md — --cron-reconcile flag + cron-plan subcommand + skycore.New() registration
 - [ ] 07.2-04-example-walkthrough-PLAN.md — weekly_digest.star + docs/walkthroughs/cron-schedules.md + smoke script + human UAT
 **UI hint**: no

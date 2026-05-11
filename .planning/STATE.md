@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.2-01-core-cron-factory-PLAN.md
-last_updated: "2026-05-11T19:08:54.998Z"
+stopped_at: Completed 07.2-02-schedules-package-PLAN.md
+last_updated: "2026-05-11T19:25:14.193Z"
 last_activity: 2026-05-11
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 19
-  completed_plans: 16
+  completed_plans: 17
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.2 (cron-triggers-via-temporal-schedules) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-05-11
 
@@ -124,6 +124,7 @@ Progress: [          ] 0%
 | Phase 07.1 P06 | 7min | 1 tasks | 2 files |
 | Phase 07.1 P08 | 5min | 3 tasks | 6 files |
 | Phase 07.2 P01 | 6min | 3 tasks | 9 files |
+| Phase 07.2 P02 | 9min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -375,6 +376,10 @@ Recent decisions affecting current work:
 - [Phase 07.2]: Plan 01: fiveFieldParser INTENTIONALLY OMITS cron.Descriptor flag so @-macros are rejected per D-7.2-22 + success criterion #4 (Pitfall 6)
 - [Phase 07.2]: Plan 01: CronSource exported as a type alias of unexported cronSource — gives Plan 02 reconciler a type-assertion seam (*skycore.CronSource) without exposing struct/fields; only accessor methods cross the package boundary
 - [Phase 07.2]: Plan 01 [Rule 3 deviation]: go mod tidy deferred between Task 1 (// indirect) and Task 2 (import promotes to direct) — plan's tidy instruction contradicted Task 1's grep-based acceptance criteria; tools.go anchor explicitly rejected since robfig/cron/v3 is a runtime dep
+- [Phase 07.2]: Memo decode uses converter.GetDefaultDataConverter().FromPayload (symmetric to encode); avoids fragile raw json.Unmarshal(pld.Data) coupling
+- [Phase 07.2]: MemoUpdate gap pinned as documented limitation via TestReconcile_UpdateMemoStaysStale_DocumentedLimitation (idempotent thrash bounded; workarounds forfeit operator-State preservation)
+- [Phase 07.2]: FakeScheduleClient lives in production code so Plan 03's pkg/cli tests can consume it across package boundaries
+- [Phase 07.2]: ContentHash inclusion in canonical config (Pitfall 7): flow .star edits trigger Schedule Updates even when cron config byte-identical, ensuring fired workflows resolve the correct FlowRegistry entry
 
 ### Pending Todos
 
@@ -405,6 +410,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-11T19:08:54.993Z
-Stopped at: Completed 07.2-01-core-cron-factory-PLAN.md
+Last session: 2026-05-11T19:25:14.188Z
+Stopped at: Completed 07.2-02-schedules-package-PLAN.md
 Resume file: None
