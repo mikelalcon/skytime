@@ -198,8 +198,7 @@ func writeCronPlanPretty(w io.Writer, plan *schedules.Plan) {
 		fmt.Fprintf(w, "  + %s\n", schedules.ComposeScheduleID(t))
 		fmt.Fprintf(w, "      flow      %s\n", t.FlowName)
 		if src, ok := t.Source.(*skycore.CronSource); ok {
-			fmt.Fprintf(w, "      schedule  %s (%s)\n", src.Schedule(), src.Timezone())
-			fmt.Fprintf(w, "      overlap   %s\n", src.Overlap())
+			writeCronScheduleLines(w, src)
 		}
 		fmt.Fprintln(w)
 	}
@@ -207,8 +206,7 @@ func writeCronPlanPretty(w io.Writer, plan *schedules.Plan) {
 		fmt.Fprintf(w, "  ~ %s\n", up.ScheduleID)
 		fmt.Fprintf(w, "      flow      %s\n", up.Trigger.FlowName)
 		if src, ok := up.Trigger.Source.(*skycore.CronSource); ok {
-			fmt.Fprintf(w, "      schedule  %s (%s)\n", src.Schedule(), src.Timezone())
-			fmt.Fprintf(w, "      overlap   %s\n", src.Overlap())
+			writeCronScheduleLines(w, src)
 		}
 		fmt.Fprintf(w, "      reason    %s\n", up.Reason)
 		fmt.Fprintln(w)
@@ -220,4 +218,16 @@ func writeCronPlanPretty(w io.Writer, plan *schedules.Plan) {
 	}
 
 	fmt.Fprintln(w, "Dry-run: no changes applied. Run `skytime server --cron-reconcile` to apply.")
+}
+
+// writeCronScheduleLines emits the schedule + (optional) when + overlap
+// rows under a Create/Update entry. The "when" row is printed only if
+// describeCron recognized the expression — otherwise the raw schedule
+// stands on its own.
+func writeCronScheduleLines(w io.Writer, src *skycore.CronSource) {
+	fmt.Fprintf(w, "      schedule  %s (%s)\n", src.Schedule(), src.Timezone())
+	if when := describeCron(src.Schedule()); when != "" {
+		fmt.Fprintf(w, "      when      %s\n", when)
+	}
+	fmt.Fprintf(w, "      overlap   %s\n", src.Overlap())
 }
