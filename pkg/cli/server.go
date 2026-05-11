@@ -101,12 +101,27 @@ func newServerCommand(cfg *config) *cobra.Command {
 					"value", drainTimeout)
 			}
 
-			// 3. credfile sanity check (D-07-19): a --credfile flag
-			//    without a binary-side credential handler is always a
-			//    misconfiguration; surface a friendly error pointing at
-			//    cli.WithCredentialHandler.
-			if credfilePath != "" && cfg.credHandler == nil {
-				return fmt.Errorf("--credfile=%s requires the binary to be built with cli.WithCredentialHandler (see docs/cli-binary.md); current binary has no credential handler wired", credfilePath)
+			// 3. credfile path resolution (D-07-19 + 7.1 follow-up).
+			//    --credfile requires (a) a credential handler wired into
+			//    the binary AND (b) that handler to expose
+			//    `SetCredfilePath(string) error` so the flag's value can
+			//    override the build-time default. Without (a) we surface
+			//    the "no handler wired" error; without (b) we error rather
+			//    than silently no-op the flag (the earlier behavior was a
+			//    confusing footgun for readers following the walkthrough).
+			//    Phase 7.4's cli.WithCredfile(path) Option lift will move
+			//    this wiring into the option chain and obsolete this block.
+			if credfilePath != "" {
+				if cfg.credHandler == nil {
+					return fmt.Errorf("--credfile=%s requires the binary to be built with cli.WithCredentialHandler (see docs/cli-binary.md); current binary has no credential handler wired", credfilePath)
+				}
+				setter, ok := cfg.credHandler.(interface{ SetCredfilePath(string) error })
+				if !ok {
+					return fmt.Errorf("--credfile=%s: this binary's credential handler does not support runtime path overrides; the handler must implement SetCredfilePath(string) error, or rebuild with a path-aware handler", credfilePath)
+				}
+				if err := setter.SetCredfilePath(credfilePath); err != nil {
+					return fmt.Errorf("--credfile=%s: %w", credfilePath, err)
+				}
 			}
 
 			// 4. Connect Temporal via D4-08 variant routing. Reuses
@@ -264,7 +279,7 @@ func newServerCommand(cfg *config) *cobra.Command {
 	cmd.Flags().StringVar(&rootdir, "rootdir", "", "directory containing .star files (required)")
 	cmd.Flags().StringVar(&taskQueue, "task-queue", "skytime", "Temporal task queue")
 	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "HTTP listener address for webhook deliveries (e.g. :8080)")
-	cmd.Flags().StringVar(&credfilePath, "credfile", "", "credential file path (Phase 7.4+; rejected when binary has no credential handler)")
+	cmd.Flags().StringVar(&credfilePath, "credfile", "", "credential file path (overrides binary's build-time default; handler must implement SetCredfilePath)")
 	cmd.Flags().DurationVar(&drainTimeout, "drain-timeout", defaultDrainTimeout,
 		"max time to wait for in-flight workflows to complete on SIGTERM/SIGINT (1s..1h)")
 	cmd.Flags().BoolVar(&jsonLog, "json-log", false, "emit logs as JSON instead of charm-log Bazel-style")

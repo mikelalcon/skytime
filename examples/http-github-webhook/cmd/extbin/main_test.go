@@ -89,6 +89,53 @@ token = "test-pat"
 	assert.True(t, errors.Is(err, extension.ErrUnknownCredential))
 }
 
+// TestLazyCredfileHandler_SetCredfilePath_OverridesBeforeInit asserts
+// that SetCredfilePath replaces the construction-time path when called
+// before any Resolve(). Resolve then uses the new path.
+func TestLazyCredfileHandler_SetCredfilePath_OverridesBeforeInit(t *testing.T) {
+	dir := t.TempDir()
+	overridePath := filepath.Join(dir, ".skytime-credentials")
+	require.NoError(t, os.WriteFile(overridePath, []byte(`
+[credentials.github_token]
+type  = "bearer"
+token = "override-pat"
+`), 0o600))
+
+	h := newLazyCredfileHandler("/no/such/path")
+	require.NoError(t, h.SetCredfilePath(overridePath))
+
+	cred, err := h.Resolve(context.Background(), "github_token")
+	require.NoError(t, err)
+	bearer, ok := cred.(*extension.BearerCredential)
+	require.True(t, ok)
+	assert.Equal(t, "override-pat", bearer.Token.Reveal())
+}
+
+// TestLazyCredfileHandler_SetCredfilePath_ErrorsAfterInit asserts that
+// SetCredfilePath refuses to mutate the path once Resolve has fired the
+// underlying resolver. This guards against silent split-brain (early
+// callers see one credfile, later callers see another).
+func TestLazyCredfileHandler_SetCredfilePath_ErrorsAfterInit(t *testing.T) {
+	h := newLazyCredfileHandler("/no/such/path")
+	_, _ = h.Resolve(context.Background(), "x") // fires the init
+
+	err := h.SetCredfilePath("/some/other/path")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already initialized")
+}
+
+// TestLazyCredfileHandler_SatisfiesServerCmdCapability asserts that
+// *lazyCredfileHandler implements the anonymous interface
+// pkg/cli/server.go type-asserts against for --credfile path override.
+// If this test ever fails it means a refactor accidentally dropped the
+// SetCredfilePath method and --credfile would silently no-op again.
+func TestLazyCredfileHandler_SatisfiesServerCmdCapability(t *testing.T) {
+	type pathSetter interface {
+		SetCredfilePath(string) error
+	}
+	var _ pathSetter = (*lazyCredfileHandler)(nil)
+}
+
 // TestExtbin_BuildsAndShowsHelp is the subprocess smoke. Builds the
 // binary in a temp dir, runs `--help`, asserts the four inherited
 // subcommand names are listed. This test takes a few seconds due to

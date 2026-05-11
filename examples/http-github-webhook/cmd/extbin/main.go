@@ -75,16 +75,17 @@ func main() {
 // configured.
 //
 // Concurrency: pkg/activity/execute_batch.go invokes Resolve() from
-// multiple goroutines per heartbeat boundary. sync.Once + a cached
-// pointer + cached error protect the lazy initialization.
+// multiple goroutines per heartbeat boundary; a mutex + initialized
+// flag protect the lazy initialization. SetCredfilePath is the pre-init
+// path override hook used by pkg/cli/server.go's --credfile flag.
 type lazyCredfileHandler struct {
-	// path is the override captured at construction. Empty string means
-	// "use credfile.New's default" ($HOME/.skytime-credentials).
-	path string
-
-	once       sync.Once
-	once_inner *credfile.Resolver
-	once_err   error
+	mu sync.Mutex
+	// path is the override captured at construction or via SetCredfilePath.
+	// Empty string means "use credfile.New's default" ($HOME/.skytime-credentials).
+	path        string
+	initialized bool
+	inner       *credfile.Resolver
+	initErr     error
 }
 
 // newLazyCredfileHandler captures pathOverride for later credfile.New().
@@ -100,21 +101,39 @@ func newLazyCredfileHandler(pathOverride string) *lazyCredfileHandler {
 // under strict mode) are cached and returned on every subsequent call
 // so the surfaced message is stable across goroutines.
 func (h *lazyCredfileHandler) Resolve(ctx context.Context, id string) (extension.Credential, error) {
-	h.once.Do(func() {
+	h.mu.Lock()
+	if !h.initialized {
 		opts := []credfile.Option{}
 		if h.path != "" {
 			opts = append(opts, credfile.WithPath(h.path))
 		}
-		r, err := credfile.New(opts...)
-		h.once_inner = r
-		h.once_err = err
-	})
-	if h.once_err != nil {
+		h.inner, h.initErr = credfile.New(opts...)
+		h.initialized = true
+	}
+	inner, initErr := h.inner, h.initErr
+	h.mu.Unlock()
+
+	if initErr != nil {
 		return nil, fmt.Errorf(
 			"extbin: load credfile (set SKYTIME_CREDFILE_PATH or copy .skytime-credentials.example to ~/.skytime-credentials): %w",
-			h.once_err)
+			initErr)
 	}
-	return h.once_inner.Resolve(ctx, id)
+	return inner.Resolve(ctx, id)
+}
+
+// SetCredfilePath overrides the credfile path captured at construction.
+// Must be called before any Resolve(); returns an error if the handler
+// has already initialized its underlying resolver. This is the hook
+// pkg/cli/server.go's --credfile flag uses to push a runtime path
+// override into the handler.
+func (h *lazyCredfileHandler) SetCredfilePath(path string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.initialized {
+		return fmt.Errorf("credfile handler already initialized; --credfile must be set before first Resolve")
+	}
+	h.path = path
+	return nil
 }
 
 // Compile-time interface check.

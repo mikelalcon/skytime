@@ -307,7 +307,7 @@ Source: `pkg/cli/server.go`. Phase 7 ships SERVER-01..03: the long-running worke
 | `--rootdir` | string | (required) | Directory containing `.star` files. Walked recursively at boot; the resulting `FlowRegistry` and `TriggerRegistry` are frozen — runtime mutation is rejected. |
 | `--task-queue` | string | `skytime` | Temporal task queue the worker polls. |
 | `--addr` | string | `:8080` | HTTP listener address. Accepted in Phase 7 but unused; emits a warning if set explicitly. Phase 7.1+ mounts the webhook receiver here. |
-| `--credfile` | string | `""` | Credential file path. Rejected with a friendly error if the binary has no `cli.WithCredentialHandler` wired (D-07-19). |
+| `--credfile` | string | `""` | Credential file path; overrides the build-time default. Requires the binary's `cli.WithCredentialHandler` to expose `SetCredfilePath(string) error` (lazyCredfileHandler in the example extbin does). Rejected with a friendly error if no handler is wired (D-07-19) or if the wired handler doesn't support runtime path overrides. |
 | `--drain-timeout` | duration | `30s` | Max time to wait for in-flight workflows to complete on SIGTERM/SIGINT. Range-validated to `[1s, 1h]`; sub-1s rejected before any side effect. Values above 1h emit a warning but are accepted. Default `30s` matches Kubernetes' `terminationGracePeriodSeconds` default. |
 | `--json-log` | bool | `false` | Switch the slog handler from charm-log (Bazel-style) to `slog.NewJSONHandler(os.Stderr, ...)`. Production deployments typically set this for log aggregator ingestion. |
 
@@ -338,7 +338,7 @@ Flow names sorted alphabetically; triggers sorted by `(Source.Kind, FlowName, Po
 ### Exit Codes
 
 - `0` — clean drain on first signal; in-flight workflows completed within `--drain-timeout`.
-- `1` — connect failure, worker init failure, drain-timeout expiry, second-signal forced exit, range-validation failure on `--drain-timeout`, or `--credfile` set without a credential handler. Renderer emits the diagnostic to stderr; cobra's usage banner accompanies argument-validation failures.
+- `1` — connect failure, worker init failure, drain-timeout expiry, second-signal forced exit, range-validation failure on `--drain-timeout`, or `--credfile` set without a credential handler (or with a handler that doesn't implement `SetCredfilePath`). Renderer emits the diagnostic to stderr; cobra's usage banner accompanies argument-validation failures.
 
 ### Example
 
