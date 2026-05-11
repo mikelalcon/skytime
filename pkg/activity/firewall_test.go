@@ -37,6 +37,13 @@ import (
 //     remains forbidden from importing the SDK), and the directory-
 //     prefix match below means only the receiver subtree is permitted,
 //     not pkg/extension itself or any future builtin.
+//   - Phase 7.2 plan 02: pkg/extension/schedules added — the cron
+//     Schedule reconciler imports go.temporal.io/sdk/client for
+//     ScheduleClient + ScheduleHandle + ScheduleOptions/Spec/Action
+//     types. Called by pkg/cli/server.go and pkg/cli/cron_plan.go
+//     (Plan 03) at boot time on the --cron-reconcile replica. Same
+//     "system extension" pattern as extension/receiver — sibling to
+//     pkg/extension/builtin/* (which remains firewalled).
 //
 // Mirrors the per-package firewall tests in pkg/parser, pkg/extension (Phase 1)
 // but inverts the check — those tests verify their OWN package is clean; this
@@ -62,7 +69,7 @@ func TestNoTemporalImportsOutsideAllowList(t *testing.T) {
 	// legitimate consumers. Allowlist entries with a "/" act as exact
 	// directory prefixes — pkg/extension itself and pkg/extension/builtin/*
 	// remain firewalled.
-	allowedPkgs := []string{"activity", "interpreter", "worker", "cli", "testing", "extension/receiver"}
+	allowedPkgs := []string{"activity", "interpreter", "worker", "cli", "testing", "extension/receiver", "extension/schedules"}
 	sep := string(filepath.Separator)
 
 	fset := token.NewFileSet()
