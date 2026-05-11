@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
-status: executing
-stopped_at: Completed 07.2-03-cli-wiring-PLAN.md
-last_updated: "2026-05-11T19:40:37.565Z"
+status: verifying
+stopped_at: "Plan 07.2-04 autonomous tasks 1-3 complete; Task 4 checkpoint:human-verify pending"
+last_updated: "2026-05-11T19:51:43.307Z"
 last_activity: 2026-05-11
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 19
-  completed_plans: 18
+  completed_plans: 19
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 Phase: 07.2 (cron-triggers-via-temporal-schedules) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-11
 
 Progress: [          ] 0%
@@ -126,6 +126,7 @@ Progress: [          ] 0%
 | Phase 07.2 P01 | 6min | 3 tasks | 9 files |
 | Phase 07.2 P02 | 9min | 3 tasks | 10 files |
 | Phase 07.2 P03 | 10min | 3 tasks | 14 files |
+| Phase 07.2 P04 | 6m | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -382,6 +383,7 @@ Recent decisions affecting current work:
 - [Phase 07.2]: FakeScheduleClient lives in production code so Plan 03's pkg/cli tests can consume it across package boundaries
 - [Phase 07.2]: ContentHash inclusion in canonical config (Pitfall 7): flow .star edits trigger Schedule Updates even when cron config byte-identical, ensuring fired workflows resolve the correct FlowRegistry entry
 - [Phase 07.2]: Phase 7.2 Plan 03: loadRegistries lives in pkg/cli (not pkg/worker) — worker.LoadRegistries is one-line public wrapper; pkg/cli adds CLI-side empty-rootdir check + error wrapping. cli.WithScheduleClientFactory parallels worker.WithSDKFactory for cluster-side test seam. Cron banner format: cron @ {schedule} ({timezone}) — distinct from HTTP triggers' {METHOD} {path}.
+- [Phase 07.2]: Phase 7.2 Plan 04: Customer-facing surface shipped (weekly_digest.star cron flow + cron-schedules.md walkthrough + cron-schedules-smoke.sh end-to-end smoke + CI gating); Task 4 human UAT pending checkpoint approval.
 
 ### Pending Todos
 
@@ -412,6 +414,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-11T19:40:37.560Z
-Stopped at: Completed 07.2-03-cli-wiring-PLAN.md
+Last session: 2026-05-11T19:51:30.403Z
+Stopped at: Plan 07.2-04 autonomous tasks 1-3 complete; Task 4 checkpoint:human-verify pending
 Resume file: None
