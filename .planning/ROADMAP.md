@@ -162,11 +162,11 @@ Phases execute in numeric order: 7 → 7.1 / 7.2 (parallel) → 7.3 → 7.4; 7.5
 | 6. Example project | v1.42.0 | 9/9 | Complete | 2026-05-07 |
 | 7. Trigger primitive + server shell | v1.43.0 | 0/TBD | Not started | — |
 | 7.1. HTTP webhook receiver | v1.43.0 | 0/8 | Not started | — |
-| 7.2. Cron triggers | v1.43.0 | 0/4 | Not started | — |
+| 7.2. Cron triggers | v1.43.0 | 4/4 | Complete | 2026-05-11 |
 | 7.3. Dashboard | v1.43.0 | 0/TBD | Not started | — |
 | 7.4. extbin consolidation | v1.43.0 | 0/TBD | Not started | — |
 | 7.5. Auth docs | v1.43.0 | 0/TBD | Not started | — |
 
 ---
 *Roadmap created: 2026-04-26*
-*Last updated: 2026-05-11 — Phase 7.2 planned (4 plans for SCHED-01/02/03)*
+*Last updated: 2026-05-12 — Phase 7.2 complete (4/4 plans; UAT approved 2026-05-11)*
