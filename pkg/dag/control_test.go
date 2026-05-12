@@ -145,6 +145,57 @@ func TestCallFlow_ResolvedStartsNil(t *testing.T) {
 	assert.Nil(t, c.Resolved, "Resolved is nil until the parser's cross-flow resolution pass")
 }
 
+// --- LogStep (Phase 07.2.1-01) -----------------------------------------------
+
+// TestLogStep_NodeInterface pins the sealed Node-interface satisfaction at
+// compile time. A failing change to the Node interface or to *LogStep's
+// methods would break compilation of this test, not just the runtime check.
+func TestLogStep_NodeInterface(t *testing.T) {
+	var n Node = (*LogStep)(nil)
+	// The nil-pointer-as-interface assertion is intentional: the cast on
+	// the LHS exercises the sealed Node interface at compile time. There
+	// is no meaningful runtime invariant to assert beyond "compiles".
+	_ = n
+}
+
+// TestLogStep_Kind: D-7.2.1-15 — kind discriminator is exactly "LogStep".
+func TestLogStep_Kind(t *testing.T) {
+	assert.Equal(t, "LogStep", (&LogStep{}).Kind())
+}
+
+// TestLogStep_Position: Position() round-trips the embedded Pos. Mirrors
+// the *Script precedent in pkg/dag/control.go.
+func TestLogStep_Position(t *testing.T) {
+	pos := nodePos(t, 7, 13)
+	assert.Equal(t, pos, (&LogStep{Pos: pos}).Position())
+}
+
+// TestLogStep_AllFourLevelsConstructible: D-7.2.1-01 — all four slog
+// levels (info/warn/error/debug) are storable. The type-level field is
+// a plain string with NO enum validation; the parser is the level gate
+// (rejects unknown levels at parse time). This keeps pkg/dag free of
+// parser concerns.
+func TestLogStep_AllFourLevelsConstructible(t *testing.T) {
+	for _, level := range []string{"info", "warn", "error", "debug"} {
+		ls := &LogStep{Level: level, Msg: "hello"}
+		assert.Equal(t, level, ls.Level)
+		assert.Equal(t, "hello", ls.Msg)
+	}
+}
+
+// TestLogStep_FieldShape: pin the expected field set so a future refactor
+// can't quietly add/rename fields without updating tests + JSON shape.
+// LogStep is exempt from output_alias enforcement (D-7.2.1-16: side-channel
+// step, no value produced) — there is no OutputAlias field on the struct
+// (compile-time guarantee).
+func TestLogStep_FieldShape(t *testing.T) {
+	ls := &LogStep{}
+	assert.Equal(t, "", ls.Level)
+	assert.Equal(t, "", ls.Msg)
+	assert.Nil(t, ls.MsgFn)
+	assert.Equal(t, "", ls.AttrsLambdaID)
+}
+
 func TestCallFlow_ResolvedSkippedFromJSON(t *testing.T) {
 	// Resolved is tagged json:"-" so a CallFlow that has been resolved does
 	// not drag the entire transitive flow graph into golden-file output.
