@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Skytime Dashboard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    /* Inline CSS budget: <100 lines per D-7.3-32. Keep additions
+       semantic-only; no theme switcher, no dark mode (D-7.3-34). */
+    :root {
+      --bg: #ffffff;
+      --chrome: #f6f8fa;
+      --border: #d0d7de;
+      --text: #1f2328;
+      --muted: #57606a;
+      --link: #1a73e8;
+      --ok: #1f883d;
+      --warn: #d29922;
+      --bad: #cf222e;
+      --run: #0969da;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+      font: 14px/1.4 system-ui, sans-serif; }
+    header { padding: 12px 24px; border-bottom: 1px solid var(--border); display: flex;
+      align-items: baseline; justify-content: space-between; }
+    header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    main { padding: 16px 24px; display: grid; gap: 16px; max-width: 1200px; margin: 0 auto; }
+    .panel { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04); padding: 12px 16px; transition: box-shadow .2s; }
+    .panel:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+    .panel h2 { margin: 0 0 8px; font-size: 14px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.05em; }
+    .scroller { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; font-weight: 600; color: var(--muted); padding: 6px 8px;
+      border-bottom: 1px solid var(--border); background: var(--chrome); }
+    td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .empty { text-align: center; color: var(--muted); padding: 16px 8px; font-style: italic; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      margin-right: 6px; background: var(--muted); vertical-align: middle; }
+    .status-running .dot { background: var(--run); }
+    .status-completed .dot { background: var(--ok); }
+    .status-failed .dot { background: var(--bad); }
+    .status-replayed .dot { background: var(--warn); }
+    a, a:visited { color: var(--link); text-decoration: none; }
+    a:hover, a:focus { text-decoration: underline; }
+    .conn { font-size: 13px; font-weight: 400; padding: 2px 8px; border-radius: 10px;
+      background: var(--chrome); color: var(--muted); transition: background .2s, color .2s; }
+    .conn-ok { background: #e6f4ea; color: var(--ok); }
+    .conn-bad { background: #fde8ea; color: var(--bad); }
+    form { display: grid; gap: 8px; }
+    label { font-size: 13px; color: var(--muted); font-weight: 500; }
+    select, textarea, button { font: inherit; padding: 6px 8px; border: 1px solid var(--border);
+      border-radius: 4px; background: var(--bg); color: var(--text); }
+    textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; min-height: 96px;
+      resize: vertical; }
+    select:focus, textarea:focus, button:focus { outline: 2px solid var(--link); outline-offset: -1px; }
+    button { cursor: pointer; background: var(--link); color: #fff; border-color: var(--link);
+      font-weight: 600; transition: background .2s; max-width: 120px; }
+    button:hover:not(:disabled) { background: #155cb8; }
+    button:disabled { cursor: not-allowed; opacity: 0.5; }
+    .feedback { font-size: 13px; min-height: 1em; }
+    .feedback-ok { color: var(--ok); }
+    .feedback-err { color: var(--bad); }
+    @keyframes flash { 0% { background: #fffbdd; } 100% { background: transparent; } }
+    tr:target { animation: flash 1.5s ease-out; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Skytime Dashboard</h1>
+    <span id="conn" class="conn conn-ok">● Connected</span>
+  </header>
+  <main>
+    <section class="panel" aria-labelledby="wfHeading">
+      <h2 id="wfHeading">Workflows</h2>
+      <div class="scroller">
+        <table id="wfTable">
+          <thead>
+            <tr>
+              <th scope="col">Workflow ID</th>
+              <th scope="col">Flow</th>
+              <th scope="col">Status</th>
+              <th scope="col">Started</th>
+              <th scope="col">Duration</th>
+              <th scope="col">History</th>
+            </tr>
+          </thead>
+          <tbody id="wfTbody">
+          {{- with .Snapshot.Workflows}}
+          {{- range .}}
+            <tr id="wf-{{.WorkflowID}}" class="status-{{.Status}}">
+              <td class="mono">
+              {{- if $.TemporalWebUI}}
+                <a class="flow-link" href="{{$.TemporalWebUI}}/namespaces/default/workflows/{{.WorkflowID}}" title="{{.WorkflowID}}">{{middleEllipsis .WorkflowID}}</a>
+              {{- else}}
+                <span title="{{.WorkflowID}}">{{middleEllipsis .WorkflowID}}</span>
+              {{- end}}
+              </td>
+              <td>{{.FlowName}}</td>
+              <td><span class="dot"></span>{{.Status}}{{if .ReplayCount}} (replayed {{.ReplayCount}} times){{end}}</td>
+              <td class="mono">{{formatTime .StartTime}}</td>
+              <td class="mono">{{formatDuration .StartTime .CloseTime}}</td>
+              <td class="mono">{{.HistoryLength}}</td>
+            </tr>
+          {{- end}}
+          {{- else}}
+            <tr><td colspan="6" class="empty">No workflows yet — fire a webhook, click Run below, or wait for cron.</td></tr>
+          {{- end}}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="delHeading">
+      <h2 id="delHeading">Recent webhook deliveries</h2>
+      <div class="scroller">
+        <table id="delTable">
+          <thead>
+            <tr>
+              <th scope="col">Received</th>
+              <th scope="col">Source</th>
+              <th scope="col">Method</th>
+              <th scope="col">Path</th>
+              <th scope="col">Status</th>
+              <th scope="col">Mapped Workflow</th>
+              <th scope="col">Summary</th>
+            </tr>
+          </thead>
+          <tbody id="delTbody">
+          {{- with .Snapshot.Deliveries}}
+          {{- range .}}
+            <tr>
+              <td class="mono">{{formatTime .ReceivedAt}}</td>
+              <td>{{.Source}}</td>
+              <td>{{.Method}}</td>
+              <td class="mono">{{.Path}}</td>
+              <td>{{.Status}}</td>
+              <td class="mono">
+              {{- if .WorkflowIDs}}
+                <a href="#wf-{{index .WorkflowIDs 0}}" title="{{index .WorkflowIDs 0}}">{{middleEllipsis (index .WorkflowIDs 0)}}</a>
+              {{- end}}
+              </td>
+              <td class="mono">{{.PayloadSummary}}</td>
+            </tr>
+          {{- end}}
+          {{- else}}
+            <tr><td colspan="7" class="empty">No deliveries yet.</td></tr>
+          {{- end}}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="trgHeading">
+      <h2 id="trgHeading">Manual trigger</h2>
+      <form id="triggerForm">
+        <label for="triggerFlow">Flow</label>
+        <select id="triggerFlow">
+          {{- range .Flows}}
+          <option value="{{.}}">{{.}}</option>
+          {{- end}}
+        </select>
+        <label for="triggerInput">Input JSON</label>
+        <textarea id="triggerInput" placeholder="{}" aria-describedby="triggerFeedback"></textarea>
+        <button id="triggerBtn" type="submit" disabled>Run</button>
+        <div id="triggerFeedback" class="feedback" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+  </main>
+  <script>
+    /* B4 XSS DEFENSE: this inline script uses ONLY safe DOM APIs —
+       document.createElement, .textContent, .setAttribute, .append,
+       .appendChild, .classList.*, .remove. Banned: HTML-string
+       sinks and the JS eval primitive (see B4 in 07.3-04 PLAN).
+       All SSE-derived strings (workflow IDs, flow names, header
+       values, payload summaries) are written via .textContent. */
+    (function () {
+      var conn = document.getElementById("conn");
+      var wfTbody = document.getElementById("wfTbody");
+      var feedback = document.getElementById("triggerFeedback");
+      var btn = document.getElementById("triggerBtn");
+      var ta = document.getElementById("triggerInput");
+      var form = document.getElementById("triggerForm");
+      var sel = document.getElementById("triggerFlow");
+      function setConn(ok, label) {
+        conn.classList.remove("conn-ok", "conn-bad");
+        conn.classList.add(ok ? "conn-ok" : "conn-bad");
+        conn.textContent = (ok ? "● " : "○ ") + label;
+      }
+      function mid(s) {
+        if (!s || s.length <= 32) return s;
+        return s.substring(0, 16) + "…" + s.substring(s.length - 12);
+      }
+      function upsertWorkflow(w) {
+        var id = "wf-" + w.workflow_id;
+        var existing = document.getElementById(id);
+        var tr = existing || document.createElement("tr");
+        tr.setAttribute("id", id);
+        tr.setAttribute("class", "status-" + (w.status || "unknown"));
+        // Replace cells via textContent — never innerHTML.
+        while (tr.firstChild) tr.removeChild(tr.firstChild);
+        var cells = [mid(w.workflow_id), w.flow_name || "",
+          (w.status || "") + (w.replay_count ? " (replayed " + w.replay_count + " times)" : ""),
+          w.start_time || "", "", String(w.history_length || 0)];
+        cells.forEach(function (text) {
+          var td = document.createElement("td");
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+        if (!existing) {
+          // Remove empty-state hint row if present.
+          var hint = wfTbody.querySelector("td.empty");
+          if (hint && hint.parentNode) hint.parentNode.remove();
+          wfTbody.insertBefore(tr, wfTbody.firstChild);
+        }
+      }
+      function onSnapshot(payload) {
+        if (payload && payload.workflows) payload.workflows.forEach(upsertWorkflow);
+      }
+      function connect() {
+        var es = new EventSource("/api/events");
+        es.addEventListener("open", function () { setConn(true, "Connected"); });
+        es.addEventListener("error", function () { setConn(false, "Reconnecting…"); });
+        es.addEventListener("snapshot", function (ev) {
+          try { onSnapshot(JSON.parse(ev.data)); } catch (e) {}
+        });
+        ["workflow_started", "workflow_status_changed", "workflow_replayed"].forEach(function (name) {
+          es.addEventListener(name, function (ev) {
+            try { upsertWorkflow(JSON.parse(ev.data)); } catch (e) {}
+          });
+        });
+        es.addEventListener("shutdown", function () { setConn(false, "Server shutting down"); });
+      }
+      ta.addEventListener("input", function () {
+        var v = ta.value.trim();
+        if (v === "") { btn.disabled = true; return; }
+        try { JSON.parse(v); btn.disabled = false; } catch (e) { btn.disabled = true; }
+      });
+      form.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        var flow = sel.value;
+        var input;
+        try { input = JSON.parse(ta.value); } catch (e) {
+          feedback.setAttribute("class", "feedback feedback-err");
+          feedback.textContent = "✗ Invalid JSON";
+          return;
+        }
+        btn.disabled = true;
+        feedback.setAttribute("class", "feedback");
+        feedback.textContent = "Dispatching…";
+        fetch("/api/trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ flow: flow, input: input })
+        }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+          .then(function (res) {
+            btn.disabled = false;
+            if (res.ok && res.body.workflow_id) {
+              feedback.setAttribute("class", "feedback feedback-ok");
+              feedback.textContent = "✓ Started workflow " + res.body.workflow_id;
+            } else {
+              feedback.setAttribute("class", "feedback feedback-err");
+              feedback.textContent = "✗ " + (res.body.error || "dispatch failed");
+            }
+          })
+          .catch(function (err) {
+            btn.disabled = false;
+            feedback.setAttribute("class", "feedback feedback-err");
+            feedback.textContent = "✗ Network error";
+          });
+      });
+      connect();
+    })();
+  </script>
+</body>
+</html>
