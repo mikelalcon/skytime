@@ -178,6 +178,39 @@ func (n *Script) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// logStepJSON is the marshal-time shape of *LogStep — mirrors failJSON.
+// Pos is intentionally omitted (Filename is machine-absolute; breaks
+// cross-machine golden stability per the file-header rule). MsgFn pointer
+// is excluded (lambda non-serializable per the Phase 3 contract); only
+// the opaque msg_lambda_id surfaces. Both optional lambda IDs use
+// omitempty so the literal-only LogStep emits a tight three-key object.
+type logStepJSON struct {
+	Kind          string `json:"kind"`
+	Level         string `json:"level"`
+	Msg           string `json:"msg"`
+	MsgLambdaID   string `json:"msg_lambda_id,omitempty"`
+	AttrsLambdaID string `json:"attrs_lambda_id,omitempty"`
+}
+
+// MarshalJSON emits a LogStep with a "kind":"LogStep" discriminator. When
+// MsgFn != nil, its content-hash ID is emitted as msg_lambda_id (the
+// *CapturedLambda pointer itself is in-memory only — same pattern as
+// Fail.MessageFn). When AttrsLambdaID is empty, the attrs_lambda_id key is
+// omitted via the omitempty tag.
+func (n *LogStep) MarshalJSON() ([]byte, error) {
+	var msgLambdaID string
+	if n.MsgFn != nil {
+		msgLambdaID = n.MsgFn.ID
+	}
+	return json.Marshal(logStepJSON{
+		Kind:          n.Kind(),
+		Level:         n.Level,
+		Msg:           n.Msg,
+		MsgLambdaID:   msgLambdaID,
+		AttrsLambdaID: n.AttrsLambdaID,
+	})
+}
+
 type forEachParallelJSON struct {
 	Kind           string       `json:"kind"`
 	ItemsLambdaID  string       `json:"items_lambda_id,omitempty"`
