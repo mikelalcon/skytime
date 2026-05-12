@@ -52,6 +52,14 @@ import (
 //     LAST node of an if_cond branch with OutputAlias set. Top-level
 //     result(), mid-branch, inside for_each — all reject with the
 //     output_alias hint. Narrow scope; complemented by the next pass.
+//  5.6. validateLogStepPlacement (D-7.2.1-18, Phase 07.2.1): every
+//     *dag.LogStep emitted by builtinLog* MUST be reachable by walking
+//     flow bodies — otherwise the call happened at module scope (or
+//     inside some other parse-time construct we don't allow log inside
+//     of) and gets rejected with a position-aware ParseError. First-
+//     of-its-kind module-scope orphan-node check; modeled on
+//     validateResultPlacement above but the placement rule is "claimed
+//     by flow walk" rather than "last node of an output_alias branch".
 //  6. validateIfCondExpressionShape (D4.2-09 + D4.2-11): for every
 //     *dag.IfCond with OutputAlias set, enforce the 5 expression-mode
 //     rules — both branches present, last node Result/Fail, at-least-one-
@@ -104,6 +112,9 @@ func (p *Parser) finalize() error {
 		return err
 	}
 	if err := p.validateResultPlacement(); err != nil {
+		return err
+	}
+	if err := p.validateLogStepPlacement(); err != nil { // D-7.2.1-18
 		return err
 	}
 	if err := p.validateIfCondExpressionShape(); err != nil {
@@ -244,4 +255,69 @@ func (p *Parser) crossValidateActionRef(flowName string, stepPos syntax.Position
 		}
 	}
 	return nil
+}
+
+// validateLogStepPlacement enforces D-7.2.1-18: log.<level>(...) is only
+// legal as a step inside a flow(...) body. The four builtinLog* factories
+// stash every emitted *dag.LogStep into p.allLogSteps at construction time.
+// Any LogStep that's NOT reached by walking p.flows[*].Body is therefore a
+// module-scope orphan (the call happened outside any flow registration) and
+// gets surfaced as a position-aware *dag.ParseError.
+//
+// First-of-its-kind module-scope orphan-node check (per 07.2.1-RESEARCH
+// §Pitfall 2). Modeled on validateResultPlacement (D4.2-04) but the
+// placement contract is "claimed by flow walk" rather than "last node of
+// an output_alias if_cond branch". Both passes execute in the finalize
+// chain; this one runs immediately after validateResultPlacement so
+// downstream consumers (validateIfCondExpressionShape, etc.) never
+// encounter orphan log steps.
+//
+// Returns the FIRST orphan found (matches the parser's at-most-one-error
+// convention). Ordering is stable: walks p.allLogSteps in append order so
+// the orphan that came earliest in source-evaluation order wins.
+func (p *Parser) validateLogStepPlacement() error {
+	if len(p.allLogSteps) == 0 {
+		return nil
+	}
+	claimed := make(map[*dag.LogStep]bool, len(p.allLogSteps))
+	for _, flow := range p.flows {
+		walkBodyForLogSteps(flow.Body, claimed)
+	}
+	for _, ls := range p.allLogSteps {
+		if !claimed[ls] {
+			return &dag.ParseError{
+				Pos: ls.Pos,
+				Msg: fmt.Sprintf("log.%s: only valid as a step inside flow(...)", ls.Level),
+			}
+		}
+	}
+	return nil
+}
+
+// walkBodyForLogSteps recursively traverses a flow body, marking any
+// *dag.LogStep it encounters as claimed. Recursion shape mirrors
+// walkResolveCallFlows / walkValidateActionRefKwargs — descend into
+// IfCond.Then/Else and ForEachParallel.Steps; all other node kinds are
+// leaf-like for the purpose of log-step containment.
+//
+// Companion to validateLogStepPlacement above. Kept as a package-level
+// function (not a method on *Parser) because it has no parser-state
+// dependencies — pure traversal.
+func walkBodyForLogSteps(body []dag.Node, claimed map[*dag.LogStep]bool) {
+	for _, node := range body {
+		switch n := node.(type) {
+		case *dag.LogStep:
+			claimed[n] = true
+		case *dag.IfCond:
+			walkBodyForLogSteps(n.Then, claimed)
+			walkBodyForLogSteps(n.Else, claimed)
+		case *dag.ForEachParallel:
+			walkBodyForLogSteps(n.Steps, claimed)
+			// Other node types (Step, Script, Result, Fail, CallFlow) cannot
+			// transitively contain a LogStep — they're leaf-like for this
+			// check. If a future node kind is added that nests bodies (e.g.,
+			// try/catch), update this switch and re-verify the orphan check
+			// catches the same set of module-scope orphans.
+		}
+	}
 }
