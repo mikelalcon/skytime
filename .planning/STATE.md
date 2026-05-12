@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.2.1-01-dag-logstep-type-PLAN.md
-last_updated: "2026-05-12T12:24:17.651Z"
+stopped_at: Completed 07.2.1-02-parser-builtins-PLAN.md
+last_updated: "2026-05-12T12:34:06.663Z"
 last_activity: 2026-05-12
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 24
-  completed_plans: 20
+  completed_plans: 21
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.2.1 (structured-logging-step-builtin) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-05-12
 
@@ -129,6 +129,7 @@ Progress: [██████████] 100%
 | Phase 07.2 P04 | 6m | 3 tasks | 7 files |
 | Phase 07.2 P04 | finalize 3min (+UAT cycle 2026-05-11) | 4 tasks | 7 files |
 | Phase 07.2.1 P01 | 3min | 2 tasks | 5 files |
+| Phase 07.2.1 P02 | 6min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -390,6 +391,9 @@ Recent decisions affecting current work:
 - [Phase 07.2]: [Phase 07.2 UAT 2026-05-11] Example demo cadence stays at "* * * * *" with explicit Production note — The original weekly_digest.star shipped "0 9 * * 1" (Mondays 09:00) — operators reading the walkthrough never observed a fire within the natural reading window. Section 7 "(Optional) Watch a schedule fire" required manual edit + restart. UAT made the criterion #5 lifecycle the load-bearing demo, so cadence flipped to "* * * * *" with an inline code comment + walkthrough Production note subsection directing real deployments to weekly/daily cadences. log_digest script step added at end of flow body using `print() or {"logged": True}` so each fire emits a visible stdout line. Locked at commit a359259. The print() hack is captured as Phase 999.1 backlog (commit f199f8a).
 - [Phase 07.2.1]: Plan 01: LogStep Level field is plain string with no Go enum type — parser is the level gate, pkg/dag stays parser-agnostic
 - [Phase 07.2.1]: Plan 01: logStepJSON shape mirrors failJSON verbatim — kind/level/msg/msg_lambda_id?/attrs_lambda_id? with omitempty on optional lambda IDs
+- [Phase 07.2.1]: Four separate level-tagged log builtin factories (not parameterized) for cleaner doc rendering and crisper error messages
+- [Phase 07.2.1]: Source-level string-literal enforcement via AST re-parse + positionsEqual (block_fn_lint pattern) — UnpackArgs alone cannot distinguish literals from identifier-bound strings
+- [Phase 07.2.1]: validateLogStepPlacement slotted at finalize position 5.6 (after validateResultPlacement, before validateIfCondExpressionShape) — orphan-log errors surface before branch-shape errors
 
 ### Pending Todos
 
@@ -420,6 +424,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-12T12:24:17.646Z
-Stopped at: Completed 07.2.1-01-dag-logstep-type-PLAN.md
+Last session: 2026-05-12T12:34:06.659Z
+Stopped at: Completed 07.2.1-02-parser-builtins-PLAN.md
 Resume file: None
