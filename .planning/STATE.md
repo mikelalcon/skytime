@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.3-02-PLAN.md (delivery buffer + source-agnostic redaction)
-last_updated: "2026-05-12T17:24:59.366Z"
+stopped_at: Completed 07.3-01-PLAN.md
+last_updated: "2026-05-12T17:27:22.882Z"
 last_activity: 2026-05-12
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 30
-  completed_plans: 27
+  completed_plans: 28
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.3 (dashboard-manual-trigger-page) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-05-12
 
@@ -136,6 +136,7 @@ Progress: [██████████] 100%
 | Phase 07.3 P00 | 4min | 3 tasks | 16 files |
 | Phase 07.3 P03 | 12m | 2 tasks | 5 files |
 | Phase 07.3 P02 | 5min | 3 tasks | 8 files |
+| Phase 07.3-dashboard-manual-trigger-page P01 | 8m | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -415,6 +416,7 @@ Recent decisions affecting current work:
 - [Phase 07.3]: Drop-oldest fan-out with 16-deep subscriber buffers + 64-deep publish buffer; test-only 'dispatched' channel hook enables deterministic DropOldest test without time.Sleep (m1 from Phase 7.3 checker)
 - [Phase 07.3]: RedactHeaders sanitizes header NAMES via RFC 7230 token regex (M4 XSS defense-in-depth) AND values via case-insensitive substring match — drops malformed names entirely
 - [Phase 07.3]: Open Q 4 Option A locked: receiver.Deps exposes optional DeliveryBuffer + OnDelivery (nil-safe; Phase 7.1 backward-compat preserved) instead of importing the events broadcaster directly
+- [Phase 07.3-dashboard-manual-trigger-page]: Open Q1 resolved: BuildWorkflowInput is the shared seam (Option 1) — 4 paths converge on flowlaunch, env.ExecuteWorkflow filtered out of firewall by qualifier name
 
 ### Pending Todos
 
@@ -445,6 +447,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-12T17:24:59.361Z
-Stopped at: Completed 07.3-02-PLAN.md (delivery buffer + source-agnostic redaction)
+Last session: 2026-05-12T17:27:22.877Z
+Stopped at: Completed 07.3-01-PLAN.md
 Resume file: None
