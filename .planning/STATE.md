@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.3-00-PLAN.md
-last_updated: "2026-05-12T17:15:53.147Z"
+stopped_at: Completed 07.3-03-PLAN.md (events broadcaster + poller; 11 tests pass under -race)
+last_updated: "2026-05-12T17:23:31.421Z"
 last_activity: 2026-05-12
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 30
-  completed_plans: 25
+  completed_plans: 26
   percent: 100
 ---
 
@@ -134,6 +134,7 @@ Progress: [██████████] 100%
 | Phase 07.2.1 P03 | 6min | 2 tasks | 4 files |
 | Phase 07.2.1 P05 | 8m | 2 tasks | 9 files |
 | Phase 07.3 P00 | 4min | 3 tasks | 16 files |
+| Phase 07.3 P03 | 12m | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -408,6 +409,9 @@ Recent decisions affecting current work:
 - [Phase 07.2.1]: Plan 05: backfilled .planning/REQUIREMENTS.md with LOG-01 + LOG-02 (per CONTEXT.md line 178 known gap) using [x] (validated) status matching existing TRIG/SERVER/SCHED convention for shipped phases; totals bumped 31→33 / 7→8 / 6→7
 - [Phase 07.3]: All 38 Wave 0 SKIP messages embed plan number + assertion description so Wave 1+ executors get a precise contract without consulting PLAN.md
 - [Phase 07.3]: Pre-existing TestNoDevServerLiteralRemains failure (cron-schedules-smoke.sh:192 stale 'dev-server' comment from 07.2.1 afead57) quarantined to deferred-items.md per SCOPE BOUNDARY rule; not auto-fixed in Plan 00
+- [Phase 07.3]: Replay heuristic = HistoryLength delta vs configurable threshold (default 50, exposed as DefaultReplayHistoryThreshold for Plan 04 CLI flag wiring) — locks Research Open Question 2
+- [Phase 07.3]: Broadcaster Subscribe() captures Snapshot UNDER the broadcaster mutex and returns it inline (Pitfall 1 race fix); the SSE handler MUST use the returned Snapshot and MUST NOT call a separate Snapshot() method
+- [Phase 07.3]: Drop-oldest fan-out with 16-deep subscriber buffers + 64-deep publish buffer; test-only 'dispatched' channel hook enables deterministic DropOldest test without time.Sleep (m1 from Phase 7.3 checker)
 
 ### Pending Todos
 
@@ -438,6 +442,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-12T17:15:53.142Z
-Stopped at: Completed 07.3-00-PLAN.md
+Last session: 2026-05-12T17:23:31.416Z
+Stopped at: Completed 07.3-03-PLAN.md (events broadcaster + poller; 11 tests pass under -race)
 Resume file: None
