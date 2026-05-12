@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
-status: verifying
-stopped_at: Phase 07.2.1 context gathered
-last_updated: "2026-05-12T02:55:26.348Z"
+status: executing
+stopped_at: Completed 07.2.1-01-dag-logstep-type-PLAN.md
+last_updated: "2026-05-12T12:24:17.651Z"
 last_activity: 2026-05-12
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 19
-  completed_plans: 19
+  total_plans: 24
+  completed_plans: 20
   percent: 100
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A flow-author team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
-**Current focus:** Phase 07.2 — cron-triggers-via-temporal-schedules
+**Current focus:** Phase 07.2.1 — structured-logging-step-builtin
 
 ## Current Position
 
-Phase: 999.1
-Plan: Not started
-Status: Phase complete — ready for /gsd:verify-work regression gate + verifier, then /gsd:plan-phase 07.3
+Phase: 07.2.1 (structured-logging-step-builtin) — EXECUTING
+Plan: 2 of 5
+Status: Ready to execute
 Last activity: 2026-05-12
 
 Progress: [██████████] 100%
@@ -128,6 +128,7 @@ Progress: [██████████] 100%
 | Phase 07.2 P03 | 10min | 3 tasks | 14 files |
 | Phase 07.2 P04 | 6m | 3 tasks | 7 files |
 | Phase 07.2 P04 | finalize 3min (+UAT cycle 2026-05-11) | 4 tasks | 7 files |
+| Phase 07.2.1 P01 | 3min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -387,6 +388,8 @@ Recent decisions affecting current work:
 - [Phase 07.2]: Phase 7.2 Plan 04: Customer-facing surface shipped (weekly_digest.star cron flow + cron-schedules.md walkthrough + cron-schedules-smoke.sh end-to-end smoke + CI gating); Task 4 human UAT pending checkpoint approval.
 - [Phase 07.2]: [Phase 07.2 UAT 2026-05-11] Cron-fired workflows auto-inject scheduled_time + actual_time from WorkflowID suffix — Per the deferred D-7.2-20 decision, cron-fired workflows received InitState=nil, so every fire crashed on missing ctx.scheduled_time. UAT surfaced this immediately on criterion #5. Fix landed in pkg/interpreter/cron_input.go::extractScheduledTime (regex over WorkflowID's `-<RFC3339>` suffix per RESEARCH Pitfall 2), auto-injecting both keys inside NewWorkflow when the workflow was Schedule-fired and InitState lacks them. Locked at commit 5270f86. Recovery comment on pkg/extension/schedules/schedules.go:291 updated.
 - [Phase 07.2]: [Phase 07.2 UAT 2026-05-11] Example demo cadence stays at "* * * * *" with explicit Production note — The original weekly_digest.star shipped "0 9 * * 1" (Mondays 09:00) — operators reading the walkthrough never observed a fire within the natural reading window. Section 7 "(Optional) Watch a schedule fire" required manual edit + restart. UAT made the criterion #5 lifecycle the load-bearing demo, so cadence flipped to "* * * * *" with an inline code comment + walkthrough Production note subsection directing real deployments to weekly/daily cadences. log_digest script step added at end of flow body using `print() or {"logged": True}` so each fire emits a visible stdout line. Locked at commit a359259. The print() hack is captured as Phase 999.1 backlog (commit f199f8a).
+- [Phase 07.2.1]: Plan 01: LogStep Level field is plain string with no Go enum type — parser is the level gate, pkg/dag stays parser-agnostic
+- [Phase 07.2.1]: Plan 01: logStepJSON shape mirrors failJSON verbatim — kind/level/msg/msg_lambda_id?/attrs_lambda_id? with omitempty on optional lambda IDs
 
 ### Pending Todos
 
@@ -417,6 +420,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-12T02:55:26.341Z
-Stopped at: Phase 07.2.1 context gathered
-Resume file: .planning/phases/07.2.1-structured-logging-step-builtin/07.2.1-CONTEXT.md
+Last session: 2026-05-12T12:24:17.646Z
+Stopped at: Completed 07.2.1-01-dag-logstep-type-PLAN.md
+Resume file: None
