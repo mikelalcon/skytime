@@ -179,12 +179,31 @@ func renderErrors(out io.Writer, errs []error, debug bool) {
 // startup events are NOT flow events — bypasses the buildRoutedSlogLogger
 // progressHandler routing per § Pitfall 7 of 07-RESEARCH.md.
 //
+// In human (non-JSON) mode the returned logger's handler is wrapped in
+// logKindFilterHandler so workflow.GetLogger-emitted `kind=log`
+// step_dispatch/step_complete records (Phase 7.2.1 walker, walk_log.go)
+// are suppressed — operators see ONE [skytime/log] user-message line
+// per log.<level>(...) call rather than three (dispatch + user message
+// + complete). Per D-7.2.1-14, JSON mode emits ALL THREE records
+// verbatim (downstream log-analysis tools need the full step graph),
+// so the JSON branch does NOT wrap.
+//
 // The returned *slog.Logger is also installed as slog.Default so any
 // indirect callers (e.g. parser warnings drained at boot via
 // slog.Default().Warn) flow through the same handler.
 func setupServerLogging(debug, jsonMode bool) *slog.Logger {
 	if !jsonMode {
-		return setupLogging(debug)
+		// Build the underlying charm-log handler via setupLogging (same
+		// wiring as the legacy path) then wrap with logKindFilterHandler.
+		// *slog.Logger.Handler() (Go 1.21+) extracts the inner charm-log
+		// handler so the wrap preserves debug-level + TTY + caller-report
+		// settings. Re-set slog.Default to the wrapped variant —
+		// setupLogging already set Default to the inner logger.
+		inner := setupLogging(debug)
+		wrapped := newLogKindFilterHandler(inner.Handler())
+		logger := slog.New(wrapped)
+		slog.SetDefault(logger)
+		return logger
 	}
 	level := slog.LevelInfo
 	if debug {

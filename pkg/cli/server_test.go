@@ -1205,3 +1205,83 @@ func TestServerCmd_BannerSorted_CronSourceRendersScheduleInMount(t *testing.T) {
 	assert.Equal(t, "cron @ 0 9 * * 1 (America/New_York)", first["mount"],
 		"Phase 7.2 Plan 03: cron triggers render schedule + timezone in mount field")
 }
+
+// =============================================================================
+// Phase 7.2.1 Plan 04 — logKindFilterHandler wiring tests (LOG-02 D-7.2.1-13/14)
+// =============================================================================
+
+// TestServer_LogFilterAttached_HumanMode: in non-JSON mode, kind=log
+// step_dispatch + step_complete records emitted through the logger
+// returned by setupServerLogging are suppressed; the user-message
+// record (no `event` attr) and unrelated kinds (script/step/...) still
+// render. D-7.2.1-13.
+//
+// charm-log writes to os.Stderr; we redirect stderr to a pipe BEFORE
+// calling setupServerLogging so the handler captures os.Stderr at
+// construction time and emits into our pipe.
+func TestServer_LogFilterAttached_HumanMode(t *testing.T) {
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = origStderr })
+
+	prevDefault := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prevDefault) })
+
+	logger := setupServerLogging(false /*debug*/, false /*jsonMode*/)
+	require.NotNil(t, logger)
+
+	logger.Info("skytime", "event", "step_dispatch", "kind", "log", "label", "log")
+	logger.Info("skytime", "event", "step_complete", "kind", "log", "status", "ok")
+	logger.Info("[skytime/log] weekly digest complete", "kind", "log")
+	logger.Info("workflow start", "event", "step_dispatch", "kind", "script", "label", "seed_authors")
+
+	require.NoError(t, w.Close())
+	out, err := io.ReadAll(r)
+	require.NoError(t, err)
+	got := string(out)
+
+	require.NotContains(t, got, "event=step_dispatch kind=log",
+		"kind=log step_dispatch must be suppressed in human mode")
+	require.NotContains(t, got, "event=step_complete kind=log",
+		"kind=log step_complete must be suppressed in human mode")
+	require.Contains(t, got, "[skytime/log] weekly digest complete",
+		"user-message record must pass through")
+	require.Contains(t, got, "seed_authors",
+		"non-log script dispatch must still render")
+}
+
+// TestServer_LogFilterNotAttached_JSONMode: in --json-log mode, all
+// three records (dispatch + user message + complete) appear verbatim
+// per D-7.2.1-14 — log-analysis tools need the full step graph.
+func TestServer_LogFilterNotAttached_JSONMode(t *testing.T) {
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = origStderr })
+
+	prevDefault := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prevDefault) })
+
+	logger := setupServerLogging(false /*debug*/, true /*jsonMode*/)
+	require.NotNil(t, logger)
+
+	logger.Info("skytime", "event", "step_dispatch", "kind", "log", "label", "log")
+	logger.Info("[skytime/log] hi", "kind", "log")
+	logger.Info("skytime", "event", "step_complete", "kind", "log", "status", "ok")
+
+	require.NoError(t, w.Close())
+	out, err := io.ReadAll(r)
+	require.NoError(t, err)
+	got := string(out)
+
+	// JSON mode: all three records present verbatim.
+	require.Contains(t, got, `"event":"step_dispatch"`)
+	require.Contains(t, got, `"event":"step_complete"`)
+	require.Contains(t, got, "[skytime/log] hi")
+	// All three records carry kind=log — JSON mode emits everything.
+	require.Equal(t, 3, strings.Count(got, `"kind":"log"`),
+		"JSON mode must emit all three kind=log records verbatim (D-7.2.1-14)")
+}
