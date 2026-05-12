@@ -68,6 +68,17 @@ func (p *progressHandler) renderStepDispatch(a attrMap) error {
 		return nil
 	}
 
+	// Phase 7.2.1 D-7.2.1-13: SUPPRESS kind=log step_dispatch. Log steps
+	// are side-channels — the user-message record (msg "[skytime/log] ...",
+	// no `event` attr) carries the payload via the wrapped charm-log
+	// passthrough in progressHandler.Handle; the bookend dispatch/complete
+	// frames are noise in human mode. JSON-log mode emits all three records
+	// (the filter is only wired into the non-JSON server path via
+	// setupServerLogging).
+	if kind == "log" {
+		return nil
+	}
+
 	indent, counter := p.computeCounter(idx, total, path)
 
 	if kind == "for_each_parallel" {
@@ -113,6 +124,17 @@ func (p *progressHandler) renderStepComplete(a attrMap) error {
 	total := a.int("total")
 	kind := a.str("kind")
 	label := a.str("label")
+
+	// Phase 7.2.1 D-7.2.1-13: SUPPRESS kind=log step_complete. Early-return
+	// BEFORE the lastErr failureContext capture so any future log-step
+	// errors (NonRetryableErr-driven validation failures from walk_log.go —
+	// reserved keys / >32 attrs / bad shape) do NOT shadow the actual
+	// workflow-failing step that renderFlowComplete attributes when
+	// err_count > 0. The error itself surfaces via the activity-level
+	// error path, not via the log step's complete frame.
+	if kind == "log" {
+		return nil
+	}
 
 	// Quick 260502-onc Fix C: capture failure context for
 	// renderFlowComplete to attribute the failure when err_count > 0.

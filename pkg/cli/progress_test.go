@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -1617,4 +1618,101 @@ func TestProgress_StepComplete_IfCond_NoBranchSuffix(t *testing.T) {
 	}
 	require.True(t, headerFound,
 		"header line containing '▶ then' must be present. Output: %q", out)
+}
+
+// =============================================================================
+// Phase 7.2.1 Plan 04 — kind=log suppression in progressHandler (D-7.2.1-13)
+// =============================================================================
+
+// TestProgress_KindLogSuppressed_Dispatch: a kind=log step_dispatch record
+// routed through progressHandler.Handle produces ZERO bytes of output —
+// renderStepDispatch early-returns nil before writing any line.
+func TestProgress_KindLogSuppressed_Dispatch(t *testing.T) {
+	buf := &bytes.Buffer{}
+	h := newProgressHandler(slog.NewTextHandler(io.Discard, nil), buf)
+
+	rec := slog.NewRecord(time.Now(), slog.LevelInfo, "skytime", 0)
+	rec.Add(
+		"event", "step_dispatch",
+		"kind", "log",
+		"idx", int64(2),
+		"total", int64(4),
+		"label", "log",
+		"path", "/test",
+	)
+	err := h.Handle(context.Background(), rec)
+	require.NoError(t, err)
+	require.Empty(t, buf.String(), "kind=log step_dispatch must produce zero output")
+}
+
+// TestProgress_KindLogSuppressed_Complete: a kind=log step_complete record
+// produces ZERO bytes of output AND does NOT populate p.lastErr (the
+// early-return is positioned BEFORE the failureContext capture).
+func TestProgress_KindLogSuppressed_Complete(t *testing.T) {
+	buf := &bytes.Buffer{}
+	h := newProgressHandler(slog.NewTextHandler(io.Discard, nil), buf)
+
+	rec := slog.NewRecord(time.Now(), slog.LevelInfo, "skytime", 0)
+	rec.Add(
+		"event", "step_complete",
+		"kind", "log",
+		"status", "ok",
+		"duration_ms", int64(0),
+		"idx", int64(2),
+		"total", int64(4),
+		"label", "log",
+		"path", "/test",
+	)
+	err := h.Handle(context.Background(), rec)
+	require.NoError(t, err)
+	require.Empty(t, buf.String(), "kind=log step_complete must produce zero output")
+}
+
+// TestProgress_NonLogDispatch_StillRenders: sanity — kind=script
+// step_dispatch still produces a line. Proves the kind=log early-return
+// is specific to log steps and does not interfere with other kinds.
+func TestProgress_NonLogDispatch_StillRenders(t *testing.T) {
+	buf := &bytes.Buffer{}
+	h := newProgressHandler(slog.NewTextHandler(io.Discard, nil), buf)
+
+	rec := slog.NewRecord(time.Now(), slog.LevelInfo, "skytime", 0)
+	rec.Add(
+		"event", "step_dispatch",
+		"kind", "script",
+		"idx", int64(1),
+		"total", int64(1),
+		"label", "seed_authors",
+		"path", "1",
+	)
+	err := h.Handle(context.Background(), rec)
+	require.NoError(t, err)
+	require.Contains(t, buf.String(), "seed_authors",
+		"non-log dispatch must still render the label")
+}
+
+// TestProgress_NonLogCompleteErr_CapturesLastErr: sanity — kind=script
+// step_complete with status=err still captures p.lastErr and renders
+// the line. The kind=log early-return is positioned so it does not
+// short-circuit failureContext capture for non-log kinds.
+func TestProgress_NonLogCompleteErr_CapturesLastErr(t *testing.T) {
+	buf := &bytes.Buffer{}
+	h := newProgressHandler(slog.NewTextHandler(io.Discard, nil), buf)
+
+	rec := slog.NewRecord(time.Now(), slog.LevelInfo, "skytime", 0)
+	rec.Add(
+		"event", "step_complete",
+		"kind", "script",
+		"status", "err",
+		"duration_ms", int64(10),
+		"summary", "boom",
+		"idx", int64(1),
+		"total", int64(1),
+		"label", "failing_script",
+		"path", "1",
+	)
+	err := h.Handle(context.Background(), rec)
+	require.NoError(t, err)
+	require.NotNil(t, h.lastErr, "non-log err complete must capture lastErr")
+	require.Equal(t, "boom", h.lastErr.summary)
+	require.Contains(t, buf.String(), "failing_script")
 }
