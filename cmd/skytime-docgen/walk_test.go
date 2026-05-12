@@ -276,6 +276,118 @@ func TestWalkBuiltins_LiveSource(t *testing.T) {
 	}
 }
 
+// TestWalkRegistry_NestedModule confirms that &starlarkstruct.Module{
+// Name: "log", Members: starlark.StringDict{...} } registrations surface
+// as fully-qualified `<ns>.<member>` registry entries — required so the
+// log.info / log.warn / log.error / log.debug surfaces land in the
+// rendered docs/reference/builtins.md (Phase 07.2.1).
+func TestWalkRegistry_NestedModule(t *testing.T) {
+	tmp := fixtureToTempGo(t, "sample_log_globals.go.txt")
+
+	registry, order, err := WalkRegistry(tmp)
+	if err != nil {
+		t.Fatalf("WalkRegistry: %v", err)
+	}
+
+	wantOrder := []string{"flow", "log.info", "log.warn", "log.error", "log.debug"}
+	if !reflect.DeepEqual(order, wantOrder) {
+		t.Errorf("order = %v; want %v", order, wantOrder)
+	}
+	wantMap := map[string]string{
+		"flow":      "builtinFlow",
+		"log.info":  "builtinLogInfo",
+		"log.warn":  "builtinLogWarn",
+		"log.error": "builtinLogError",
+		"log.debug": "builtinLogDebug",
+	}
+	if !reflect.DeepEqual(registry, wantMap) {
+		t.Errorf("registry = %#v; want %#v", registry, wantMap)
+	}
+}
+
+// TestWalkBuiltinsMulti_TrampolineRecovery confirms a thin
+// `return p.<helper>(...)` trampoline builtin (the log.<level> shape in
+// Phase 07.2.1) has its UnpackArgs metadata recovered from the helper's
+// body — not from the trampoline's own (empty) body. Without this the
+// rendered signature would fall back to alphabetical positional-only
+// (`log.info(attrs, msg)`) which is both misleading and rejects the
+// optional `attrs` kwarg's true shape.
+func TestWalkBuiltinsMulti_TrampolineRecovery(t *testing.T) {
+	globals := fixtureToTempGo(t, "sample_log_globals.go.txt")
+	builtins := fixtureToTempGo(t, "sample_log_builtins.go.txt")
+
+	registry, order, err := WalkRegistry(globals)
+	if err != nil {
+		t.Fatalf("WalkRegistry: %v", err)
+	}
+	out, err := WalkBuiltinsMulti([]string{builtins}, registry, order)
+	if err != nil {
+		t.Fatalf("WalkBuiltinsMulti: %v", err)
+	}
+	byName := map[string]Builtin{}
+	for _, b := range out {
+		byName[b.Name] = b
+	}
+	info, ok := byName["log.info"]
+	if !ok {
+		t.Fatalf("log.info missing from output; got %v", namesOf(out))
+	}
+	if info.Function != "builtinLogInfo" {
+		t.Errorf("log.info.Function = %q; want builtinLogInfo", info.Function)
+	}
+	if len(info.Params) != 2 {
+		t.Fatalf("log.info.Params len = %d; want 2; got %#v", len(info.Params), info.Params)
+	}
+	if info.Params[0].Name != "msg" || !info.Params[0].Required {
+		t.Errorf("log.info.Params[0] = %#v; want {msg required=true}", info.Params[0])
+	}
+	if info.Params[1].Name != "attrs" || info.Params[1].Required {
+		t.Errorf("log.info.Params[1] = %#v; want {attrs required=false}", info.Params[1])
+	}
+
+	// Sanity: warn/error/debug should land with identical signatures
+	// (they all trampoline into buildLogStep).
+	for _, level := range []string{"log.warn", "log.error", "log.debug"} {
+		b, ok := byName[level]
+		if !ok {
+			t.Errorf("%s missing from output", level)
+			continue
+		}
+		if len(b.Params) != 2 || b.Params[0].Name != "msg" || b.Params[1].Name != "attrs" {
+			t.Errorf("%s.Params = %#v; want msg + attrs?", level, b.Params)
+		}
+	}
+}
+
+// TestFindBuiltinFiles_PicksUpLogSplit confirms findBuiltinFiles returns
+// both builtins.go and builtins_log.go (and excludes _test.go siblings)
+// on the live pkg/parser tree. This guards the docgen pipeline against a
+// regression where a future split file gets dropped from the rendered
+// reference.
+func TestFindBuiltinFiles_PicksUpLogSplit(t *testing.T) {
+	root := findModuleRoot(t)
+	pkgDir := filepath.Join(root, "pkg", "parser")
+	files, err := findBuiltinFiles(pkgDir)
+	if err != nil {
+		t.Fatalf("findBuiltinFiles: %v", err)
+	}
+	got := map[string]bool{}
+	for _, f := range files {
+		got[filepath.Base(f)] = true
+	}
+	if !got["builtins.go"] {
+		t.Errorf("expected builtins.go in %v", files)
+	}
+	if !got["builtins_log.go"] {
+		t.Errorf("expected builtins_log.go in %v", files)
+	}
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			t.Errorf("test file leaked into walk set: %s", f)
+		}
+	}
+}
+
 // paramRequired is a small helper for live-source assertions: returns
 // true when params contains a Param with the given name AND the expected
 // Required value.

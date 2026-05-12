@@ -1,0 +1,49 @@
+package parser
+
+import "go.starlark.net/starlark"
+
+// builtinFlow is unchanged from sample_builtins.go.txt and serves as
+// the baseline direct-UnpackArgs case for the trampoline-aware tests.
+func (p *Parser) builtinFlow(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var name string
+	if err := starlark.UnpackArgs("flow", args, kwargs, "name", &name); err != nil {
+		return nil, err
+	}
+	_ = name
+	return nil, nil
+}
+
+// buildLogStep is the shared factory; the four level-tagged builtins
+// below delegate here. extractUnpackParamsWithRegistry recurses through
+// the trampoline to recover msg + attrs? from this UnpackArgs call.
+func (p *Parser) buildLogStep(level string, thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		msg   starlark.Value
+		attrs starlark.Value
+	)
+	if err := starlark.UnpackArgs("log."+level, args, kwargs,
+		"msg", &msg,
+		"attrs?", &attrs,
+	); err != nil {
+		return nil, err
+	}
+	_ = msg
+	_ = attrs
+	return nil, nil
+}
+
+func (p *Parser) builtinLogInfo(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return p.buildLogStep("info", thread, args, kwargs)
+}
+
+func (p *Parser) builtinLogWarn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return p.buildLogStep("warn", thread, args, kwargs)
+}
+
+func (p *Parser) builtinLogError(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return p.buildLogStep("error", thread, args, kwargs)
+}
+
+func (p *Parser) builtinLogDebug(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return p.buildLogStep("debug", thread, args, kwargs)
+}

@@ -5,9 +5,28 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
+
+// osReadDir is a thin indirection over os.ReadDir to keep the
+// findBuiltinFiles signature stable if a test ever needs to swap in a
+// fake filesystem. Today it just delegates.
+func osReadDir(dir string) ([]os.DirEntry, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	// Sort lexicographically for stable docgen output. os.ReadDir already
+	// returns sorted entries on most platforms but the contract is "in
+	// directory order" — sort defensively to keep the regenerated
+	// builtins.md byte-stable across machines.
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	return entries, nil
+}
 
 // WalkRegistry parses path (typically pkg/parser/globals.go) and returns
 // the Skytime Starlark builtin registry as (name → goFunc) plus the
@@ -19,6 +38,13 @@ import (
 // downstream rendering (plan 02) reads top-to-bottom as the .go file is
 // authored — alphabetical sort would scramble the natural grouping
 // (flow/step/if_cond before result/fail).
+//
+// Phase 07.2.1: also recurses into nested *starlarkstruct.Module composite
+// literals (e.g. the `log` namespace) and surfaces their Members entries
+// as fully-qualified registry keys (`log.info`, `log.warn`, etc.). The
+// values inside Members must also be starlark.NewBuiltin(...) calls; the
+// extracted Go function name (e.g. `builtinLogInfo`) is used unchanged so
+// WalkBuiltins can locate the FuncDecl across pkg/parser/*.go files.
 func WalkRegistry(path string) (map[string]string, []string, error) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
@@ -57,15 +83,36 @@ func WalkRegistry(path string) (map[string]string, []string, error) {
 				if !ok {
 					continue
 				}
-				funcName, ok := newBuiltinFuncName(kv.Value)
-				if !ok {
+				// Direct starlark.NewBuiltin(...) value — the common case.
+				if funcName, ok := newBuiltinFuncName(kv.Value); ok {
+					if _, dup := registry[name]; dup {
+						continue
+					}
+					registry[name] = funcName
+					order = append(order, name)
 					continue
 				}
-				if _, dup := registry[name]; dup {
-					continue
+				// Nested namespace: &starlarkstruct.Module{Name: "x", Members: starlark.StringDict{...}}.
+				// Recover the Members StringDict and emit fully-qualified
+				// `<name>.<member>` entries in member-source order.
+				if members, ok := starlarkstructModuleMembers(kv.Value); ok {
+					for _, mkv := range members {
+						mName, ok := unquoteString(mkv.Key)
+						if !ok {
+							continue
+						}
+						mFunc, ok := newBuiltinFuncName(mkv.Value)
+						if !ok {
+							continue
+						}
+						qualified := name + "." + mName
+						if _, dup := registry[qualified]; dup {
+							continue
+						}
+						registry[qualified] = mFunc
+						order = append(order, qualified)
+					}
 				}
-				registry[name] = funcName
-				order = append(order, name)
 			}
 			done = true
 			return false
@@ -74,6 +121,68 @@ func WalkRegistry(path string) (map[string]string, []string, error) {
 	}
 
 	return registry, order, nil
+}
+
+// starlarkstructModuleMembers returns the elements of the Members
+// StringDict embedded in a `&starlarkstruct.Module{...}` composite-literal
+// expression. The expected shape is:
+//
+//	&starlarkstruct.Module{
+//	    Name: "log",
+//	    Members: starlark.StringDict{
+//	        "info": starlark.NewBuiltin("log.info", p.builtinLogInfo),
+//	        ...
+//	    },
+//	}
+//
+// Returns the Members CompositeLit's Elts (as *ast.KeyValueExpr slice)
+// and true on match, or (nil, false) for any other shape (regular value,
+// non-Module struct, missing Members field, etc.). Recognizes only the
+// pointer-form `&starlarkstruct.Module{...}` — the package's static-
+// registration convention. A non-pointer Module literal would still be
+// valid Starlark wiring but would not be picked up here; introduce that
+// path when the codebase actually uses it.
+func starlarkstructModuleMembers(expr ast.Expr) ([]*ast.KeyValueExpr, bool) {
+	un, ok := expr.(*ast.UnaryExpr)
+	if !ok || un.Op != token.AND {
+		return nil, false
+	}
+	cl, ok := un.X.(*ast.CompositeLit)
+	if !ok {
+		return nil, false
+	}
+	sel, ok := cl.Type.(*ast.SelectorExpr)
+	if !ok || sel.Sel == nil {
+		return nil, false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	if !ok || pkg.Name != "starlarkstruct" || sel.Sel.Name != "Module" {
+		return nil, false
+	}
+	for _, elt := range cl.Elts {
+		kv, ok := elt.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+		fieldName, ok := kv.Key.(*ast.Ident)
+		if !ok || fieldName.Name != "Members" {
+			continue
+		}
+		members, ok := kv.Value.(*ast.CompositeLit)
+		if !ok || !isStarlarkStringDict(members.Type) {
+			continue
+		}
+		out := make([]*ast.KeyValueExpr, 0, len(members.Elts))
+		for _, e := range members.Elts {
+			mkv, ok := e.(*ast.KeyValueExpr)
+			if !ok {
+				continue
+			}
+			out = append(out, mkv)
+		}
+		return out, true
+	}
+	return nil, false
 }
 
 // isStarlarkStringDict returns true when expr names starlark.StringDict.
@@ -126,6 +235,118 @@ func newBuiltinFuncName(expr ast.Expr) (string, bool) {
 		return "", false
 	}
 	return fnSel.Sel.Name, true
+}
+
+// WalkBuiltinsMulti merges WalkBuiltins results across multiple source
+// files in one pkg directory. Used when factories are split across
+// `builtins.go` + `builtins_log.go` (Phase 07.2.1) and similar future
+// splits. Ordering follows `order` exactly; a Starlark name found in
+// multiple files keeps the first hit (registry has only one Go-func
+// binding per name, so collisions are spec violations and surface via
+// the per-file walker rather than here).
+//
+// The two-pass shape (collect FuncDecls across all files, then resolve
+// each builtin with full cross-file visibility) lets trampoline factories
+// like `builtinLogInfo` → `buildLogStep` recover the real UnpackArgs
+// metadata regardless of which file the helper lives in. A single-pass
+// walk would miss helpers defined in a sibling file.
+func WalkBuiltinsMulti(paths []string, registry map[string]string, order []string) ([]Builtin, error) {
+	// Pass 1: parse every file and collect (path, *ast.File, fset) plus
+	// a method-name → FuncDecl registry for trampoline recovery.
+	type parsedFile struct {
+		path string
+		file *ast.File
+		fset *token.FileSet
+	}
+	var parsed []parsedFile
+	decls := map[string]*ast.FuncDecl{}
+	for _, p := range paths {
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, p, nil, parser.ParseComments)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s: %w", p, err)
+		}
+		parsed = append(parsed, parsedFile{p, f, fset})
+		for _, decl := range f.Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || fd.Name == nil {
+				continue
+			}
+			if _, dup := decls[fd.Name.Name]; dup {
+				continue
+			}
+			decls[fd.Name.Name] = fd
+		}
+	}
+
+	// Pass 2: build Builtin records for each registered Go function,
+	// using the cross-file decls registry so trampolines resolve their
+	// helper's UnpackArgs.
+	byFunc := make(map[string]string, len(registry))
+	for k, v := range registry {
+		byFunc[v] = k
+	}
+	merged := map[string]Builtin{}
+	for _, pf := range parsed {
+		for _, decl := range pf.file.Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || fd.Name == nil {
+				continue
+			}
+			starlarkName, ok := byFunc[fd.Name.Name]
+			if !ok {
+				continue
+			}
+			if _, dup := merged[starlarkName]; dup {
+				continue
+			}
+			merged[starlarkName] = Builtin{
+				Name:     starlarkName,
+				Function: fd.Name.Name,
+				Pos:      pf.fset.Position(fd.Pos()).String(),
+				Params:   extractUnpackParamsWithRegistry(fd, decls),
+				Markers:  ParseMarkers(fd),
+			}
+		}
+	}
+
+	out := make([]Builtin, 0, len(order))
+	for _, name := range order {
+		if b, ok := merged[name]; ok {
+			out = append(out, b)
+		}
+	}
+	return out, nil
+}
+
+// findBuiltinFiles returns every non-test `builtins*.go` file under
+// pkgDir, sorted lexicographically for stable docgen output. Returns an
+// empty slice (no error) when none exist; the caller decides whether
+// that's fatal. _test.go files are excluded — fixtures + test helpers
+// should never contribute to the rendered reference.
+func findBuiltinFiles(pkgDir string) ([]string, error) {
+	entries, err := osReadDir(pkgDir)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasPrefix(name, "builtins") {
+			continue
+		}
+		if !strings.HasSuffix(name, ".go") {
+			continue
+		}
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		out = append(out, filepath.Join(pkgDir, name))
+	}
+	return out, nil
 }
 
 // WalkBuiltins parses path (typically pkg/parser/builtins.go) and returns
@@ -190,9 +411,43 @@ func WalkBuiltins(path string, registry map[string]string, order []string) ([]Bu
 // Params populated from index-3 alternating pairs. UnpackPositionalArgs is
 // recognized as a positional-only shape; Params returned empty (the renderer
 // surfaces fail's parameter via skytime:doc markers — see plan 02).
+//
+// Trampoline support (Phase 07.2.1): when the FuncDecl body is a single
+// `return p.<method>(...)` call (e.g., the four log.<level> wrappers that
+// delegate to `buildLogStep`), `allBuiltinDecls` is searched for the
+// callee's FuncDecl and the recursive walk continues there. This keeps
+// // skytime:doc markers on the trampoline (per-level prose) while the
+// signature is recovered from the shared factory's UnpackArgs call.
+// `allBuiltinDecls` is keyed by Go method name (no receiver); when nil,
+// trampoline recovery is skipped and the legacy single-file behavior
+// kicks in (positional-only fallback uses param_* markers).
 func extractUnpackParams(fd *ast.FuncDecl) []Param {
+	return extractUnpackParamsWithRegistry(fd, nil)
+}
+
+// extractUnpackParamsWithRegistry is the trampoline-aware variant of
+// extractUnpackParams. registry maps Go method name → *ast.FuncDecl across
+// every builtins*.go file in the package; when the visited body is a thin
+// `return p.<other>(...)` trampoline (typical of namespaced surfaces such
+// as log.<level>), the walker recurses into the callee to recover the
+// real UnpackArgs metadata.
+func extractUnpackParamsWithRegistry(fd *ast.FuncDecl, registry map[string]*ast.FuncDecl) []Param {
 	if fd == nil || fd.Body == nil {
 		return nil
+	}
+	visited := map[string]bool{}
+	return extractUnpackParamsRec(fd, registry, visited)
+}
+
+func extractUnpackParamsRec(fd *ast.FuncDecl, registry map[string]*ast.FuncDecl, visited map[string]bool) []Param {
+	if fd == nil || fd.Body == nil {
+		return nil
+	}
+	if fd.Name != nil {
+		if visited[fd.Name.Name] {
+			return nil
+		}
+		visited[fd.Name.Name] = true
 	}
 	var params []Param
 	var done bool
@@ -241,7 +496,54 @@ func extractUnpackParams(fd *ast.FuncDecl) []Param {
 		}
 		return true
 	})
-	return params
+	if len(params) > 0 || done || registry == nil {
+		return params
+	}
+	// No direct UnpackArgs/UnpackPositionalArgs call — try trampoline
+	// recovery. The trampoline shape we recognize:
+	//   func (p *Parser) builtinX(...) (..., error) {
+	//       return p.<helper>(<args>)
+	//   }
+	// Find the first `return p.<helper>(...)` and recurse into <helper>.
+	for _, stmt := range fd.Body.List {
+		retStmt, ok := stmt.(*ast.ReturnStmt)
+		if !ok || len(retStmt.Results) != 1 {
+			continue
+		}
+		callExpr, ok := retStmt.Results[0].(*ast.CallExpr)
+		if !ok {
+			continue
+		}
+		methodName, ok := receiverMethodName(callExpr.Fun)
+		if !ok {
+			continue
+		}
+		helperDecl, ok := registry[methodName]
+		if !ok {
+			continue
+		}
+		return extractUnpackParamsRec(helperDecl, registry, visited)
+	}
+	return nil
+}
+
+// receiverMethodName matches `p.<name>` / `<recv>.<name>` selectors used
+// in trampoline `return p.<helper>(...)` shapes. Returns (name, true) when
+// the call target is a method invocation on an identifier receiver, or
+// ("", false) otherwise. Package-qualified calls (e.g.
+// `starlark.NewBuiltin(...)`) are rejected by the X-is-ident check
+// (any Ident as receiver passes, including `starlark`; the caller's
+// registry lookup is the actual gate — only Go methods on *Parser are
+// keyed in registry, so the search is naturally scoped).
+func receiverMethodName(expr ast.Expr) (string, bool) {
+	sel, ok := expr.(*ast.SelectorExpr)
+	if !ok || sel.Sel == nil {
+		return "", false
+	}
+	if _, ok := sel.X.(*ast.Ident); !ok {
+		return "", false
+	}
+	return sel.Sel.Name, true
 }
 
 // unaryAddrTarget extracts the identifier name from an `&ident` UnaryExpr

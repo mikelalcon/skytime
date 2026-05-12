@@ -10,7 +10,7 @@ import (
 
 func main() {
 	var (
-		pkgPath = flag.String("pkg", "pkg/parser", "Package directory containing globals.go and builtins.go")
+		pkgPath = flag.String("pkg", "pkg/parser", "Package directory containing globals.go and builtins*.go")
 		outPath = flag.String("out", "", "Output path for rendered markdown; when empty, JSON is dumped to stdout for diagnostics")
 	)
 	flag.Usage = func() {
@@ -21,16 +21,31 @@ func main() {
 	flag.Parse()
 
 	globalsPath := filepath.Join(*pkgPath, "globals.go")
-	builtinsPath := filepath.Join(*pkgPath, "builtins.go")
 
 	registry, order, err := WalkRegistry(globalsPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "walk registry %s: %v\n", globalsPath, err)
 		os.Exit(1)
 	}
-	builtins, err := WalkBuiltins(builtinsPath, registry, order)
+
+	// Walk every `builtins*.go` file in *pkgPath (excluding `*_test.go`).
+	// Originally a single `builtins.go` carried all factories; Phase 07.2.1
+	// added `builtins_log.go` for the four log.<level> trampolines, and
+	// future namespaced surfaces may add more split files. The merged
+	// result is deduped by Starlark name; the registration order from
+	// globals.go is the source of truth for emission order.
+	builtinFiles, err := findBuiltinFiles(*pkgPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "walk builtins %s: %v\n", builtinsPath, err)
+		fmt.Fprintf(os.Stderr, "find builtins in %s: %v\n", *pkgPath, err)
+		os.Exit(1)
+	}
+	if len(builtinFiles) == 0 {
+		fmt.Fprintf(os.Stderr, "no builtins*.go files found in %s\n", *pkgPath)
+		os.Exit(1)
+	}
+	builtins, err := WalkBuiltinsMulti(builtinFiles, registry, order)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "walk builtins in %s: %v\n", *pkgPath, err)
 		os.Exit(1)
 	}
 

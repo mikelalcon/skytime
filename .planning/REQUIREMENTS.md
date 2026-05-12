@@ -61,6 +61,11 @@ Requirements for the v1.43.0 milestone. Each maps to a roadmap phase.
 - [ ] **AUTH-03**: An Azure Workload Identity → Key Vault → Temporal Cloud snippet in temporal-auth.md.
 - [ ] **AUTH-04**: A self-hosted mTLS reload-on-SIGHUP snippet in temporal-auth.md. Production cluster rotates client certs; SIGHUP triggers `client.Options.ConnectionOptions.TLS` reload without restart.
 
+### Structured Logging Step Builtin
+
+- [x] **LOG-01**: A `.star` author can write `log.info(msg, attrs=lambda ctx: dict)` (and `log.warn` / `log.error` / `log.debug`) as a step inside flow(...) bodies. The msg supports `${ctx.expr}` interpolation per D4.1-22; attrs is an optional lambda returning a dict of structured key-value pairs. Empty msg, multi-line msg, and missing attrs all parse cleanly; non-literal msg and module-scope placement reject with position-aware `*dag.ParseError`.
+- [x] **LOG-02**: At workflow time the walker emits a structured slog record via `workflow.GetLogger(ctx)` at the matching level (Info / Warn / Error / Debug) with the message decorated as `[skytime/log] <msg>`. The record is replay-safe (Temporal `ReplayLogger` suppresses on replay). In `skytime server` human stdout the user-message record surfaces as one line per `log.<level>` call; the bookend `event=step_dispatch kind=log` and `event=step_complete kind=log` records are suppressed by the renderer (`logKindFilterHandler` + `progressHandler` early-return on `kind=="log"`). In `--json-log` mode all three records pass through verbatim for downstream log-analysis tooling.
+
 ## v1.44+ Requirements (Deferred)
 
 Tracked but not in this milestone's scope.
@@ -127,8 +132,10 @@ Explicit exclusions for v1.43 with reasoning.
 | AUTH-02 | Phase 7.5 | — | Pending |
 | AUTH-03 | Phase 7.5 | — | Pending |
 | AUTH-04 | Phase 7.5 | — | Pending |
+| LOG-01 | Phase 07.2.1 | 07.2.1-02-parser-builtins, 07.2.1-05-migration-walkthrough | Complete |
+| LOG-02 | Phase 07.2.1 | 07.2.1-01-dag-logstep-type, 07.2.1-03-walker-counter-replay, 07.2.1-04-renderer-suppression, 07.2.1-05-migration-walkthrough | Complete |
 
-**Total:** 31 requirements across 7 categories, mapped to 6 phases. `Source Plan` column is `—` placeholder; `/gsd:plan-phase` fills it as plans land.
+**Total:** 33 requirements across 8 categories, mapped to 7 phases. `Source Plan` column is `—` placeholder; `/gsd:plan-phase` fills it as plans land.
 
 ## Coverage Summary
 
@@ -141,6 +148,7 @@ Explicit exclusions for v1.43 with reasoning.
 | CLI (API + rename) | 6 | 7, 7.4 |
 | EX (example project addition) | 1 | 7.1 |
 | AUTH (production auth docs) | 4 | 7.5 |
+| LOG (structured logging step builtin) | 2 | 7.2.1 |
 
 ---
 *Created: 2026-05-08 — v1.43.0 Durability + Triggers milestone opened*

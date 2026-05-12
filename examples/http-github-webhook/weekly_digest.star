@@ -68,21 +68,17 @@ flow(
             ],
             max_concurrency = 4,
         ),
-        # Visible effect: the Starlark `print` builtin is routed to
-        # workflow.GetLogger by the interpreter (D3-22 / lambda_eval.go),
-        # so this line surfaces in `skytime server` stdout on every
-        # cron fire with the [skytime/print] tag. Lets operators confirm
-        # a fire produced output without leaving the terminal. Returns
-        # an empty dict so the script step has a state binding (Starlark
-        # `print` returns None; `None or {...}` yields the dict).
-        script(
-            id = "log_digest",
-            fn = lambda ctx: print(
-                "weekly digest complete: scheduled=" + ctx.scheduled_time +
-                " actual=" + ctx.actual_time +
-                " authors=" + str(len(ctx.grouped.authors)),
-            ) or {"logged": True},
-            output_alias = "_log",
+        # Visible effect: log.info(...) emits a structured slog record at
+        # workflow time via workflow.GetLogger(ctx).Info (Phase 7.2.1
+        # walk_log.go) so this line surfaces in `skytime server` stdout
+        # on every cron fire decorated with the [skytime/log] tag.
+        # Replaces the prior `script(id="log_digest", fn=lambda ctx: print(...) or {"logged": True})`
+        # workaround — log is a side-channel step (no output_alias, no
+        # state binding), and the human renderer suppresses the bookend
+        # step_dispatch/step_complete frames so operators see exactly
+        # one [skytime/log] line per fire (D-7.2.1-13).
+        log.info(
+            "weekly digest complete: scheduled=${ctx.scheduled_time} actual=${ctx.actual_time} authors=${len(ctx.grouped.authors)}",
         ),
     ],
 )
@@ -90,8 +86,8 @@ flow(
 # Cron trigger declaration.
 #
 # DEMO SCHEDULE: "* * * * *" fires every minute so a reader walking
-# through docs/walkthroughs/cron-schedules.md sees the [skytime/print]
-# log_digest line surface in `skytime server` stdout within ~60s of
+# through docs/walkthroughs/cron-schedules.md sees the [skytime/log]
+# digest line surface in `skytime server` stdout within ~60s of
 # `--cron-reconcile` — no patience required to verify the loop closed.
 #
 # FOR REAL USE: swap to a realistic weekly schedule like

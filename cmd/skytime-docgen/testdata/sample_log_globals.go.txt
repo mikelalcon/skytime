@@ -1,0 +1,29 @@
+package parser
+
+import (
+	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
+)
+
+type Parser struct{}
+
+// newParseTimeGlobals exercises the nested-module shape used by the
+// `log` namespace (Phase 07.2.1). Combines a direct NewBuiltin
+// registration (`flow`) with a *starlarkstruct.Module wrapping four
+// member builtins (`log.info`, `log.warn`, `log.error`, `log.debug`).
+func newParseTimeGlobals(p *Parser, thread *starlark.Thread) (starlark.StringDict, error) {
+	g := starlark.StringDict{
+		"flow": starlark.NewBuiltin("flow", p.builtinFlow),
+		"log": &starlarkstruct.Module{
+			Name: "log",
+			Members: starlark.StringDict{
+				"info":  starlark.NewBuiltin("log.info", p.builtinLogInfo),
+				"warn":  starlark.NewBuiltin("log.warn", p.builtinLogWarn),
+				"error": starlark.NewBuiltin("log.error", p.builtinLogError),
+				"debug": starlark.NewBuiltin("log.debug", p.builtinLogDebug),
+			},
+		},
+	}
+	_ = thread
+	return g, nil
+}

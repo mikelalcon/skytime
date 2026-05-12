@@ -281,9 +281,15 @@ INFO skytime event=flow_start flow_name=weekly_digest step_count=4
 INFO skytime event=step_complete kind=script label=grouped status=ok ...
 INFO skytime event=step_complete kind=step label="fetch repo info" status=ok duration_ms=237 ...
 INFO skytime event=step_complete kind=for_each_parallel label="items=1" status=ok ...
-INFO [skytime/print] weekly digest complete: scheduled=2026-05-11T21:01:00Z actual=2026-05-11T21:01:00Z authors=1 ...
+INFO [skytime/log] weekly digest complete: scheduled=2026-05-11T21:01:00Z actual=2026-05-11T21:01:00Z authors=1
 INFO skytime event=flow_complete ok_count=4 err_count=0 total_ms=237
 ```
+
+Note: `step_count=4` reflects the four user-visible steps in the
+flow body. The `log.info(...)` call is a side-channel step — it
+emits its own `kind=log` slog frames (suppressed in human stdout
+per D-7.2.1-13; surfaced under `--json-log` per D-7.2.1-14) but
+does NOT contribute to the `[N/M]` denominator.
 
 The `scheduled_time` and `actual_time` are auto-injected by the
 interpreter — Temporal Schedules append the scheduled fire time as an
@@ -294,10 +300,18 @@ recovers it inside the workflow goroutine. `actual_time` comes from
 `ctx.actual_time` for the flow body to use; the `inputs={...}` block
 on `flow(...)` declares the schema.
 
-The `[skytime/print]` line is the flow's own `print(...)` step — any
-Starlark `print(msg)` call inside a script is routed through
-`workflow.GetLogger` (D3-22) and surfaces in server stdout. Replace
-that step with real activities (mail send, DB write, dashboard
+The `[skytime/log]` line is the flow's `log.info(...)` step — the
+Phase 7.2.1 structured logging builtin. Each `log.<level>(msg, attrs=...)`
+call (info / warn / error / debug) emits a slog record at the matching
+level via `workflow.GetLogger(ctx)` (replay-safe — the Temporal SDK's
+`ReplayLogger` suppresses on replay). The `${ctx.expr}` interpolation
+in the message reuses the same parse-time desugarer that `script(id=...)`
+uses, so log messages can reference workflow inputs and previous-step
+outputs deterministically. The human renderer suppresses the bookend
+`step_dispatch` / `step_complete` frames so operators see exactly one
+tagged line per fire; `--json-log` mode emits all three records for
+downstream log-analysis tooling (D-7.2.1-13 / D-7.2.1-14). Replace
+this `log.info` with real activities (mail send, DB write, dashboard
 update) to make the fire have an external effect.
 
 Cross-check from terminal 2:

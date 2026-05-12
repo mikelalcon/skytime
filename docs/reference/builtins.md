@@ -312,3 +312,111 @@ if_cond(
 **Since:** phase-04.2
 
 ---
+
+## log.info
+
+Emit a structured log record at INFO level.
+
+Routed through workflow.GetLogger(ctx).Info at workflow time (replay-safe via ReplayLogger).
+
+**Signature:** `log.info(msg, attrs?)`
+
+| Param | Type | Required | Description |
+| ----- | ---- | -------- | ----------- |
+| `msg` | string | yes | String literal; ${ctx.expr} interpolation supported per D4.1-22. Empty and multi-line allowed. |
+| `attrs` | lambda(ctx) -> dict | no | Optional lambda returning a dict of structured attributes (max 32 identifier-shaped keys). |
+
+**Returns:** A *dag.LogStep node consumed by flow(steps=[...]) (side-channel — no output_alias, no state binding).
+
+**Example:**
+
+```python
+log.info("weekly digest complete: scheduled=${ctx.scheduled_time}")
+```
+
+**See also:** log.warn, log.error, log.debug, script
+
+**Since:** phase-07.2.1
+
+---
+
+## log.warn
+
+Emit a structured log record at WARN level.
+
+Routed through workflow.GetLogger(ctx).Warn at workflow time (replay-safe via ReplayLogger).
+
+**Signature:** `log.warn(msg, attrs?)`
+
+| Param | Type | Required | Description |
+| ----- | ---- | -------- | ----------- |
+| `msg` | string | yes | String literal; ${ctx.expr} interpolation supported per D4.1-22. |
+| `attrs` | lambda(ctx) -> dict | no | Optional lambda returning a dict of structured attributes. |
+
+**Returns:** A *dag.LogStep node consumed by flow(steps=[...]) (side-channel — no output_alias, no state binding).
+
+**Example:**
+
+```python
+log.warn("high retry count: attempt=${ctx.attempt}", attrs=lambda ctx: {"flow": ctx.flow_name})
+```
+
+**See also:** log.info, log.error, log.debug
+
+**Since:** phase-07.2.1
+
+---
+
+## log.error
+
+Emit a structured log record at ERROR level.
+
+Routed through workflow.GetLogger(ctx).Error at workflow time (replay-safe via ReplayLogger).
+
+**Signature:** `log.error(msg, attrs?)`
+
+| Param | Type | Required | Description |
+| ----- | ---- | -------- | ----------- |
+| `msg` | string | yes | String literal; ${ctx.expr} interpolation supported per D4.1-22. |
+| `attrs` | lambda(ctx) -> dict | no | Optional lambda returning a dict of structured attributes. |
+
+**Returns:** A *dag.LogStep node consumed by flow(steps=[...]) (side-channel — no output_alias, no state binding).
+
+**Example:**
+
+```python
+log.error("extension call failed: ${ctx.last_error_msg}", attrs=lambda ctx: {"extension": "github"})
+```
+
+**See also:** log.info, log.warn, log.debug
+
+**Since:** phase-07.2.1
+
+---
+
+## log.debug
+
+Emit a structured log record at DEBUG level.
+
+Routed through workflow.GetLogger(ctx).Debug at workflow time (replay-safe via ReplayLogger).
+
+**Signature:** `log.debug(msg, attrs?)`
+
+| Param | Type | Required | Description |
+| ----- | ---- | -------- | ----------- |
+| `msg` | string | yes | String literal; ${ctx.expr} interpolation supported per D4.1-22. |
+| `attrs` | lambda(ctx) -> dict | no | Optional lambda returning a dict of structured attributes. |
+
+**Returns:** A *dag.LogStep node consumed by flow(steps=[...]) (side-channel — no output_alias, no state binding).
+
+**Example:**
+
+```python
+log.debug("checkpoint reached: ${ctx.step_name}")
+```
+
+**See also:** log.info, log.warn, log.error
+
+**Since:** phase-07.2.1
+
+---
