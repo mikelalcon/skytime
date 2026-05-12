@@ -36,10 +36,10 @@ Requirements for the v1.43.0 milestone. Each maps to a roadmap phase.
 
 ### Dashboard
 
-- [ ] **UI-01**: `GET /` renders a live workflow list via `client.ListWorkflow`. Auto-refreshes via polling (no WebSocket complexity). Shows workflow ID, flow name, status (running/completed/failed/replayed), start time.
-- [ ] **UI-02**: A "Recent webhook deliveries" section shows the last 100 incoming webhook deliveries (in-memory ring buffer; not persistent). Each entry shows source, headers, payload summary, mapped workflow ID.
-- [ ] **UI-03**: A manual trigger form: dropdown enumerating registered flows + JSON textarea for input + "Run" button. POSTs to `/api/trigger` which calls `client.ExecuteWorkflow` with the typed input.
-- [ ] **UI-04**: Manual trigger reuses the same `executeFlow` code path as webhook ingress, minus signature validation and idempotency mapping. Single source of truth for "spawn a workflow"; HTTP ingress, manual UI, and (later) cron all converge there.
+- [x] **UI-01**: `GET /` renders a live workflow list via `client.ListWorkflow`. Auto-refreshes via polling (no WebSocket complexity). Shows workflow ID, flow name, status (running/completed/failed/replayed), start time.
+- [x] **UI-02**: A "Recent webhook deliveries" section shows the last 100 incoming webhook deliveries (in-memory ring buffer; not persistent). Each entry shows source, headers, payload summary, mapped workflow ID.
+- [x] **UI-03**: A manual trigger form: dropdown enumerating registered flows + JSON textarea for input + "Run" button. POSTs to `/api/trigger` which calls `client.ExecuteWorkflow` with the typed input.
+- [x] **UI-04**: Manual trigger reuses the same `executeFlow` code path as webhook ingress, minus signature validation and idempotency mapping. Single source of truth for "spawn a workflow"; HTTP ingress, manual UI, and (later) cron all converge there.
 
 ### CLI Surface (continuing from CLI-07)
 

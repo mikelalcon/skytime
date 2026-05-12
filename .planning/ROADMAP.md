@@ -125,7 +125,7 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
   4. The dashboard ships with no JS framework, no external CSS, no bundler — a `find` over `pkg/cli/server/web/` returns only `*.html`, `*.go` files; the firewall test that bans cobra/charm-log outside `pkg/cli` continues to pass and a new firewall test bans non-stdlib HTTP/template imports under `pkg/cli/server/web/`
   5. `executeFlow` is invoked from three call sites (webhook ingress, manual trigger POST, and cron via Temporal Schedule callbacks) — verified by a Go test that asserts call-site count, ensuring no code-path duplication
 **Plans**: 6 plans
-- [ ] 07.3-00-PLAN.md — Wave 0 test scaffolds (11 test files + dashboard.md skeleton; t.Skip stubs so the suite compiles)
+- [x] 07.3-00-PLAN.md — Wave 0 test scaffolds (11 test files + dashboard.md skeleton; t.Skip stubs so the suite compiles)
 - [ ] 07.3-01-PLAN.md — executeFlow extraction (UI-04): `flowlaunch.Execute` + `flowlaunch.BuildWorkflowInput` shared seam (Open Q 1 Option 1) + AST call-site firewall
 - [ ] 07.3-02-PLAN.md — Webhook delivery ring buffer + source-agnostic header redaction (UI-02 backend); receiver.Deps gains DeliveryBuffer + OnDelivery (Open Q 4 Option A)
 - [ ] 07.3-03-PLAN.md — Broadcaster (fan-out, drop-oldest, snapshot-under-lock per Pitfall 1) + workflow-list poller with replay heuristic (Open Q 2: --replay-history-threshold default 50)
