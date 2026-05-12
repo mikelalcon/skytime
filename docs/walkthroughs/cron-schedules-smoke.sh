@@ -30,22 +30,36 @@ cd "$REPO_ROOT"
 echo "[smoke] repo root: $REPO_ROOT"
 
 # Per-process group cleanup; mirrors the webhook smoke teardown
-# pattern. setsid attaches each background process to a new session
-# so a single kill -- -PID tears the whole tree down (handy for
-# `go run` which spawns a child compile + child run).
+# pattern. setsid (Linux/coreutils) attaches each background process
+# to a new session so `kill -- -PID` tears the whole tree down.
+# macOS ships without setsid, so fall back to direct PID kill +
+# `pkill -P` for children (covers `go run` which spawns compile +
+# run children).
+if command -v setsid >/dev/null 2>&1; then
+    SETSID="setsid"
+else
+    SETSID=""
+fi
+
+kill_tree() {
+    local pid="$1"
+    [[ -z "$pid" ]] && return 0
+    if [[ -n "$SETSID" ]]; then
+        kill -- -"$pid" 2>/dev/null || true
+    else
+        pkill -P "$pid" 2>/dev/null || true
+        kill "$pid" 2>/dev/null || true
+    fi
+    wait "$pid" 2>/dev/null || true
+}
+
 TEMPORAL_PID=""
 SERVER_PID=""
 SMOKE_ROOTDIR=""
 cleanup() {
     echo "[smoke] cleanup: stopping background processes"
-    if [[ -n "${SERVER_PID:-}" ]]; then
-        kill -- -"$SERVER_PID" 2>/dev/null || true
-        wait "$SERVER_PID" 2>/dev/null || true
-    fi
-    if [[ -n "${TEMPORAL_PID:-}" ]]; then
-        kill -- -"$TEMPORAL_PID" 2>/dev/null || true
-        wait "$TEMPORAL_PID" 2>/dev/null || true
-    fi
+    kill_tree "${SERVER_PID:-}"
+    kill_tree "${TEMPORAL_PID:-}"
     if [[ -n "${SMOKE_ROOTDIR:-}" && -d "$SMOKE_ROOTDIR" ]]; then
         rm -rf "$SMOKE_ROOTDIR"
     fi
@@ -68,6 +82,10 @@ cat > "$SMOKE_ROOTDIR/smoke_cron.star" <<'STAR'
 # smoke_cron.star — minimum-surface cron-triggered flow for the
 # cron-schedules-smoke.sh end-to-end test. Schedule "* * * * *" so
 # the smoke completes inside a ~80s wall clock.
+#
+# Carries a log.info(...) step (Phase 07.2.1, LOG-02) so the smoke
+# also validates that the workflow-time logger routes through
+# `[skytime/log]` in server stdout — not just that the cron fires.
 flow(
     name = "smoke_cron",
     inputs = {
@@ -75,6 +93,7 @@ flow(
         "actual_time": "string",
     },
     steps = [
+        log.info("smoke_cron fired: scheduled=${ctx.scheduled_time} actual=${ctx.actual_time}"),
         script(
             id = "noop",
             fn = lambda ctx: {"ok": True},
@@ -100,7 +119,7 @@ echo "[smoke] fixture: $SMOKE_ROOTDIR/smoke_cron.star"
 #    cleanup. --headless is faster (~2s startup vs ~4s with web UI)
 #    and more deterministic in CI.
 echo "[smoke] starting temporal dev server (background, headless)..."
-setsid temporal server start-dev --headless >"$SMOKE_ROOTDIR/temporal.log" 2>&1 &
+$SETSID temporal server start-dev --headless >"$SMOKE_ROOTDIR/temporal.log" 2>&1 &
 TEMPORAL_PID=$!
 
 # Wait for Temporal readiness via the operator namespace describe
@@ -124,7 +143,7 @@ done
 #    fixture's cron trigger lands as a Temporal Schedule. Use a
 #    random local HTTP port (127.0.0.1:0) to avoid collisions in CI.
 echo "[smoke] starting skytime server with --cron-reconcile..."
-setsid "$EXTBIN" server \
+$SETSID "$EXTBIN" server \
     --rootdir="$SMOKE_ROOTDIR" \
     --task-queue=smoke-cron \
     --address=localhost:7233 \
@@ -133,18 +152,26 @@ setsid "$EXTBIN" server \
     >"$SMOKE_ROOTDIR/server.log" 2>&1 &
 SERVER_PID=$!
 
+# Helper: strip ANSI escape codes before grepping. charm-log emits
+# dim-style codes around structured attr keys regardless of TTY
+# detection or NO_COLOR, so naive `grep 'event=flow_start'` against
+# server.log misses every match.
+strip_ansi() {
+    sed -E 's/'$'\x1b''\[[0-9;]*m//g' "$1"
+}
+
 # Wait for the "cron-reconcile applied" log line, which is emitted
 # right before HTTP listener bind (D-7.2-16 boot order).
 echo "[smoke] waiting for cron-reconcile..."
 for i in {1..30}; do
-    if grep -q 'cron-reconcile applied' "$SMOKE_ROOTDIR/server.log" 2>/dev/null; then
+    if strip_ansi "$SMOKE_ROOTDIR/server.log" 2>/dev/null | grep -q 'cron-reconcile applied'; then
         echo "[smoke] cron-reconcile complete (waited ${i}s, PID $SERVER_PID)"
         break
     fi
     sleep 1
     if [[ "$i" == "30" ]]; then
         echo "[smoke] FAIL: cron-reconcile did not complete within 30s"
-        cat "$SMOKE_ROOTDIR/server.log" || true
+        strip_ansi "$SMOKE_ROOTDIR/server.log" || true
         exit 1
     fi
 done
@@ -159,24 +186,53 @@ echo "[smoke] schedule visible in 'temporal schedule list'"
 
 # 5. Wait for the cron to fire (worst-case 70s for "* * * * *" — up
 #    to 60s for the next boundary plus a small ramp-up).
+#
+# Poll the server log directly for `flow_start flow_name=smoke_cron`.
+# This is more reliable than `temporal workflow list` because the
+# dev-server's visibility store can lag by several seconds and may
+# paginate historical runs off the visible page when the namespace
+# is crowded.
 echo "[smoke] waiting up to 80s for the cron to fire..."
 FIRED=""
 for i in {1..80}; do
-    if temporal workflow list --address localhost:7233 \
-            --query 'WorkflowType="SkytimeWorkflow"' 2>/dev/null \
-            | grep -q 'smoke_cron'; then
+    if strip_ansi "$SMOKE_ROOTDIR/server.log" 2>/dev/null \
+            | grep -q 'event=flow_start [^ ]*flow_name=smoke_cron'; then
         FIRED="yes"
-        echo "[smoke] cron fired; workflow execution visible (waited ${i}s)"
+        echo "[smoke] cron fired; flow_start event visible in server log (waited ${i}s)"
         break
     fi
     sleep 1
 done
 if [[ -z "$FIRED" ]]; then
-    echo "[smoke] FAIL: no workflow execution observed within 80s"
-    temporal workflow list --address localhost:7233 || true
-    cat "$SMOKE_ROOTDIR/server.log" || true
+    echo "[smoke] FAIL: no flow_start event observed within 80s"
+    echo "[smoke] server log tail (ANSI-stripped):"
+    strip_ansi "$SMOKE_ROOTDIR/server.log" 2>/dev/null | tail -40 || true
     exit 1
 fi
 
-echo "[smoke] PASS: cron trigger -> Schedule -> workflow execution end-to-end"
+# 6. Verify the log.info step surfaced in server stdout with the
+#    [skytime/log] prefix (Phase 07.2.1 LOG-02 user-visible proof).
+#    The walker emits a single "[skytime/log] smoke_cron fired: ..."
+#    line per fire; bookend kind=log dispatch/complete frames must
+#    NOT appear in human-mode output (the logKindFilterHandler
+#    decorator suppresses them).
+if ! strip_ansi "$SMOKE_ROOTDIR/server.log" | grep -q '\[skytime/log\] smoke_cron fired:'; then
+    echo "[smoke] FAIL: '[skytime/log] smoke_cron fired:' not found in server stdout"
+    echo "[smoke] server log tail (ANSI-stripped):"
+    strip_ansi "$SMOKE_ROOTDIR/server.log" | tail -40 || true
+    exit 1
+fi
+echo "[smoke] log.info step visible with [skytime/log] tag in server stdout"
+
+# Negative check: no bookend kind=log frames in human-mode stdout.
+if strip_ansi "$SMOKE_ROOTDIR/server.log" \
+        | grep -E 'event=step_(dispatch|complete) [^ ]*kind=log' >/dev/null 2>&1; then
+    echo "[smoke] FAIL: kind=log dispatch/complete frame leaked into human-mode stdout"
+    strip_ansi "$SMOKE_ROOTDIR/server.log" \
+        | grep -nE 'event=step_(dispatch|complete) [^ ]*kind=log' | head -5
+    exit 1
+fi
+echo "[smoke] kind=log bookend frames correctly suppressed in human-mode stdout"
+
+echo "[smoke] PASS: cron trigger -> Schedule -> workflow execution + [skytime/log] routing end-to-end"
 exit 0
