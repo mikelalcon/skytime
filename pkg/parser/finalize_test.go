@@ -2,6 +2,7 @@ package parser
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -128,4 +129,72 @@ func TestProceduralFailGuard_StaysGreen(t *testing.T) {
 	p := newTestParser(t)
 	_, err := p.ParseFile("../../tests/fixtures/procedural_fail_guard.star")
 	require.NoError(t, err, "procedural_fail_guard.star must parse cleanly: %v", err)
+}
+
+// =============================================================================
+// Phase 07.2.1 Plan 02 Task 2: validateLogStepPlacement finalize pass
+//
+// First-of-its-kind module-scope orphan-node check. Mirrors
+// validateResultPlacement (D4.2-04) but the placement contract is "must be a
+// step inside flow(...)" rather than "must be the last node of an
+// expression-mode if_cond branch".
+// =============================================================================
+
+// TestValidateLogStepPlacement_RejectsModuleScope verifies D-7.2.1-18:
+// log.<level>(...) at module scope (i.e., not inside any flow body) produces a
+// position-aware *dag.ParseError. Symmetric across all four levels.
+func TestValidateLogStepPlacement_RejectsModuleScope(t *testing.T) {
+	levels := []string{"info", "warn", "error", "debug"}
+	for _, level := range levels {
+		t.Run(level, func(t *testing.T) {
+			p := newTestParser(t)
+			src := []byte(fmt.Sprintf(`log.%s("at module scope")`, level))
+			_, err := p.ParseSource("test.star", src)
+			require.Error(t, err)
+			var pe *dag.ParseError
+			require.True(t, errors.As(err, &pe), "expected *dag.ParseError, got %T: %v", err, err)
+			assert.Contains(t, pe.Msg, fmt.Sprintf("log.%s: only valid as a step inside flow(...)", level))
+			assert.True(t, pe.Pos.IsValid(), "ParseError must carry a valid position")
+		})
+	}
+}
+
+// TestValidateLogStepPlacement_AcceptsInsideFlow sanity-checks that a log call
+// directly inside a flow body parses cleanly (no false positive from the
+// orphan check).
+func TestValidateLogStepPlacement_AcceptsInsideFlow(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={}, steps=[log.info("hi")])`)
+	_, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+}
+
+// TestValidateLogStepPlacement_AcceptsInsideIfCondBranch verifies recursive
+// claim-walking: log calls inside if_cond Then/Else branches are reached by
+// walkBodyForLogSteps and not flagged as orphans.
+func TestValidateLogStepPlacement_AcceptsInsideIfCondBranch(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={"y": "bool"}, steps=[
+  if_cond(
+    cond=lambda ctx: ctx.y,
+    then=[log.info("yes")],
+    else_=[log.warn("no")],
+  ),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
+}
+
+// TestValidateLogStepPlacement_AcceptsInsideForEachParallel verifies recursion
+// into ForEachParallel.Steps — a log inside a fan-out body is reached and not
+// flagged.
+func TestValidateLogStepPlacement_AcceptsInsideForEachParallel(t *testing.T) {
+	p := newTestParser(t)
+	src := []byte(`flow(name="x", inputs={}, steps=[
+  for_each_parallel(items=["a","b"], item="it", steps=[
+    log.info("processing"),
+  ]),
+])`)
+	_, err := p.ParseSource("test.star", src)
+	require.NoError(t, err)
 }
