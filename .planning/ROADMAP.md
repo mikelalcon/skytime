@@ -30,7 +30,8 @@ Closes the two real gaps surfaced by Phase 6: no long-running worker mode (so Te
 
 - [ ] **Phase 7: Trigger primitive + server shell** — Top-level `trigger(...)` parser builtin + `dag.Trigger` node + `TriggerSource` extension type + `skytime server` long-running subcommand shell + rename `dev-server` → `dev-temporal`
 - [ ] **Phase 7.1: HTTP webhook receiver + GitHub source** — HTTP listener mounted by `server`, `triggers.github_webhook` and `triggers.generic_http_webhook` source factories, HMAC signature validation, idempotency via `WorkflowIDReusePolicy`, `gh webhook forward` walkthrough
-- [ ] **Phase 7.2: Cron triggers via Temporal Schedules** — `triggers.cron(...)` source backed by Temporal Schedules (durable, server-side), reconciliation at boot with `--reconcile=strict|preserve|dry-run` safety flag
+- [x] **Phase 7.2: Cron triggers via Temporal Schedules** — `core.cron(...)` source backed by Temporal Schedules (durable, server-side), boot-time reconciliation via `--cron-reconcile` flag with companion `cron-plan` dry-run subcommand (shipped 2026-05-12)
+- [ ] **Phase 7.2.1: Structured logging step builtin** — `log.info / .warn / .error / .debug` Step types reusing `${ctx.expr}` interpolation, routed through `workflow.GetLogger`; retires the `print() or {...}` workaround
 - [ ] **Phase 7.3: Dashboard + manual trigger page** — Stdlib-only HTML dashboard (`net/http` + `html/template`); live workflow list, recent webhook deliveries ring buffer, manual trigger form sharing the same `executeFlow` code path as ingress
 - [ ] **Phase 7.4: extbin consolidation + tech debt cleanup** — `cli.WithCredfile` / `cli.WithBuildID` / `pkg/testing.WithCredentialHandler` options; collapse `extbin/main.go` to ≤30 lines; close v1.42.0 audit tech debt items
 - [ ] **Phase 7.5: Auth documentation** — Production cloud-native credential rotation patterns (WIF→GSM, IRSA→AWS Secrets Manager, Azure WI→Key Vault, mTLS reload-on-SIGHUP) in `docs/for-extension-developers/temporal-auth.md`
@@ -91,6 +92,23 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
 - [x] 07.2-04-example-walkthrough-PLAN.md — weekly_digest.star + docs/walkthroughs/cron-schedules.md + smoke script + human UAT
 **UI hint**: no
 
+### Phase 07.2.1: Structured logging step builtin
+
+**Goal**: Replace the `print()` footgun with a first-class `log.info(...) / log.warn(...) / log.error(...) / log.debug(...)` step type that reuses Skytime's existing string-interpolation pattern (`${ctx.expr}`, per D4.1-22) and routes through `workflow.GetLogger` at the matching slog level. Surfaced during Phase 7.2 cron-trigger UAT (2026-05-11): operators wanted visible side-effects in `skytime server` stdout, but the available primitive (Starlark `print()` via D3-22) requires the `print() or {...}` dict-return hack to satisfy a script step's contract — and has no level control or structured fields. A proper log step is a real `Step` type (no mandatory `output_alias`), replay-safe (same constraint as print), uses the existing parse-time `${ctx.expr}` desugarer for interpolation, and lets the `weekly_digest.star` example swap from `print() or {...}` to `log.info(...)` with a one-line edit.
+
+**Out of scope (initial cut)**: `log.fatal(...)` — fatal semantics need workflow-cancellation design first; defer until a use case lands.
+
+**Depends on**: Phase 7.2 (cron-fired workflows surfaced the UX gap that motivates this; also need the SDK-logger-routing fix from `pkg/cli/server.go` so log records actually surface in server stdout)
+**Requirements**: LOG-01, LOG-02
+**Success Criteria** (what must be TRUE):
+  1. `.star` files can declare `log.info("digest fired: scheduled=${ctx.scheduled_time} authors=${len(ctx.grouped.authors)}")` (or `.warn`, `.error`, `.debug`) as a top-level entry in a `flow(...)` `steps=[...]` list — no `output_alias` required, no return-shape hack. Parse-time `${ctx.expr}` desugaring works identically to the existing parser-time interpolation surface.
+  2. Each `log.<level>(...)` step routes through `workflow.GetLogger(ctx)` at the corresponding slog level (`Debug` / `Info` / `Warn` / `Error`) so the server's existing slog handler renders them at the right severity; `skytime server` stdout shows the resolved message with `[skytime/log]` (or similar) tag and `level=...` attribute.
+  3. The `weekly_digest.star` example flow swaps its `script(id="log_digest", fn=lambda ctx: print(...) or {"logged": True}, output_alias="_log")` block for a single `log.info(...)` step; the walkthrough doc `docs/walkthroughs/cron-schedules.md` shows the cleaner shape with the `${ctx.expr}` interpolation; both still surface the per-fire digest line in server stdout.
+  4. Replay-safe: log steps never emit duplicate records on workflow replay (same contract as `workflow.GetLogger` — verified by a `TestWorkflowEnvironment`-based test that replays a flow with three `log.info` calls and asserts exactly three records in the capture).
+  5. Parser rejects `log.<level>` outside a `flow(...)` body, rejects positional non-string args, and surfaces a position-aware `*dag.ParseError` for malformed interpolation (`${ctx.}`, unclosed `${`, etc.) consistent with the existing D4.1-22 desugarer error messages.
+**Plans**: TBD
+**UI hint**: no
+
 ### Phase 7.3: Dashboard + manual trigger page
 **Goal**: Single-page stdlib-only dashboard so the durability story is visually demoable. `GET /` renders a live workflow list via `client.ListWorkflow` (workflow ID, flow name, status running/completed/failed/replayed, start time) with auto-refresh via polling (no WebSocket complexity). A "Recent webhook deliveries" section shows the last 100 incoming deliveries (in-memory ring buffer, not persistent) with source, headers, payload summary, mapped workflow ID. A manual trigger form: dropdown enumerating registered flows + JSON textarea for input + "Run" button, POSTing to `/api/trigger` which calls `client.ExecuteWorkflow`. Crucially, manual trigger reuses the same `executeFlow` code path as webhook ingress (minus signature validation and idempotency mapping) so HTTP ingress, manual UI, and (later) cron all converge on a single source of truth for "spawn a workflow". Stdlib only — `net/http` + `html/template`. No JS framework, no external CSS, no bundler. Lives entirely under `pkg/cli/server/web/` (or similar). PROJECT.md "Web UI / dashboard" Out-of-Scope entry gets an explicit carve-out: this is a teaching reference, not a Skytime product feature.
 **Depends on**: Phase 7.1 (uses HTTP listener + ingress code path)
@@ -131,23 +149,12 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
 
 ## Backlog
 
-### Phase 999.1: Structured logging step builtin (BACKLOG)
-
-**Goal**: Replace the `print()` footgun with a first-class `log.info(...) / log.warn(...) / log.error(...) / log.debug(...)` step type that reuses Skytime's existing string-interpolation pattern and routes through `workflow.GetLogger` at the matching slog level. Surfaced during Phase 7.2 cron-trigger UAT (2026-05-11): operators wanted visible side-effects in `skytime server` stdout, but the available primitive (Starlark `print()` via D3-22) requires the `print() or {...}` dict-return hack to satisfy a script step's contract — and has no level control or structured fields. A proper log step is a real `Step` type (no mandatory `output_alias`), replay-safe (same constraint as print), and uses the existing DSL interpolation surface for `{key}` substitution.
-
-**Out of scope (initial cut)**: `log.fatal(...)` — fatal semantics need workflow-cancellation design first; defer until a use case lands.
-
-**Depends on**: TBD (likely Phase 7 trigger + server shell to be merged so we have the surface to log INTO; revisit at promotion)
-**Requirements**: TBD (promote with `/gsd:review-backlog` when ready)
-**Plans**: 0 plans
-
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
+(no items — 999.1 promoted to Phase 07.2.1 on 2026-05-12)
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 7 → 7.1 / 7.2 (parallel) → 7.3 → 7.4; 7.5 independent after 7
+Phases execute in numeric order: 7 → 7.1 / 7.2 (parallel) → 7.2.1 → 7.3 → 7.4; 7.5 independent after 7
 
 | Phase | Milestone | Plans | Status | Completed |
 |-------|-----------|-------|--------|-----------|
@@ -163,10 +170,11 @@ Phases execute in numeric order: 7 → 7.1 / 7.2 (parallel) → 7.3 → 7.4; 7.5
 | 7. Trigger primitive + server shell | v1.43.0 | 0/TBD | Not started | — |
 | 7.1. HTTP webhook receiver | v1.43.0 | 0/8 | Not started | — |
 | 7.2. Cron triggers | v1.43.0 | 4/4 | Complete | 2026-05-11 |
+| 7.2.1. Structured logging step | v1.43.0 | 0/TBD | Not started | — |
 | 7.3. Dashboard | v1.43.0 | 0/TBD | Not started | — |
 | 7.4. extbin consolidation | v1.43.0 | 0/TBD | Not started | — |
 | 7.5. Auth docs | v1.43.0 | 0/TBD | Not started | — |
 
 ---
 *Roadmap created: 2026-04-26*
-*Last updated: 2026-05-12 — Phase 7.2 complete (4/4 plans; UAT approved 2026-05-11)*
+*Last updated: 2026-05-12 — Phase 7.2 complete; backlog 999.1 promoted to active Phase 7.2.1 (structured logging step)*
