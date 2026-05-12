@@ -31,7 +31,7 @@ Closes the two real gaps surfaced by Phase 6: no long-running worker mode (so Te
 - [ ] **Phase 7: Trigger primitive + server shell** — Top-level `trigger(...)` parser builtin + `dag.Trigger` node + `TriggerSource` extension type + `skytime server` long-running subcommand shell + rename `dev-server` → `dev-temporal`
 - [ ] **Phase 7.1: HTTP webhook receiver + GitHub source** — HTTP listener mounted by `server`, `triggers.github_webhook` and `triggers.generic_http_webhook` source factories, HMAC signature validation, idempotency via `WorkflowIDReusePolicy`, `gh webhook forward` walkthrough
 - [x] **Phase 7.2: Cron triggers via Temporal Schedules** — `core.cron(...)` source backed by Temporal Schedules (durable, server-side), boot-time reconciliation via `--cron-reconcile` flag with companion `cron-plan` dry-run subcommand (shipped 2026-05-12)
-- [ ] **Phase 7.2.1: Structured logging step builtin** — `log.info / .warn / .error / .debug` Step types reusing `${ctx.expr}` interpolation, routed through `workflow.GetLogger`; retires the `print() or {...}` workaround
+- [x] **Phase 7.2.1: Structured logging step builtin** — `log.info / .warn / .error / .debug` Step types reusing `${ctx.expr}` interpolation, routed through `workflow.GetLogger`; retires the `print() or {...}` workaround (shipped 2026-05-12)
 - [ ] **Phase 7.3: Dashboard + manual trigger page** — Stdlib-only HTML dashboard (`net/http` + `html/template`); live workflow list, recent webhook deliveries ring buffer, manual trigger form sharing the same `executeFlow` code path as ingress
 - [ ] **Phase 7.4: extbin consolidation + tech debt cleanup** — `cli.WithCredfile` / `cli.WithBuildID` / `pkg/testing.WithCredentialHandler` options; collapse `extbin/main.go` to ≤30 lines; close v1.42.0 audit tech debt items
 - [ ] **Phase 7.5: Auth documentation** — Production cloud-native credential rotation patterns (WIF→GSM, IRSA→AWS Secrets Manager, Azure WI→Key Vault, mTLS reload-on-SIGHUP) in `docs/for-extension-developers/temporal-auth.md`
@@ -106,7 +106,12 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
   3. The `weekly_digest.star` example flow swaps its `script(id="log_digest", fn=lambda ctx: print(...) or {"logged": True}, output_alias="_log")` block for a single `log.info(...)` step; the walkthrough doc `docs/walkthroughs/cron-schedules.md` shows the cleaner shape with the `${ctx.expr}` interpolation; both still surface the per-fire digest line in server stdout.
   4. Replay-safe: log steps never emit duplicate records on workflow replay (same contract as `workflow.GetLogger` — verified by a `TestWorkflowEnvironment`-based test that replays a flow with three `log.info` calls and asserts exactly three records in the capture).
   5. Parser rejects `log.<level>` outside a `flow(...)` body, rejects positional non-string args, and surfaces a position-aware `*dag.ParseError` for malformed interpolation (`${ctx.}`, unclosed `${`, etc.) consistent with the existing D4.1-22 desugarer error messages.
-**Plans**: TBD
+**Plans**: 5 plans (shipped 2026-05-12)
+- [x] 07.2.1-01-dag-logstep-type-PLAN.md — *dag.LogStep sealed Node type + JSON marshaling
+- [x] 07.2.1-02-parser-builtins-PLAN.md — log.<level> parse-time builtins + module-scope rejection
+- [x] 07.2.1-03-walker-counter-replay-PLAN.md — walkLog walker + counter denominator exclusion + replay determinism
+- [x] 07.2.1-04-renderer-suppression-PLAN.md — logKindFilterHandler human-mode renderer suppression
+- [x] 07.2.1-05-migration-walkthrough-PLAN.md — weekly_digest.star migration + walkthrough + builtins.md regen + VALIDATION fill + REQUIREMENTS backfill
 **UI hint**: no
 
 ### Phase 7.3: Dashboard + manual trigger page
@@ -170,11 +175,11 @@ Phases execute in numeric order: 7 → 7.1 / 7.2 (parallel) → 7.2.1 → 7.3 �
 | 7. Trigger primitive + server shell | v1.43.0 | 0/TBD | Not started | — |
 | 7.1. HTTP webhook receiver | v1.43.0 | 0/8 | Not started | — |
 | 7.2. Cron triggers | v1.43.0 | 4/4 | Complete | 2026-05-11 |
-| 7.2.1. Structured logging step | v1.43.0 | 0/TBD | Not started | — |
+| 7.2.1. Structured logging step | v1.43.0 | 5/5 | Complete | 2026-05-12 |
 | 7.3. Dashboard | v1.43.0 | 0/TBD | Not started | — |
 | 7.4. extbin consolidation | v1.43.0 | 0/TBD | Not started | — |
 | 7.5. Auth docs | v1.43.0 | 0/TBD | Not started | — |
 
 ---
 *Roadmap created: 2026-04-26*
-*Last updated: 2026-05-12 — Phase 7.2 complete; backlog 999.1 promoted to active Phase 7.2.1 (structured logging step)*
+*Last updated: 2026-05-12 — Phase 7.2.1 complete (structured logging step builtin shipped); 20 v1.43.0 requirements validated cumulatively (TRIG-01..10, SERVER-01..03, CLI-13, EX-05, SCHED-01..03, LOG-01..02)*
