@@ -127,7 +127,7 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
 **Plans**: 6 plans
 - [x] 07.3-00-PLAN.md — Wave 0 test scaffolds (11 test files + dashboard.md skeleton; t.Skip stubs so the suite compiles)
 - [ ] 07.3-01-PLAN.md — executeFlow extraction (UI-04): `flowlaunch.Execute` + `flowlaunch.BuildWorkflowInput` shared seam (Open Q 1 Option 1) + AST call-site firewall
-- [ ] 07.3-02-PLAN.md — Webhook delivery ring buffer + source-agnostic header redaction (UI-02 backend); receiver.Deps gains DeliveryBuffer + OnDelivery (Open Q 4 Option A)
+- [x] 07.3-02-PLAN.md — Webhook delivery ring buffer + source-agnostic header redaction (UI-02 backend); receiver.Deps gains DeliveryBuffer + OnDelivery (Open Q 4 Option A)
 - [x] 07.3-03-PLAN.md — Broadcaster (fan-out, drop-oldest, snapshot-under-lock per Pitfall 1) + workflow-list poller with replay heuristic (Open Q 2: --replay-history-threshold default 50)
 - [ ] 07.3-04-PLAN.md — HTTP handlers + //go:embed template + SSE wiring + pkg/cli/server.go boot integration + 2 new CLI flags + first browser UAT checkpoint
 - [ ] 07.3-05-PLAN.md — docs/walkthroughs/dashboard.md (12 H2 sections) + dashboard-smoke.sh + extended TestServerCmd_DrainOnSIGTERM (SSE shutdown delivery) + headings firewall + final browser UAT

@@ -14,3 +14,9 @@ Out-of-scope discoveries during execution that should be addressed separately.
 **Not caused by Plan 07.3-00:** Plan 07.3-00 creates only Wave 0 SKIP stubs + a dashboard skeleton; no edits to `cron-schedules-smoke.sh` or anywhere that mentions `dev-server`. Per execute-plan SCOPE BOUNDARY rule, this is out-of-scope: auto-fixing it would expand the commit and mask the actual Phase 7.2.1 hygiene gap.
 
 **Recommended fix (separate task):** Rename line 192 of `docs/walkthroughs/cron-schedules-smoke.sh` from `# dev-server's visibility store can lag...` to `# temporal dev server's visibility store can lag...` (matches D-07-22 allowed phrasing). Single one-line edit + the test will pass.
+## Pre-existing test failure (out of scope for Plan 07.3-02)
+
+- **TestNoDevServerLiteralRemains** failing in `tests/dev_server_grep_test.go`
+- File: `docs/walkthroughs/cron-schedules-smoke.sh` contains literal `dev-server`
+- Verified pre-existing: failure reproduces with my Plan 07.3-02 changes stashed
+- Not introduced by this plan; logged for a future docs fix in the cron walkthrough
