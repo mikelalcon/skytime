@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
-status: executing
-stopped_at: Completed 07.2.1-03-walker-counter-replay-PLAN.md
-last_updated: "2026-05-12T12:54:06.744Z"
+status: verifying
+stopped_at: Completed 07.2.1-05-migration-walkthrough-PLAN.md
+last_updated: "2026-05-12T13:08:09.780Z"
 last_activity: 2026-05-12
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 24
-  completed_plans: 23
+  completed_plans: 24
   percent: 100
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 Phase: 07.2.1 (structured-logging-step-builtin) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-12
 
 Progress: [██████████] 100%
@@ -132,6 +132,7 @@ Progress: [██████████] 100%
 | Phase 07.2.1 P02 | 6min | 2 tasks | 6 files |
 | Phase 07.2.1 P04 | 8min | 3 tasks | 6 files |
 | Phase 07.2.1 P03 | 6min | 2 tasks | 4 files |
+| Phase 07.2.1 P05 | 8m | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -402,6 +403,8 @@ Recent decisions affecting current work:
 - [Phase 07.2.1]: Plan 03: walkLog uses workflow.GetLogger(ctx) per-dispatch (NEVER captured at construction) — replay safety delegated to SDK's ReplayLogger per Pitfall 1
 - [Phase 07.2.1]: Plan 03: walkBody pre-counts non-log siblings for stepTot and advances stepIdx only on non-log dispatch — log steps inherit surrounding counter context (Pitfall 7 / D-7.2.1-13)
 - [Phase 07.2.1]: Plan 03: helpers (starlarkValueToSlogAttr/reservedSlogKeys/identifierShapeRe) inlined in walk_log.go (~215 LOC) — separate walk_log_helpers.go would scatter validation flow across two files
+- [Phase 07.2.1]: Plan 05: extended cmd/skytime-docgen with nested *starlarkstruct.Module namespace recognition + trampoline-aware extractUnpackParams + multi-file builtins discovery (Rule 2 deviation) — required for the four log.<level> surfaces to appear in docs/reference/builtins.md without hand-edits that would have broken the drift gate
+- [Phase 07.2.1]: Plan 05: backfilled .planning/REQUIREMENTS.md with LOG-01 + LOG-02 (per CONTEXT.md line 178 known gap) using [x] (validated) status matching existing TRIG/SERVER/SCHED convention for shipped phases; totals bumped 31→33 / 7→8 / 6→7
 
 ### Pending Todos
 
@@ -432,6 +435,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-12T12:53:56.413Z
-Stopped at: Completed 07.2.1-03-walker-counter-replay-PLAN.md
+Last session: 2026-05-12T13:08:09.775Z
+Stopped at: Completed 07.2.1-05-migration-walkthrough-PLAN.md
 Resume file: None
