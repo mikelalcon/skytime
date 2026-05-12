@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/syntax"
+	"go.temporal.io/api/workflowservice/v1"
 	sdkactivity "go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
 	sdkworker "go.temporal.io/sdk/worker"
@@ -293,10 +294,23 @@ func installFakeClientFactory(t *testing.T) {
 }
 
 // stubClient is a no-op client.Client that the server subcommand's
-// `defer c.Close()` can call safely.
+// `defer c.Close()` can call safely. Phase 7.3 Plan 04: the dashboard's
+// workflow poller calls ListOpenWorkflow / ListClosedWorkflow on a 2s
+// cadence — provide no-op implementations that return empty responses
+// so the poller goroutine doesn't nil-pan via the embedded
+// client.Client. The poller swallows transient errors (Pitfall 4), but
+// a nil-pointer dereference panics regardless.
 type stubClient struct{ client.Client }
 
 func (*stubClient) Close() {}
+
+func (*stubClient) ListOpenWorkflow(_ context.Context, _ *workflowservice.ListOpenWorkflowExecutionsRequest) (*workflowservice.ListOpenWorkflowExecutionsResponse, error) {
+	return &workflowservice.ListOpenWorkflowExecutionsResponse{}, nil
+}
+
+func (*stubClient) ListClosedWorkflow(_ context.Context, _ *workflowservice.ListClosedWorkflowExecutionsRequest) (*workflowservice.ListClosedWorkflowExecutionsResponse, error) {
+	return &workflowservice.ListClosedWorkflowExecutionsResponse{}, nil
+}
 
 // runServerInBackground starts cmd.Execute in a goroutine and returns a
 // channel that delivers the RunE return value when Execute returns.

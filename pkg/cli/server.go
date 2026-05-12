@@ -16,6 +16,8 @@ import (
 	"github.com/spf13/cobra"
 	"go.temporal.io/sdk/client"
 
+	web "github.com/mikelalcon/skytime/pkg/cli/server/web"
+	"github.com/mikelalcon/skytime/pkg/cli/server/web/deliveries"
 	skycore "github.com/mikelalcon/skytime/pkg/extension/builtin/core"
 	"github.com/mikelalcon/skytime/pkg/extension/receiver"
 	"github.com/mikelalcon/skytime/pkg/extension/schedules"
@@ -73,13 +75,15 @@ func hookStage(stage string) {
 // trigger handlers.
 func newServerCommand(cfg *config) *cobra.Command {
 	var (
-		rootdir        string
-		taskQueue      string
-		addr           string
-		credfilePath   string
-		drainTimeout   time.Duration
-		jsonLog        bool
-		cronReconcile bool
+		rootdir                string
+		taskQueue              string
+		addr                   string
+		credfilePath           string
+		drainTimeout           time.Duration
+		jsonLog                bool
+		cronReconcile          bool
+		replayHistoryThreshold int64
+		temporalWebUI          string
 	)
 
 	cmd := &cobra.Command{
@@ -97,6 +101,26 @@ func newServerCommand(cfg *config) *cobra.Command {
 			//    the worker).
 			if drainTimeout < minDrainTimeout {
 				return fmt.Errorf("--drain-timeout must be at least %s; got %s (use 30s default if unsure)", minDrainTimeout, drainTimeout)
+			}
+
+			// Plan 07.3-04 (m3 from checker): reject negative
+			// --replay-history-threshold BEFORE side effects so the
+			// error surfaces before we connect to Temporal or boot
+			// the worker. 0 is allowed and falls back to the default
+			// (events.DefaultReplayHistoryThreshold = 50) inside
+			// events.PollerConfig.applyDefaults.
+			if replayHistoryThreshold < 0 {
+				return fmt.Errorf("--replay-history-threshold must be >= 0; got %d (use 0 for the default of 50)", replayHistoryThreshold)
+			}
+
+			// Plan 07.3-04: env binding for --temporal-web-ui. cobra
+			// honors the flag's explicit value when set; otherwise
+			// fall back to SKYTIME_TEMPORAL_WEB_UI before the default
+			// kicks in via the StringVar registration below.
+			if !cmd.Flags().Lookup("temporal-web-ui").Changed {
+				if v := os.Getenv("SKYTIME_TEMPORAL_WEB_UI"); v != "" {
+					temporalWebUI = v
+				}
 			}
 
 			// 2. Switch slog handler for --json-log per § Pitfall 7.
@@ -236,19 +260,53 @@ func newServerCommand(cfg *config) *cobra.Command {
 				hookStage("cron_reconcile_complete")
 			}
 
-			// 9. Mount HTTP receiver. receiver.Mount (Plan 04) walks
+			// 8b. Plan 07.3-04 (UI-02): delivery ring buffer for the
+			//     dashboard's "Recent webhook deliveries" panel.
+			//     Constructed BEFORE the mux so receiver.Deps and
+			//     web.Mount share the same buffer instance.
+			deliveryBuf := deliveries.NewRingBuffer(deliveries.DefaultCap)
+
+			// 9. Mount HTTP receiver. receiver.Mount (Phase 7.1) walks
 			//    worker.Triggers().All(), groups by (kind, path,
 			//    method), and registers ONE handler per path that
-			//    method-dispatches internally. Plan 04b's per-request
-			//    pipeline is fully wired inside makeHandler.
+			//    method-dispatches internally. Phase 7.3 Plan 02
+			//    extended receiver.Deps with DeliveryBuffer +
+			//    OnDelivery; OnDelivery is filled in once web.Mount
+			//    returns it (it's the broadcaster fan-out callback).
 			mux := http.NewServeMux()
-			receiver.Mount(mux, w, receiver.Deps{
+			deps := receiver.Deps{
 				Client:            c,
 				CredentialHandler: cfg.credHandler,
 				TaskQueue:         taskQueue,
 				Logger:            logger,
 				FlowRegistry:      w.Registry(),
+				DeliveryBuffer:    deliveryBuf,
+			}
+
+			// 9b. Plan 07.3-04 (UI-01..04): mount dashboard routes +
+			//     start the SSE broadcaster + workflow poller. The
+			//     returned MountResult carries the OnDelivery
+			//     callback we splice into deps before receiver.Mount
+			//     runs.
+			//
+			//     B3 (Phase 7.3 checker): MountResult.Shutdown MUST
+			//     run BEFORE srv.Shutdown(drainCtx) so SSE clients
+			//     receive an event: shutdown frame before the
+			//     listener drain cancels their request contexts.
+			webResult := web.Mount(cmd.Context(), mux, web.MountOptions{
+				Client:                 c,
+				TaskQueue:              taskQueue,
+				Registry:               w.Registry(),
+				Buffer:                 deliveryBuf,
+				Addr:                   addr,
+				TemporalWebUI:          temporalWebUI,
+				Logger:                 logger,
+				Namespace:              cfg.namespace,
+				PollInterval:           2 * time.Second,
+				ReplayHistoryThreshold: replayHistoryThreshold,
 			})
+			deps.OnDelivery = webResult.OnDelivery
+			receiver.Mount(mux, w, deps)
 
 			// 10. Pitfall 9: pre-bind the listener synchronously so
 			//     "address already in use" surfaces inline (BEFORE the
@@ -291,7 +349,30 @@ func newServerCommand(cfg *config) *cobra.Command {
 			drainCtx, cancel := context.WithTimeout(context.Background(), drainTimeout)
 			defer cancel()
 
-			// 12. D-7.1-11 listener-first shutdown. http.Server.Shutdown
+			// 12a. Plan 07.3-04 B3 (Phase 7.3 checker): SSE shutdown
+			//      sequence MUST publish the final "event: shutdown"
+			//      frame BEFORE the listener drains. Order is:
+			//
+			//        webResult.Shutdown()          // close broadcaster → SSE handlers see channel close → write "event: shutdown\n\n" + Flush
+			//        time.Sleep(50ms)              // grace window so the SSE flush lands on the wire before the listener cancels request contexts
+			//        srv.Shutdown(drainCtx)        // D-7.1-11 listener-first drain (now strict listener-only, SSE shutdown already delivered)
+			//        worker.Stop()                 // existing Phase 7.1 worker drain
+			//
+			//      Without this ordering, srv.Shutdown(drainCtx)
+			//      would cancel SSE request contexts FIRST and the
+			//      handlers would exit before the broadcaster's
+			//      shutdown event reached the wire — browsers would
+			//      see only TCP close (no orderly shutdown frame),
+			//      breaking D-7.3-07.
+			// Note: no new hookStage() calls — keeping the 7-stage
+			// sequence stable for TestServerCmd_DrainOnSIGTERM. Plan
+			// 07.3-05 will extend the test with strict SSE event
+			// assertions (must observe "event: shutdown" before EOF)
+			// without needing a new drain hook stage.
+			webResult.Shutdown()
+			time.Sleep(50 * time.Millisecond) // SSE flush grace window
+
+			// 12b. D-7.1-11 listener-first shutdown. http.Server.Shutdown
 			//     refuses new requests immediately and lets in-flight
 			//     HTTP requests finish (which means in-flight
 			//     ExecuteWorkflow dispatch calls finish — the workflow
@@ -342,6 +423,15 @@ func newServerCommand(cfg *config) *cobra.Command {
 	cmd.Flags().BoolVar(&jsonLog, "json-log", false, "emit logs as JSON instead of charm-log Bazel-style")
 	cmd.Flags().BoolVar(&cronReconcile, "cron-reconcile", false,
 		"perform cron Schedule reconciliation against the connected Temporal cluster at boot (one replica only; see docs/walkthroughs/cron-schedules.md)")
+	// Plan 07.3-04 (Open Q 2 + D-7.3-15): dashboard knobs. The
+	// poller publishes a workflow_replayed event when HistoryLength
+	// delta per poll-cycle exceeds the threshold; the deep-link
+	// prefix is the Temporal Web UI URL rendered against workflow
+	// IDs in the dashboard table.
+	cmd.Flags().Int64Var(&replayHistoryThreshold, "replay-history-threshold", 50,
+		"HistoryLength delta per poll-cycle above which the dashboard marks a workflow as 'replayed' (best-effort heuristic; see Research Open Q 2). Must be >= 0; 0 means use the default (50).")
+	cmd.Flags().StringVar(&temporalWebUI, "temporal-web-ui", "http://localhost:8233",
+		"URL prefix for Temporal Web UI deep-links on dashboard workflow IDs (env SKYTIME_TEMPORAL_WEB_UI; set to empty string to render plain text)")
 	_ = cmd.MarkFlagRequired("rootdir")
 	return cmd
 }
