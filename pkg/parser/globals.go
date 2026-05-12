@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 	"go.starlark.net/starlarktest"
 )
 
@@ -69,6 +70,26 @@ func newParseTimeGlobals(p *Parser, thread *starlark.Thread) (starlark.StringDic
 		// (NonRetryableErr at the .star callsite). See pkg/parser/doc.go
 		// for full dual-semantics documentation.
 		"fail": starlark.NewBuiltin("fail", p.builtinFail),
+
+		// Phase 07.2.1 (D-7.2.1-01): top-level `log` namespace with four
+		// attributes that emit *dag.LogStep nodes. Mirrors how extensions
+		// expose attribute-bearing namespaces via *starlarkstruct.Module
+		// (D-08), but registered statically here because `log` is a
+		// first-party parse-time surface, not an extension.
+		//
+		// The four builtins share buildLogStep; each is a thin level-tagged
+		// trampoline so error attribution reports `log.info` / `log.warn`
+		// instead of a generic `log` and so the // skytime:doc markers can
+		// render one entry per user-visible call shape (Plan 05 docgen).
+		"log": &starlarkstruct.Module{
+			Name: "log",
+			Members: starlark.StringDict{
+				"info":  starlark.NewBuiltin("log.info", p.builtinLogInfo),
+				"warn":  starlark.NewBuiltin("log.warn", p.builtinLogWarn),
+				"error": starlark.NewBuiltin("log.error", p.builtinLogError),
+				"debug": starlark.NewBuiltin("log.debug", p.builtinLogDebug),
+			},
+		},
 	}
 
 	for name, ext := range p.registry.All() {

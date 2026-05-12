@@ -20,8 +20,8 @@ import (
 // and malformed ${...} interpolation (delegated to the shared desugarer).
 //
 // All tests use the canonical newTestParser(t) + p.ParseSource(filename, src)
-// pattern from builtins_test.go — there is NO newParserForTest, no p.ParseFile
-// helper in test code.
+// pattern from builtins_test.go (no fictitious helpers, no p.ParseFile call
+// from test code).
 // =============================================================================
 
 func TestBuiltinLog_AcceptLiteral_AllLevels(t *testing.T) {

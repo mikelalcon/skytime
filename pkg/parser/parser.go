@@ -96,6 +96,15 @@ type Parser struct {
 	// never tries to resolve `ctx` at top-level).
 	preBuiltResults map[string]*dag.Result
 
+	// allLogSteps accumulates every *dag.LogStep emitted by the four
+	// builtinLog* factories (Phase 07.2.1 D-7.2.1-18). The finalize pass
+	// validateLogStepPlacement walks p.flows to mark log steps that landed
+	// inside a flow body; any orphan in this slice is a module-scope call
+	// and rejected with a position-aware *dag.ParseError. First-of-its-kind:
+	// no precedent for module-scope orphan-node enforcement in the parser
+	// (per 07.2.1-RESEARCH §Pitfall 2).
+	allLogSteps []*dag.LogStep
+
 	// Phase 5: test-mode opt-in. WithTestMode() flips testMode true.
 	// WithTestModule(builderFn) wires a builder that newParseTimeGlobals
 	// (extended in Plan 02) calls to inject the `tester` *starlarkstruct.Module
