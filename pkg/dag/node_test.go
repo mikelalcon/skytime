@@ -14,6 +14,7 @@ var (
 	_ Node = (*Step)(nil)
 	_ Node = (*IfCond)(nil)
 	_ Node = (*Script)(nil)
+	_ Node = (*LogStep)(nil)
 	_ Node = (*ForEachParallel)(nil)
 	_ Node = (*CallFlow)(nil)
 )
@@ -46,6 +47,7 @@ func TestNode_KindAndPosition(t *testing.T) {
 		{"Step", &Step{Pos: pos}, "Step"},
 		{"IfCond", &IfCond{Pos: pos}, "IfCond"},
 		{"Script", &Script{Pos: pos}, "Script"},
+		{"LogStep", &LogStep{Pos: pos}, "LogStep"},
 		{"ForEachParallel", &ForEachParallel{Pos: pos}, "ForEachParallel"},
 		{"CallFlow", &CallFlow{Pos: pos}, "CallFlow"},
 	}

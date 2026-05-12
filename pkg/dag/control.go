@@ -61,6 +61,59 @@ func (n *Script) Position() syntax.Position { return n.Pos }
 
 func (*Script) nodeMarker() {}
 
+// LogStep emits a structured log record at workflow time, routed through
+// workflow.GetLogger(ctx) at the matching slog level (info/warn/error/debug).
+// Side-channel only — produces no output_alias state and does not advance
+// the human-mode [N/M] step counter (D-7.2.1-13/16, Phase 07.2.1).
+//
+// Mirrors *Script minus OutputAlias plus a Level discriminator. Like Script,
+// the MsgFn lambda is set when the parser desugars ${ctx.expr} interpolation
+// in the message template (D4.1-22 carve-out: parse-time syntactic sugar
+// that desugars to a native Starlark lambda; no runtime template engine).
+type LogStep struct {
+	// Pos is the call-site of `log.<level>(...)` in the .star source —
+	// used by D-04 error attribution and by parse-time validators.
+	Pos syntax.Position
+
+	// Level is one of "info" | "warn" | "error" | "debug" (D-7.2.1-01).
+	// The parser is the level gate; this field is a plain string here to
+	// keep pkg/dag free of parser-level concerns. The walker switches on
+	// this value to dispatch into workflow.GetLogger(ctx).<Level>.
+	Level string
+
+	// Msg is the LITERAL template the .star author wrote — including any
+	// ${ctx.expr} markers. Cosmetic edits to this string change the
+	// file content hash and therefore the (synthesized) MsgFn.ID — same
+	// stability contract as Script.ID / Script.IDFn.
+	Msg string
+
+	// MsgFn is the resolved-at-runtime variant of Msg. Set by the parser's
+	// interpolation desugarer (D4.1-22) when Msg contained ${...} markers.
+	// The walker evaluates this lambda to produce the rendered message
+	// string. Nil when Msg is a plain literal with no interpolation.
+	//
+	// json:"-" because *CapturedLambda holds a *starlark.Function pointer
+	// that does not round-trip through Temporal's JSON serializer
+	// (mirrors Script.IDFn precedent above).
+	MsgFn *CapturedLambda `json:"-"`
+
+	// AttrsLambdaID resolves into WorkflowInput.Lambdas at workflow time.
+	// Empty string means no attrs= kwarg was provided; non-empty means the
+	// walker must evaluate the lambda and convert the returned dict into
+	// slog attrs (D-7.2.1-05).
+	AttrsLambdaID string
+}
+
+var _ Node = (*LogStep)(nil)
+
+// Kind returns the discriminator "LogStep".
+func (*LogStep) Kind() string { return "LogStep" }
+
+// Position returns the call-site of `log.<level>(...)`.
+func (n *LogStep) Position() syntax.Position { return n.Pos }
+
+func (*LogStep) nodeMarker() {}
+
 // ForEachParallel fans out the same step body across a collection. Items can
 // come from a static literal (carried as ItemsLiteral) OR from a lambda that
 // produces them at execute time (carried as ItemsLambdaID). Exactly one of
