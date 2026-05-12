@@ -6,6 +6,7 @@ import (
 
 	"go.temporal.io/sdk/client"
 
+	"github.com/mikelalcon/skytime/pkg/cli/server/web/deliveries"
 	"github.com/mikelalcon/skytime/pkg/dag"
 	"github.com/mikelalcon/skytime/pkg/extension"
 	"github.com/mikelalcon/skytime/pkg/interpreter"
@@ -46,6 +47,22 @@ type Deps struct {
 	// without the hash produces "flow @ not found in worker registry"
 	// (D3-04). Populated from worker.Worker.Registry() in server.go.
 	FlowRegistry *interpreter.FlowRegistry
+
+	// DeliveryBuffer is the optional in-memory ring buffer that records
+	// every webhook delivery for the dashboard's "Recent webhook
+	// deliveries" panel (Phase 7.3 UI-02, D-7.3-22). Nil disables
+	// recording — Phase 7.1 tests + non-server consumers pass nil and
+	// the handler no-ops the buffer append.
+	DeliveryBuffer *deliveries.RingBuffer
+
+	// OnDelivery is the optional post-append callback fired AFTER each
+	// delivery is appended to DeliveryBuffer. The dashboard's SSE
+	// broadcaster (Plan 03) wires this to a
+	// Publish(Event{Name: "delivery_received", ...}) — placed in Deps
+	// instead of a direct broadcaster import to keep the receiver
+	// package free of pkg/cli/server/web/events dependency
+	// (Research Open Q 4 Option A).
+	OnDelivery func(deliveries.Delivery)
 }
 
 // validate panics on missing required Deps fields. Called once from

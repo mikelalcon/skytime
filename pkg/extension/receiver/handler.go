@@ -2,8 +2,9 @@ package receiver
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,11 +14,11 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 	enumspb "go.temporal.io/api/enums/v1"
-	"go.temporal.io/api/serviceerror"
-	"go.temporal.io/sdk/client"
 
 	skygh "github.com/mikelalcon/skytime/examples/http-github-webhook/extensions/github"
 	"github.com/mikelalcon/skytime/pkg/bridge"
+	"github.com/mikelalcon/skytime/pkg/cli/server/web/deliveries"
+	"github.com/mikelalcon/skytime/pkg/cli/server/web/flowlaunch"
 	"github.com/mikelalcon/skytime/pkg/dag"
 	"github.com/mikelalcon/skytime/pkg/extension"
 )
@@ -211,33 +212,36 @@ func makeHandler(key mountKey, trigs []*dag.Trigger, deps Deps) http.HandlerFunc
 				continue
 			}
 			workflowID := composeWorkflowID(t, userKey)
-			opts := client.StartWorkflowOptions{
-				ID:                                       workflowID,
-				TaskQueue:                                deps.TaskQueue,
-				WorkflowIDReusePolicy:                    enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
-				WorkflowExecutionErrorWhenAlreadyStarted: true, // CRITICAL — Pitfall 1
-			}
-			workflowInput := dag.WorkflowInput{
-				FlowName:    t.FlowName,
-				ContentHash: contentHash,
-				InitState:   initState,
-			}
-			_, execErr := deps.Client.ExecuteWorkflow(r.Context(), opts, "SkytimeWorkflow", workflowInput)
-			if execErr == nil {
+			// Single flowlaunch.Execute call per dispatch (UI-04, D-7.3-28).
+			// REJECT_DUPLICATE + ErrorWhenAlreadyStarted=true preserved
+			// verbatim from Phase 7.1 (Pitfall 1 — without the second flag
+			// REJECT_DUPLICATE silently returns nil on duplicate).
+			gotID, status, _ := flowlaunch.Execute(
+				r.Context(),
+				deps.Client,
+				deps.TaskQueue,
+				t.FlowName,
+				contentHash,
+				initState,
+				flowlaunch.Options{
+					WorkflowID:              workflowID,
+					ReusePolicy:             enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
+					ErrorWhenAlreadyStarted: true, // CRITICAL — Pitfall 1
+				},
+			)
+			switch status {
+			case flowlaunch.StatusOK:
 				anyOK = true
-				workflowIDs = append(workflowIDs, workflowID)
+				workflowIDs = append(workflowIDs, gotID)
 				flowsDispatched = append(flowsDispatched, t.FlowName)
 				continue
-			}
-			// Pitfall 6: errors.As with pointer-to-pointer to detect
-			// REJECT_DUPLICATE. NOT a string match.
-			var alreadyStarted *serviceerror.WorkflowExecutionAlreadyStarted
-			if errors.As(execErr, &alreadyStarted) {
+			case flowlaunch.StatusDuplicate:
 				anyDuplicate = true
-				duplicateID = workflowID
+				duplicateID = gotID
 				continue
+			default: // StatusDispatchFailed
+				anyDispatchFail = true
 			}
-			anyDispatchFail = true
 		}
 
 		// Pick worst status. Order: dispatch_failed > internal > ok > duplicate.
@@ -268,6 +272,11 @@ func makeHandler(key mountKey, trigs []*dag.Trigger, deps Deps) http.HandlerFunc
 			rec.errorClass = errorClassEventFiltered
 			writeEventFilteredResponse(w)
 		}
+
+		// Record the delivery for the dashboard (Phase 7.3 UI-02).
+		// No-op when neither DeliveryBuffer nor OnDelivery is wired
+		// (Phase 7.1 callers pass nil for both).
+		recordDelivery(deps, r, rec, bodyBytes, key.kind)
 	}
 }
 
@@ -458,4 +467,58 @@ func starlarkValueToGo(v starlark.Value) (any, error) {
 		// workflow input remains JSON-encodable.
 		return v.String(), nil
 	}
+}
+
+// recordDelivery builds a deliveries.Delivery from the per-request
+// state and (a) appends to deps.DeliveryBuffer when non-nil and
+// (b) invokes deps.OnDelivery when non-nil. Source-agnostic: header
+// names are passed through deliveries.RedactHeaders so provider-
+// specific secrets (Authorization, X-Hub-Signature-256, etc.) never
+// hit the buffer — and malformed names (e.g., containing '<') are
+// dropped entirely.
+//
+// Phase 7.3 UI-02 / D-7.3-17..D-7.3-22.
+func recordDelivery(deps Deps, r *http.Request, rec *requestRecord, body []byte, sourceKind string) {
+	if deps.DeliveryBuffer == nil && deps.OnDelivery == nil {
+		return // recording disabled — Phase 7.1 callers pass nil.
+	}
+	d := deliveries.Delivery{
+		ID:             newDeliveryID(),
+		ReceivedAt:     time.Now().UTC(),
+		Source:         sourceKind,
+		Method:         r.Method,
+		Path:           r.URL.Path,
+		Headers:        deliveries.RedactHeaders(r.Header),
+		PayloadSummary: deliveries.SummarizePayload(r.Header.Get("Content-Type"), body, 200),
+		PayloadFull:    truncateFullPayload(body, deliveries.PayloadFullMax),
+		Status:         rec.status,
+		WorkflowIDs:    append([]string(nil), rec.workflowIDs...),
+		ErrorClass:     string(rec.errorClass),
+	}
+	if deps.DeliveryBuffer != nil {
+		deps.DeliveryBuffer.Append(d)
+	}
+	if deps.OnDelivery != nil {
+		deps.OnDelivery(d)
+	}
+}
+
+// newDeliveryID generates a 24-char hex ID for a delivery row. 96
+// bits of entropy is sufficient for the dashboard's "Recent webhook
+// deliveries" panel (collision-free across ~10^14 deliveries).
+func newDeliveryID() string {
+	var b [12]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
+}
+
+// truncateFullPayload caps the full body string at max bytes (no
+// ellipsis — the dashboard's <details> expansion shows the raw
+// truncated bytes; the row's PayloadSummary already shows an
+// ellipsis-truncated preview).
+func truncateFullPayload(body []byte, max int) string {
+	if len(body) <= max {
+		return string(body)
+	}
+	return string(body[:max])
 }
