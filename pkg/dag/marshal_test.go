@@ -264,6 +264,77 @@ func TestMarshal_StableAcrossTwoRoundtrips(t *testing.T) {
 	assert.Contains(t, string(b1), `"output_alias":"out"`)
 }
 
+// --- LogStep (Phase 07.2.1-01) -----------------------------------------------
+
+// TestLogStep_MarshalJSON_Literal: D-7.2.1-15 / plan 07.2.1-01 — a LogStep
+// with only Level + Msg (no interpolation lambda, no attrs lambda) emits a
+// minimal {kind, level, msg} object. The optional msg_lambda_id and
+// attrs_lambda_id fields are omitted via `omitempty` so the simple-case
+// JSON stays tight (mirrors *Fail's failJSON shape).
+func TestLogStep_MarshalJSON_Literal(t *testing.T) {
+	n := &LogStep{Level: "info", Msg: "hello"}
+	b, err := json.Marshal(n)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"LogStep","level":"info","msg":"hello"}`, string(b))
+}
+
+// TestLogStep_MarshalJSON_WithLambdas: D-7.2.1-15 — when MsgFn is set
+// (interpolation desugarer fired) and AttrsLambdaID is non-empty,
+// both lambda IDs surface as msg_lambda_id and attrs_lambda_id. The Msg
+// template is preserved verbatim (including ${...} markers) so debugging
+// tools can show the literal source alongside the resolved-at-runtime
+// lambda ID.
+func TestLogStep_MarshalJSON_WithLambdas(t *testing.T) {
+	n := &LogStep{
+		Level:         "warn",
+		Msg:           "${ctx.x}",
+		MsgFn:         &CapturedLambda{ID: "lam_abc"},
+		AttrsLambdaID: "lam_xyz",
+	}
+	b, err := json.Marshal(n)
+	require.NoError(t, err)
+	assert.JSONEq(t,
+		`{"kind":"LogStep","level":"warn","msg":"${ctx.x}","msg_lambda_id":"lam_abc","attrs_lambda_id":"lam_xyz"}`,
+		string(b))
+}
+
+// TestLogStep_MarshalJSON_NoLambdaSerialized: load-bearing security guard
+// — the *starlark.Function inside CapturedLambda must NEVER leak into the
+// wire JSON. Only the opaque content-hash ID surfaces via msg_lambda_id.
+// This mirrors the Script.IDFn / Fail.MessageFn precedents: lambda
+// pointers are in-memory only and rehydrate at workflow start via the
+// content-hash-keyed FlowRegistry (Phase 3 lambda-serialization contract).
+func TestLogStep_MarshalJSON_NoLambdaSerialized(t *testing.T) {
+	n := &LogStep{Level: "info", Msg: "hi", MsgFn: &CapturedLambda{ID: "lam_xyz"}}
+	b, err := json.Marshal(n)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), "Function",
+		"*starlark.Function pointer must not leak into wire JSON")
+	assert.NotContains(t, string(b), "*starlark",
+		"Starlark internal types must not appear in wire JSON")
+	assert.Contains(t, string(b), `"msg_lambda_id":"lam_xyz"`,
+		"opaque lambda ID is the only legal surface")
+}
+
+// TestLogStep_MarshalJSON_InSlice: verifies LogStep.MarshalJSON dispatches
+// when LogStep is an element of a []Node slice. This is the path used by
+// Flow.MarshalJSON when a flow body contains a log step — the heterogeneous
+// body test in TestFlow_MarshalJSON_HeterogeneousBodyEachHasKind is the
+// closest sibling pattern.
+func TestLogStep_MarshalJSON_InSlice(t *testing.T) {
+	nodes := []Node{
+		&LogStep{Level: "info", Msg: "a"},
+		&LogStep{Level: "warn", Msg: "b"},
+	}
+	b, err := json.Marshal(nodes)
+	require.NoError(t, err)
+	assert.Contains(t, string(b), `"kind":"LogStep"`)
+	assert.Contains(t, string(b), `"level":"info"`)
+	assert.Contains(t, string(b), `"level":"warn"`)
+	assert.Contains(t, string(b), `"msg":"a"`)
+	assert.Contains(t, string(b), `"msg":"b"`)
+}
+
 func TestMarshal_Stable_ActionRefWithKwargs(t *testing.T) {
 	// Even with Starlark-dict-backed kwargs, marshaling must be stable —
 	// Go's encoding/json sorts map keys, so converting Kwargs to map[string]any
