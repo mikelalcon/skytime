@@ -147,6 +147,92 @@ func TestReplay_FailMessageDeterministic(t *testing.T) {
 		"replay determinism: fail-message resolution must be byte-equal across two runs")
 }
 
+// TestReplay_LogStep_ExactlyThreeRecords pins the load-bearing replay
+// contract for log.<level>(): three consecutive log.info calls produce
+// exactly three [skytime/log] user-message records on each of two runs,
+// with byte-equal serialization across the runs. The SDK's ReplayLogger
+// (workflow.GetLogger) handles suppression on replay — walkLog never
+// captures the logger at construction so the replay guarantee composes.
+func TestReplay_LogStep_ExactlyThreeRecords(t *testing.T) {
+	src := `flow(name="t", inputs={}, steps=[
+  log.info("one"),
+  log.info("two"),
+  log.info("three"),
+])`
+	parsed := parseSrcAsFlow(t, src, "t")
+	hash := contentHashForSrc(src)
+
+	capA, _, err := runOnceCapturing(t, parsed, hash, map[string]any{})
+	require.NoError(t, err)
+	capB, _, err := runOnceCapturing(t, parsed, hash, map[string]any{})
+	require.NoError(t, err)
+
+	collectMsgs := func(recs []capturedRecord) []string {
+		out := []string{}
+		for _, r := range recs {
+			if strings.HasPrefix(r.Msg, "[skytime/log] ") {
+				out = append(out, r.Msg)
+			}
+		}
+		return out
+	}
+
+	msgsA := collectMsgs(capA.snapshot())
+	msgsB := collectMsgs(capB.snapshot())
+
+	require.Equal(t, []string{
+		"[skytime/log] one",
+		"[skytime/log] two",
+		"[skytime/log] three",
+	}, msgsA, "first run: exactly 3 [skytime/log] records in source order")
+	require.Equal(t, msgsA, msgsB,
+		"replay determinism: [skytime/log] user-message sequence must be byte-equal across two runs")
+}
+
+// TestReplay_LogStep_AttrsByteStable pins that attrs insertion order
+// (preserved via *starlark.Dict.Items()) produces byte-equal serialized
+// records across runs — even with deliberately non-alphabetical keys.
+// Goes a step further than Plan 4's order check by comparing the full
+// serialized stream of all records emitted by the workflow (dispatch +
+// user-msg + complete + flow_start + flow_complete).
+func TestReplay_LogStep_AttrsByteStable(t *testing.T) {
+	src := `flow(name="t", inputs={}, steps=[
+  log.info("hi", attrs=lambda ctx: {"zebra": 1, "alpha": 2, "monkey": 3}),
+])`
+	parsed := parseSrcAsFlow(t, src, "t")
+	hash := contentHashForSrc(src)
+
+	capA, _, err := runOnceCapturing(t, parsed, hash, map[string]any{})
+	require.NoError(t, err)
+	capB, _, err := runOnceCapturing(t, parsed, hash, map[string]any{})
+	require.NoError(t, err)
+
+	// Compare the full serialized event stream — proves nothing about
+	// log records specifically drifts across replay (workflow_start
+	// duration may differ across runs, but that's keyed off
+	// workflow.Now/info which the testsuite holds stable per execution).
+	serA := serializeRecords(capA.snapshot())
+	serB := serializeRecords(capB.snapshot())
+	require.Equal(t, serA, serB,
+		"replay determinism: full event stream must be byte-equal across runs")
+
+	// Strong claim: the attrs dict's keyvals appear in the user-message
+	// record. Verify the values arrived correctly via the captured
+	// attrs map (insertion-order check is the byte-equal compare above).
+	var userMsg *capturedRecord
+	for i, r := range capA.snapshot() {
+		if strings.HasPrefix(r.Msg, "[skytime/log] ") {
+			rec := capA.snapshot()[i]
+			userMsg = &rec
+			break
+		}
+	}
+	require.NotNil(t, userMsg, "expected one [skytime/log] user-message")
+	require.EqualValues(t, 1, userMsg.Attrs["zebra"])
+	require.EqualValues(t, 2, userMsg.Attrs["alpha"])
+	require.EqualValues(t, 3, userMsg.Attrs["monkey"])
+}
+
 // TestReplay_LeadingBodyDeterministic pins that an expression-mode
 // branch with leading body (script) followed by a result terminator
 // produces deterministic state across runs — both ctx.<script_alias>
