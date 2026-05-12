@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	sdkclient "go.temporal.io/sdk/client"
 
-	"github.com/mikelalcon/skytime/pkg/dag"
+	"github.com/mikelalcon/skytime/pkg/cli/server/web/flowlaunch"
 	"github.com/mikelalcon/skytime/pkg/validator"
 	"github.com/mikelalcon/skytime/pkg/worker"
 )
@@ -131,13 +131,15 @@ func newRunCommand(cfg *config) *cobra.Command {
 
 			// 6. Trigger the workflow. Worker default task queue applies
 			//    when the flow does not declare one (D3-19 hierarchy).
+			//    workflowInput shape comes from flowlaunch.BuildWorkflowInput
+			//    (UI-04 single seam). The ExecuteWorkflow call stays here
+			//    because skytime run is synchronous and needs the
+			//    *WorkflowRun handle for run.Get below —
+			//    flowlaunch.Execute returns the ID only.
+			workflowInput := flowlaunch.BuildWorkflowInput(flowName, contentHash, initState)
 			run, err := c.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{
 				TaskQueue: "skytime",
-			}, "SkytimeWorkflow", dag.WorkflowInput{
-				FlowName:    flowName,
-				ContentHash: contentHash,
-				InitState:   initState,
-			})
+			}, "SkytimeWorkflow", workflowInput)
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "execute workflow: %s\n", err.Error())
 				return errSilent

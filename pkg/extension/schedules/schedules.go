@@ -13,6 +13,7 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/converter"
 
+	"github.com/mikelalcon/skytime/pkg/cli/server/web/flowlaunch"
 	"github.com/mikelalcon/skytime/pkg/dag"
 	skycore "github.com/mikelalcon/skytime/pkg/extension/builtin/core"
 	"github.com/mikelalcon/skytime/pkg/interpreter"
@@ -285,20 +286,16 @@ func scheduleOptionsFor(t *dag.Trigger, flows *interpreter.FlowRegistry, taskQue
 		return client.ScheduleOptions{}, fmt.Errorf("marshal canonical config: %w", err)
 	}
 
-	workflowInput := dag.WorkflowInput{
-		FlowName:    t.FlowName,
-		ContentHash: contentHash,
-		// InitState left nil here: scheduled_time/actual_time can only
-		// be known at fire time, not at reconcile time. The interpreter
-		// (pkg/interpreter/cron_input.go::extractScheduledTime,
-		// applied inside NewWorkflow) recovers scheduled_time from the
-		// WorkflowID's Pitfall-2 RFC3339 suffix and stamps actual_time
-		// from workflow.Now at workflow start. Map lambda eval per
-		// D-7.2-20 stays deferred; this fallback is what makes the
-		// default path (D-7.2-15) usable for `inputs={scheduled_time,
-		// actual_time}` flows.
-		InitState: nil,
-	}
+	// Shared seam with flowlaunch.Execute (UI-04). InitState stays nil
+	// here: scheduled_time/actual_time can only be known at fire time,
+	// not at reconcile time. The interpreter (pkg/interpreter/
+	// cron_input.go::extractScheduledTime, applied inside NewWorkflow)
+	// recovers scheduled_time from the WorkflowID's Pitfall-2 RFC3339
+	// suffix and stamps actual_time from workflow.Now at workflow
+	// start. Map lambda eval per D-7.2-20 stays deferred; this
+	// fallback is what makes the default path (D-7.2-15) usable for
+	// `inputs={scheduled_time, actual_time}` flows.
+	workflowInput := flowlaunch.BuildWorkflowInput(t.FlowName, contentHash, nil)
 
 	opts := client.ScheduleOptions{
 		ID: ComposeScheduleID(t),
