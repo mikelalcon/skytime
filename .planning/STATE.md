@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.2.1-02-parser-builtins-PLAN.md
-last_updated: "2026-05-12T12:34:06.663Z"
+stopped_at: Completed 07.2.1-04-renderer-suppression-PLAN.md
+last_updated: "2026-05-12T12:42:56.821Z"
 last_activity: 2026-05-12
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 24
-  completed_plans: 21
+  completed_plans: 22
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.2.1 (structured-logging-step-builtin) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-05-12
 
@@ -130,6 +130,7 @@ Progress: [██████████] 100%
 | Phase 07.2 P04 | finalize 3min (+UAT cycle 2026-05-11) | 4 tasks | 7 files |
 | Phase 07.2.1 P01 | 3min | 2 tasks | 5 files |
 | Phase 07.2.1 P02 | 6min | 2 tasks | 6 files |
+| Phase 07.2.1 P04 | 8min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -394,6 +395,9 @@ Recent decisions affecting current work:
 - [Phase 07.2.1]: Four separate level-tagged log builtin factories (not parameterized) for cleaner doc rendering and crisper error messages
 - [Phase 07.2.1]: Source-level string-literal enforcement via AST re-parse + positionsEqual (block_fn_lint pattern) — UnpackArgs alone cannot distinguish literals from identifier-bound strings
 - [Phase 07.2.1]: validateLogStepPlacement slotted at finalize position 5.6 (after validateResultPlacement, before validateIfCondExpressionShape) — orphan-log errors surface before branch-shape errors
+- [Phase 07.2.1]: Plan 04: logKindFilterHandler decorator uses r.Attrs short-circuit (bounded when both kind+event seen) over collectAttrs/attrMap allocation — avoids per-record map alloc for common non-matching records
+- [Phase 07.2.1]: Plan 04: setupServerLogging non-JSON branch wraps inner.Handler() (Go 1.21+) — preserves charm-log debug/TTY/caller settings without duplicating setupLogging body; re-sets slog.Default to wrapped variant so parser warnings via slog.Default().Warn flow through filter
+- [Phase 07.2.1]: Plan 04: renderStepComplete kind=log early-return positioned BEFORE failureContext capture so future log-step validation errors do NOT shadow the actual workflow-failing step in renderFlowComplete attribution (D-7.2.1-13)
 
 ### Pending Todos
 
@@ -424,6 +428,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-12T12:34:06.659Z
-Stopped at: Completed 07.2.1-02-parser-builtins-PLAN.md
+Last session: 2026-05-12T12:42:56.816Z
+Stopped at: Completed 07.2.1-04-renderer-suppression-PLAN.md
 Resume file: None
