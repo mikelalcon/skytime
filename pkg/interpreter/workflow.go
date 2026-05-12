@@ -170,10 +170,29 @@ func newInterpreter(ctx workflow.Context, registry *FlowRegistry, parsed *Parsed
 // in walkForEach uses shallow copies of `i` to avoid race + non-determinism.
 func (i *interpreter) walkBody(ctx workflow.Context, body []dag.Node) error {
 	savedIdx, savedTot := i.stepIdx, i.stepTot
-	i.stepTot = len(body)
+	// D-7.2.1-13 / Phase 07.2.1 Pitfall 7: log steps are side-channel
+	// nodes that must NOT inflate the [N/M] step counter denominator
+	// (M) and must NOT advance the per-step index (N). Pre-count the
+	// non-log siblings; advance stepIdx only on non-log dispatch. Log
+	// nodes inherit the surrounding counter context (visible to JSON
+	// consumers; the renderer suppresses kind=log frames in human mode).
+	nonLogTotal := 0
+	for _, node := range body {
+		if _, isLog := node.(*dag.LogStep); !isLog {
+			nonLogTotal++
+		}
+	}
+	i.stepTot = nonLogTotal
 	defer func() { i.stepIdx, i.stepTot = savedIdx, savedTot }()
-	for k, node := range body {
-		i.stepIdx = k + 1
+	nonLogIdx := 0
+	for _, node := range body {
+		if _, isLog := node.(*dag.LogStep); !isLog {
+			nonLogIdx++
+			i.stepIdx = nonLogIdx
+		}
+		// Log node: keep stepIdx unchanged so the dispatch/complete
+		// frames carry the surrounding non-log counter value (renderer
+		// suppresses those frames in human mode anyway).
 		if err := i.walkNode(ctx, node); err != nil {
 			return err
 		}
@@ -197,6 +216,8 @@ func (i *interpreter) walkNode(ctx workflow.Context, node dag.Node) error {
 		return i.walkIfCond(ctx, n)
 	case *dag.Script:
 		return i.walkScript(ctx, n)
+	case *dag.LogStep:
+		return i.walkLog(ctx, n)
 	case *dag.ForEachParallel:
 		return i.walkForEach(ctx, n)
 	case *dag.CallFlow:

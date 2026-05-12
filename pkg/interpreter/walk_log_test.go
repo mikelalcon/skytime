@@ -73,18 +73,19 @@ func TestWalkLog_AllFourLevels(t *testing.T) {
 
 // TestWalkLog_InterpolatedMsg — ${ctx.x} interpolation desugars to a
 // MsgFn lambda that the walker evaluates per-dispatch; the resolved
-// user message reflects the runtime ctx.x value.
+// user message reflects the runtime ctx.x value. Uses a string input
+// to avoid the testsuite's JSON-roundtrip float64 coercion of integers.
 func TestWalkLog_InterpolatedMsg(t *testing.T) {
-	src := `flow(name="t", inputs={"x": "int"}, steps=[log.info("v=${ctx.x}")])`
+	src := `flow(name="t", inputs={"x": "string"}, steps=[log.info("v=${ctx.x}")])`
 	parsed := parseSrcAsFlow(t, src, "t")
 	hash := contentHashForSrc(src)
 
-	cap, _, err := runOnceCapturing(t, parsed, hash, map[string]any{"x": int64(42)})
+	cap, _, err := runOnceCapturing(t, parsed, hash, map[string]any{"x": "abc"})
 	require.NoError(t, err)
 
 	userMsgs := findLogUserMessageRecords(cap.snapshot())
 	require.Len(t, userMsgs, 1)
-	require.Equal(t, "[skytime/log] v=42", userMsgs[0].Msg)
+	require.Equal(t, "[skytime/log] v=abc", userMsgs[0].Msg)
 }
 
 // TestWalkLog_AttrsInsertionOrder — non-alphabetical attrs keys must
