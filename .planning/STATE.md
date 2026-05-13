@@ -4,7 +4,7 @@ milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
 stopped_at: Completed 07.4-04-PLAN.md (extbin collapse to 30 lines + teaching block migration to pkg/cli/doc.go)
-last_updated: "2026-05-13T14:20:15.872Z"
+last_updated: "2026-05-13T14:58:17.855Z"
 last_activity: 2026-05-13
 progress:
   total_phases: 7
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 ## Current Position
 
-Phase: 07.4 (extbin-consolidation-tech-debt-cleanup) — EXECUTING
-Plan: 5 of 5
+Phase: 7.5
+Plan: Not started
 Status: Ready to execute
 Last activity: 2026-05-13
 
