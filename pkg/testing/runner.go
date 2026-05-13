@@ -84,11 +84,12 @@ func WithOutput(w io.Writer) Option {
 }
 
 type runConfig struct {
-	exts       []extension.Extension
-	runPattern string
-	runRegex   *regexp.Regexp // compiled once at WithRunFilter() time
-	formatJSON bool           // true → emit cmd/test2json mirror
-	formatOut  io.Writer      // default os.Stdout (resolved at runOneFile)
+	exts        []extension.Extension
+	credHandler extension.CredentialHandler // Phase 7.4 CLI-10 — installed via WithCredentialHandler; nil = no handler (existing behavior)
+	runPattern  string
+	runRegex    *regexp.Regexp // compiled once at WithRunFilter() time
+	formatJSON  bool           // true → emit cmd/test2json mirror
+	formatOut   io.Writer      // default os.Stdout (resolved at runOneFile)
 }
 
 // Run is the Go-level foundation API for Phase 5's test harness
