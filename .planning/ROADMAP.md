@@ -34,7 +34,7 @@ Closes the two real gaps surfaced by Phase 6: no long-running worker mode (so Te
 - [x] **Phase 7.2.1: Structured logging step builtin** — `log.info / .warn / .error / .debug` Step types reusing `${ctx.expr}` interpolation, routed through `workflow.GetLogger`; retires the `print() or {...}` workaround (shipped 2026-05-12)
 - [ ] **Phase 7.3: Dashboard + manual trigger page** — Stdlib-only HTML dashboard (`net/http` + `html/template`); live workflow list, recent webhook deliveries ring buffer, manual trigger form sharing the same `executeFlow` code path as ingress
 - [ ] **Phase 7.4: extbin consolidation + tech debt cleanup** — `cli.WithCredfile` / `cli.WithBuildID` / `pkg/testing.WithCredentialHandler` options; collapse `extbin/main.go` to ≤30 lines; close v1.42.0 audit tech debt items
-- [ ] **Phase 7.5: Auth documentation** — Production cloud-native credential rotation patterns (WIF→GSM, IRSA→AWS Secrets Manager, Azure WI→Key Vault, mTLS reload-on-SIGHUP) in `docs/for-extension-developers/temporal-auth.md`
+- [x] **Phase 7.5: Auth documentation** — Production cloud-native credential rotation patterns (WIF→GSM, IRSA→AWS Secrets Manager, Azure WI→Key Vault, mTLS reload-on-SIGHUP) in `docs/for-extension-developers/temporal-auth.md` (shipped 2026-05-13)
 
 Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
 
@@ -196,8 +196,8 @@ Phases execute in numeric order: 7 → 7.1 / 7.2 (parallel) → 7.2.1 → 7.3 �
 | 7.2.1. Structured logging step | v1.43.0 | 5/5 | Complete | 2026-05-12 |
 | 7.3. Dashboard | v1.43.0 | 6/6 | Complete (awaiting /gsd:verify-work) | 2026-05-13 |
 | 7.4. extbin consolidation | v1.43.0 | 0/5 | Not started | — |
-| 7.5. Auth docs | v1.43.0 | 0/7 | Not started | — |
+| 7.5. Auth docs | v1.43.0 | 7/7 | Complete | 2026-05-13 |
 
 ---
 *Roadmap created: 2026-04-26*
-*Last updated: 2026-05-13 — Phase 7.4 plans created: 5 plans across 3 waves (CLI-08/09/10/11/12 + INTRP-03/04/05 checkbox flip + parse-only http.endpoint flow); ready for /gsd:execute-phase 07.4*
+*Last updated: 2026-05-13 — Phase 7.5 complete: 7 plans shipped (AUTH-01..04). `docs/for-extension-developers/temporal-auth.md` + standalone snippets module + drift-test + `snippets-build` CI step.*
