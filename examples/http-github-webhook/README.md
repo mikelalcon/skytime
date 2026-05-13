@@ -222,10 +222,19 @@ table and the actual DAG fails CI.
 | issue_triage | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (incidental) |
 | batch_label_issues | ✓ | ✓ |  | ✓ |  |  | ✓ | ✓ | ✓ |  |
 | weekly_digest | ✓ |  |  | ✓ | ✓ |  | ✓ |  | ✓ |  |
+| generic_http_check | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |
 
 Note: `issue_triage`'s `call_flow=✓` corresponds to the parsed top-level
 `issue_triage` flow, which calls `triage_issue` via `call_flow`. The
 subflow itself doesn't need its own row.
+
+Note: `generic_http_check` is a parse-only fixture (D-7.4-07) that
+exercises the bare `http.endpoint(...)` surface — a subset of
+`public_repo_check`'s primitive coverage, but routed through the
+generic HTTP extension instead of the higher-level `github` extension.
+Its purpose is to keep extension *registration* aligned with extension
+*usage*; the GitHub flows masked the raw `http.*` builtins behind
+`gh.*` ops, leaving HTTP registered-but-unused.
 
 ## Authenticated walkthrough
 
@@ -340,6 +349,20 @@ webhook URL.
 retries, credentials (`github_token` + `webhook_url`).
 
 → [`weekly_digest.star`](weekly_digest.star)
+
+### generic_http_check.star
+
+Parse-only fixture exercising the bare `http.endpoint(...)` surface
+(D-7.4-07). Probes a path via `HEAD`, scripts a small decision payload,
+then conditionally `GET`s the same path. Uses the generic HTTP
+extension (no GitHub-specific ops, no credentials), closing the
+v1.42.0 audit's "HTTP extension registered but unused" gap.
+
+**Demonstrates:** sequential step, `script`, `if_cond` (procedural mode),
+generic HTTP extension. No credentials. Parse-only — no live runtime
+test.
+
+→ [`generic_http_check.star`](generic_http_check.star)
 
 ## Running the tests
 

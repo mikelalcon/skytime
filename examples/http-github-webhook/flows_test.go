@@ -138,6 +138,16 @@ func TestFlows_CoverageMatrix(t *testing.T) {
 			"for_each_parallel": true,
 			"script":            true,
 		},
+		// D-7.4-07: parse-only flow exercising the bare http.endpoint surface.
+		// Subset coverage (script + step_seq + if_cond) — the other flows
+		// already cover step_block / step_block_fn / for_each_parallel /
+		// call_flow against the github extension. The point of this flow is
+		// to register http.* usage, not to reprise primitive coverage.
+		"generic_http_check": {
+			"script":   true,
+			"step_seq": true,
+			"if_cond":  true,
+		},
 	}
 
 	// Aggregate coverage across all flows MUST cover every DSL primitive
