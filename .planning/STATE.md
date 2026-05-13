@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 Phase: 7.4
 Plan: Not started
 Status: Phase ready for verification; next action `/gsd:verify-work` then transition to next phase
-Last activity: 2026-05-13
+Last activity: 2026-05-13 - Completed quick task 260512-w7c: fix Phase 04.1 interpolation lambda-ID collision (CI walkthrough_smoke now green)
 
 Progress: [██████████] 100%
 
@@ -446,6 +446,7 @@ None yet.
 | 260504-jtr | Make root `skytime` command print proper errors — render `Error:` + cobra usage block on unknown commands; `.star`-suffix args additionally get `did you mean: skytime run/validate <file>` hint. Replaces previous silent exit 1 from `skytime path/to/flow.star ...`. New `cli.RenderRootError` helper + `cli.ErrAlreadyRendered` exported alias of errSilent; D4-18 invariant preserved verbatim | 2026-05-04 | 25f99d8 | [260504-jtr-make-root-skytime-command-print-proper-e](./quick/260504-jtr-make-root-skytime-command-print-proper-e/) |
 | 260504-k9c | Add `skytime info <file.star>` subcommand — prints 3-column Flow/Description/Inputs table in source-declaration order via `text/tabwriter`; em-dash (U+2014) for empty cells; alphabetized inputs keys for determinism; new optional `description=` kwarg on `flow()` builtin → `*dag.Flow.Description string` (json `omitempty`); `Parser.FlowsInOrder()` accessor backed by `flowOrder []string`; `examples/skeleton/expression_if.star` annotated with descriptions on all three flows | 2026-05-04 | c0a4ce2 + 9b7989f + 7ed8edf | [260504-k9c-add-skytime-info-file-star-subcommand-de](./quick/260504-k9c-add-skytime-info-file-star-subcommand-de/) |
 | 260504-m65 | Upgrade `skytime info` table renderer from `text/tabwriter` to `charm.land/lipgloss/v2/table` — bordered Unicode-box-drawing table (rounded corners) with bold header via StyleFunc on `table.HeaderRow`. Behavioral contract preserved verbatim (em-dash sentinels, alphabetized input keys, declaration-order rows, exit-code semantics, parse-error stderr path). Library-root firewall extended: `charm.land/lipgloss/v2` added to forbidden list — pkg/cli is the SOLE library-side importer. `go.mod`: lipgloss/v2 v2.0.1 promoted indirect → direct | 2026-05-04 | b12338d + 406ee95 | [260504-m65-upgrade-skytime-info-table-to-charmbrace](./quick/260504-m65-upgrade-skytime-info-table-to-charmbrace/) |
+| 260512-w7c | Fix Phase 04.1 latent interpolation bug: multiple `${ctx.expr}` kwargs on the same action factory call collided on a single lambda ID (e.g., `gh.list_open_issues(owner="${ctx.rp.owner}", repo="${ctx.rp.repo}")` evaluated both kwargs to the same value). Thread a `disambiguator` parameter through `desugarInterpolation` → `captureLambdaAtPosition` so `desugarActionRefKwargs` passes the kwarg key, producing `<contenthash>:<line>:<col>:<key>` IDs. Five non-kwarg call sites pass `""` — back-compat preserved. Two regression tests added: parser-tier `TestInterpolation_MultiKwarg_DistinctLambdaIDs` + example-tier `TestPublicRepoCheck_KwargLambdasResolveDistinctly`. CI walkthrough_smoke (red on main since 2026-05-08) now passes | 2026-05-13 | 5b0af66 + 34ac83b + b34cb91 + 9e0e3e3 | [260512-w7c-fix-phase-04-1-interpolation-lambda-id-c](./quick/260512-w7c-fix-phase-04-1-interpolation-lambda-id-c/) |
 
 ### Roadmap Evolution
 
