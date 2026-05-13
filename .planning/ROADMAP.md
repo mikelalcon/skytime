@@ -148,7 +148,7 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
 - [ ] 07.4-02-PLAN.md — cli.WithBuildID Option + thread to worker.WorkerOptions.BuildID (CLI-09)
 - [ ] 07.4-03-PLAN.md — pkg/testing.WithCredentialHandler + NewFakeCredentialHandler; thread cfg.credHandler through pkg/cli/test.go (CLI-10, CLI-11)
 - [ ] 07.4-04-PLAN.md — Collapse extbin/main.go to ≤30 lines; move build-your-own-binary teaching block to pkg/cli/doc.go (CLI-12, D-7.4-13, D-7.4-14)
-- [ ] 07.4-05-PLAN.md — INTRP-03/04/05 checkbox flip + parse-only http.endpoint-using flow (D-7.4-06, D-7.4-07)
+- [x] 07.4-05-PLAN.md — INTRP-03/04/05 checkbox flip + parse-only http.endpoint-using flow (D-7.4-06, D-7.4-07)
 **UI hint**: no
 
 ### Phase 7.5: Auth documentation
