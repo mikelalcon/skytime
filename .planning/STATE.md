@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed Plan 07.3-04 (3/3 tasks); ready for Plan 07.3-05
-last_updated: "2026-05-13T00:14:12.436Z"
+stopped_at: "Plan 07.3-05 Tasks 1-3 complete; Task 4 checkpoint:human-verify pending"
+last_updated: "2026-05-13T00:29:21.839Z"
 last_activity: 2026-05-13
 progress:
   total_phases: 7
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 30
-  completed_plans: 29
+  completed_plans: 30
   percent: 100
 ---
 
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.3 (dashboard-manual-trigger-page) — EXECUTING
-Plan: 5 of 6
-Status: Ready to execute
+Plan: 5 of 6 — Tasks 1-3 complete; Task 4 (checkpoint:human-verify) pending
+Status: Awaiting final browser UAT approval before phase closes
 Last activity: 2026-05-13
 
 Progress: [██████████] 100%
@@ -139,6 +139,7 @@ Progress: [██████████] 100%
 | Phase 07.3-dashboard-manual-trigger-page P01 | 8m | 3 tasks | 6 files |
 | Phase 07.3 P04 | 12min (partial — Task 3 checkpoint pending) | 2 of 3 tasks tasks | 8 files files |
 | Phase 07.3 P04 | 20m | 3 tasks | 10 files |
+| Phase 07.3 P05 | 18min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -419,6 +420,8 @@ Recent decisions affecting current work:
 - [Phase 07.3]: RedactHeaders sanitizes header NAMES via RFC 7230 token regex (M4 XSS defense-in-depth) AND values via case-insensitive substring match — drops malformed names entirely
 - [Phase 07.3]: Open Q 4 Option A locked: receiver.Deps exposes optional DeliveryBuffer + OnDelivery (nil-safe; Phase 7.1 backward-compat preserved) instead of importing the events broadcaster directly
 - [Phase 07.3-dashboard-manual-trigger-page]: Open Q1 resolved: BuildWorkflowInput is the shared seam (Option 1) — 4 paths converge on flowlaunch, env.ExecuteWorkflow filtered out of firewall by qualifier name
+- [Phase 07.3]: m4 strict — TestServerCmd_DrainOnSIGTERM asserts literal event: shutdown frame before EOF (no permissive __closed__ fallback); catches B3 ordering regression mode
+- [Phase 07.3]: testListenerAddrFn seam — fires inside RunE after net.Listen succeeds and before listener_started hookStage; surfaces OS-resolved port to tests using --addr=127.0.0.1:0
 
 ### Pending Todos
 
@@ -449,6 +452,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-13T00:14:07.808Z
-Stopped at: Completed Plan 07.3-04 (3/3 tasks); ready for Plan 07.3-05
+Last session: 2026-05-13T00:29:09.414Z
+Stopped at: Plan 07.3-05 Tasks 1-3 complete; Task 4 checkpoint:human-verify pending
 Resume file: None

@@ -130,7 +130,7 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
 - [x] 07.3-02-PLAN.md — Webhook delivery ring buffer + source-agnostic header redaction (UI-02 backend); receiver.Deps gains DeliveryBuffer + OnDelivery (Open Q 4 Option A)
 - [x] 07.3-03-PLAN.md — Broadcaster (fan-out, drop-oldest, snapshot-under-lock per Pitfall 1) + workflow-list poller with replay heuristic (Open Q 2: --replay-history-threshold default 50)
 - [x] 07.3-04-PLAN.md — HTTP handlers + //go:embed template + SSE wiring + pkg/cli/server.go boot integration + 2 new CLI flags + first browser UAT checkpoint
-- [ ] 07.3-05-PLAN.md — docs/walkthroughs/dashboard.md (12 H2 sections) + dashboard-smoke.sh + extended TestServerCmd_DrainOnSIGTERM (SSE shutdown delivery) + headings firewall + final browser UAT
+- [x] 07.3-05-PLAN.md — docs/walkthroughs/dashboard.md (12 H2 sections) + dashboard-smoke.sh + extended TestServerCmd_DrainOnSIGTERM (SSE shutdown delivery) + headings firewall + final browser UAT
 **UI hint**: yes
 
 ### Phase 7.4: extbin consolidation + tech debt cleanup
@@ -182,7 +182,7 @@ Phases execute in numeric order: 7 → 7.1 / 7.2 (parallel) → 7.2.1 → 7.3 �
 | 7.1. HTTP webhook receiver | v1.43.0 | 0/8 | Not started | — |
 | 7.2. Cron triggers | v1.43.0 | 4/4 | Complete | 2026-05-11 |
 | 7.2.1. Structured logging step | v1.43.0 | 5/5 | Complete | 2026-05-12 |
-| 7.3. Dashboard | v1.43.0 | 5/6 | Executing | — |
+| 7.3. Dashboard | v1.43.0 | 6/6 | Awaiting final UAT | — |
 | 7.4. extbin consolidation | v1.43.0 | 0/TBD | Not started | — |
 | 7.5. Auth docs | v1.43.0 | 0/TBD | Not started | — |
 
