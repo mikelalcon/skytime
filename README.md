@@ -31,6 +31,7 @@ Temporal's retry/timeout/child-workflow guarantees.
 - Embedded HTTP extension; example GitHub + Webhook extensions in `examples/http-github-webhook/`; bring-your-own for everything else
 - Bazel-style colored CLI: `skytime run --flow=... --input=...` streams progress live; multi-line block on TTY, static line-per-event under `--verbose`
 - Expression-mode `if_cond` with strict-equality result-binding (Phase 04.2 — the most distinctive parse-time type system feature)
+- Long-lived `skytime server` (Phase 7): drain-on-SIGTERM Temporal worker + HTTP webhook receiver + cron triggers via Temporal Schedules + a stdlib-only teaching dashboard at `GET /` with live workflow list, recent webhook deliveries, and a manual trigger form — see [`docs/walkthroughs/dashboard.md`](docs/walkthroughs/dashboard.md)
 
 ## What This Is Not
 
@@ -38,7 +39,7 @@ Temporal's retry/timeout/child-workflow guarantees.
 - Not a CEL/JSONPath/Jinja replacement. Lambdas only — runtime template engines are explicitly forbidden (parser-time syntactic sugar like `${ctx.expr}` is permitted, see [docs/architecture.md](docs/architecture.md#no-string-compilation)).
 - Not a Temporal alternative. Skytime sits ON TOP of Temporal; you still need a Temporal cluster (cloud or self-hosted; `skytime dev-temporal` for local).
 - Not a workflow versioning helper. Use Temporal's Build IDs + content-addressed flows; Skytime-specific versioning is out of scope for v1.
-- Not a Web UI. Temporal's UI is sufficient for v1.
+- Not a production observability UI. A minimal teaching dashboard ships with `skytime server` so the durability story is visually demoable (workflow list + webhook deliveries + manual trigger; stdlib `net/http` + `html/template` only); production observability lives in the Temporal Web UI.
 - Not Starlark-the-language with full Python compatibility — `lambda` and `def` are usable; some stdlib (time, random, I/O) is NOT in the lambda-time predeclared environment.
 - Not Tier 2 (Starlark unit tests) in v1. Tier 1 (static validation) and Tier 3 (E2E with `temporal_test`) ship in v1; pure-Starlark unit testing of `def` blocks moves to v2.
 
@@ -362,6 +363,12 @@ Where to go next depends on what you want to do:
   (HTTP + GitHub + Webhook), five `.star` flows covering every DSL
   primitive, a Tier-3 test, and the canonical `cmd/extbin` custom
   binary. From `git clone` to a real workflow run in under five commands.
+- **See the durability story in a browser** —
+  [`docs/walkthroughs/dashboard.md`](docs/walkthroughs/dashboard.md)
+  spins up `skytime server`, fires a webhook, triggers a workflow
+  manually from the dashboard form, and walks a crash-recovery demo
+  with live updates over Server-Sent Events. Stdlib only — no JS
+  framework, no external CSS, no bundler.
 - **Write a flow yourself** —
   [`docs/for-flow-authors/README.md`](docs/for-flow-authors/README.md)
   is the landing page for flow authors composing extensions.

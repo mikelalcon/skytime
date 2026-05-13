@@ -182,10 +182,10 @@ Phases execute in numeric order: 7 → 7.1 / 7.2 (parallel) → 7.2.1 → 7.3 �
 | 7.1. HTTP webhook receiver | v1.43.0 | 0/8 | Not started | — |
 | 7.2. Cron triggers | v1.43.0 | 4/4 | Complete | 2026-05-11 |
 | 7.2.1. Structured logging step | v1.43.0 | 5/5 | Complete | 2026-05-12 |
-| 7.3. Dashboard | v1.43.0 | 6/6 | Awaiting final UAT | — |
+| 7.3. Dashboard | v1.43.0 | 6/6 | Complete (awaiting /gsd:verify-work) | 2026-05-13 |
 | 7.4. extbin consolidation | v1.43.0 | 0/TBD | Not started | — |
 | 7.5. Auth docs | v1.43.0 | 0/TBD | Not started | — |
 
 ---
 *Roadmap created: 2026-04-26*
-*Last updated: 2026-05-13 — Phase 7.3 Plan 04 complete (dashboard wiring + manual trigger + B3/B4/M1/M2/M3 closure; browser UAT approved); 5/6 Phase 7.3 plans done, Plan 05 (walkthrough doc + strict SSE-shutdown assertion) remaining*
+*Last updated: 2026-05-13 — Phase 7.3 COMPLETE: Plan 05 (walkthrough doc + dashboard-smoke.sh + strict SSE-shutdown assertion + headings firewall) shipped and browser UAT approved; all 6 plans done; phase ready for /gsd:verify-work + README updated to surface the dashboard*
