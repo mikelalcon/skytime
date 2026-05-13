@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,136 +8,18 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/mikelalcon/skytime/pkg/extension"
 )
-
-// TestLazyCredfileHandler_DoesNotTouchFileAtConstruction asserts that
-// constructing the handler with a missing-file path does NOT trigger
-// credfile.New() — verified by checking the file STILL does not exist
-// after construction (proves no os.Open / os.Stat in the constructor).
-//
-// This is the "headline demo needs no credentials" guarantee: the
-// public_repo_check.star path must not fail at startup if the user
-// hasn't set up ~/.skytime-credentials yet.
-func TestLazyCredfileHandler_DoesNotTouchFileAtConstruction(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, ".skytime-credentials") // intentionally NOT created
-
-	h := newLazyCredfileHandler(path)
-	require.NotNil(t, h)
-	assert.Equal(t, path, h.path)
-
-	// The load-bearing assertion: the constructor did not touch the file.
-	// If it had called credfile.New(), os.Stat inside credfile.New would
-	// have surfaced the missing-file error and the construction would
-	// have either created/opened the file or reported the error. Neither
-	// happened.
-	_, statErr := os.Stat(path)
-	assert.True(t, os.IsNotExist(statErr),
-		"constructor must NOT touch/open/create the credfile; expected IsNotExist, got: %v", statErr)
-}
-
-// TestLazyCredfileHandler_FirstResolveSurfacesMissingFile asserts the
-// user-recovery hint is present on the error message and the error is
-// cached (idempotent across multiple Resolve calls).
-func TestLazyCredfileHandler_FirstResolveSurfacesMissingFile(t *testing.T) {
-	h := newLazyCredfileHandler("/no/such/credfile/exists")
-	ctx := context.Background()
-
-	_, err1 := h.Resolve(ctx, "x")
-	require.Error(t, err1)
-	assert.Contains(t, err1.Error(), "credfile")
-	assert.Contains(t, err1.Error(), "SKYTIME_CREDFILE_PATH")
-	assert.Contains(t, err1.Error(), ".skytime-credentials.example")
-
-	_, err2 := h.Resolve(ctx, "y")
-	require.Error(t, err2)
-	// Second call must surface the SAME error (Once cached the failure).
-	assert.Equal(t, err1.Error(), err2.Error())
-}
-
-// TestLazyCredfileHandler_HappyPathWithRealFile asserts that when the
-// credfile DOES exist and contains a valid bearer entry, Resolve
-// returns the BearerCredential. Also verifies that an unknown ID still
-// surfaces extension.ErrUnknownCredential after first construction
-// (i.e. the cache holds the resolver, not just the error).
-func TestLazyCredfileHandler_HappyPathWithRealFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, ".skytime-credentials")
-	require.NoError(t, os.WriteFile(path, []byte(`
-[credentials.github_token]
-type  = "bearer"
-token = "test-pat"
-`), 0o600))
-
-	h := newLazyCredfileHandler(path)
-	cred, err := h.Resolve(context.Background(), "github_token")
-	require.NoError(t, err)
-	bearer, ok := cred.(*extension.BearerCredential)
-	require.True(t, ok)
-	assert.Equal(t, "github_token", bearer.ID())
-	assert.Equal(t, "test-pat", bearer.Token.Reveal())
-
-	// Unknown ID still returns ErrUnknownCredential after first
-	// construction — proves the cached resolver is reused, not just the
-	// first-call error path.
-	_, err = h.Resolve(context.Background(), "missing")
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, extension.ErrUnknownCredential))
-}
-
-// TestLazyCredfileHandler_SetCredfilePath_OverridesBeforeInit asserts
-// that SetCredfilePath replaces the construction-time path when called
-// before any Resolve(). Resolve then uses the new path.
-func TestLazyCredfileHandler_SetCredfilePath_OverridesBeforeInit(t *testing.T) {
-	dir := t.TempDir()
-	overridePath := filepath.Join(dir, ".skytime-credentials")
-	require.NoError(t, os.WriteFile(overridePath, []byte(`
-[credentials.github_token]
-type  = "bearer"
-token = "override-pat"
-`), 0o600))
-
-	h := newLazyCredfileHandler("/no/such/path")
-	require.NoError(t, h.SetCredfilePath(overridePath))
-
-	cred, err := h.Resolve(context.Background(), "github_token")
-	require.NoError(t, err)
-	bearer, ok := cred.(*extension.BearerCredential)
-	require.True(t, ok)
-	assert.Equal(t, "override-pat", bearer.Token.Reveal())
-}
-
-// TestLazyCredfileHandler_SetCredfilePath_ErrorsAfterInit asserts that
-// SetCredfilePath refuses to mutate the path once Resolve has fired the
-// underlying resolver. This guards against silent split-brain (early
-// callers see one credfile, later callers see another).
-func TestLazyCredfileHandler_SetCredfilePath_ErrorsAfterInit(t *testing.T) {
-	h := newLazyCredfileHandler("/no/such/path")
-	_, _ = h.Resolve(context.Background(), "x") // fires the init
-
-	err := h.SetCredfilePath("/some/other/path")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "already initialized")
-}
-
-// TestLazyCredfileHandler_SatisfiesServerCmdCapability asserts that
-// *lazyCredfileHandler implements the anonymous interface
-// pkg/cli/server.go type-asserts against for --credfile path override.
-// If this test ever fails it means a refactor accidentally dropped the
-// SetCredfilePath method and --credfile would silently no-op again.
-func TestLazyCredfileHandler_SatisfiesServerCmdCapability(t *testing.T) {
-	type pathSetter interface {
-		SetCredfilePath(string) error
-	}
-	var _ pathSetter = (*lazyCredfileHandler)(nil)
-}
 
 // TestExtbin_BuildsAndShowsHelp is the subprocess smoke. Builds the
 // binary in a temp dir, runs `--help`, asserts the four inherited
 // subcommand names are listed. This test takes a few seconds due to
 // the `go build` step; mark it short-skippable for tight inner loops.
+//
+// Per D-7.4-15 the lazy-credfile-handler tests have moved to
+// pkg/cli/credfile_test.go (alongside the lifted handler implementation).
+// What remains here is extbin-specific subprocess wiring — the help
+// subcommand list is the single user-visible behavior unique to this
+// binary's compose-and-build shape.
 func TestExtbin_BuildsAndShowsHelp(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping subprocess build smoke in -short")
