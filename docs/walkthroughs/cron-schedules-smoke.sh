@@ -189,9 +189,9 @@ echo "[smoke] schedule visible in 'temporal schedule list'"
 #
 # Poll the server log directly for `flow_start flow_name=smoke_cron`.
 # This is more reliable than `temporal workflow list` because the
-# dev-server's visibility store can lag by several seconds and may
-# paginate historical runs off the visible page when the namespace
-# is crowded.
+# Temporal dev server's visibility store can lag by several seconds
+# and may paginate historical runs off the visible page when the
+# namespace is crowded.
 echo "[smoke] waiting up to 80s for the cron to fire..."
 FIRED=""
 for i in {1..80}; do
