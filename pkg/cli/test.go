@@ -53,6 +53,16 @@ func newTestCommand(cfg *config) *cobra.Command {
 				testingpkg.WithExtensions(cfg.exts...),
 				testingpkg.WithOutput(cmd.OutOrStdout()),
 			}
+			// CLI-11: thread the binary's CredentialHandler so `skytime test`
+			// uses the same Resolve() path as `run`/`validate`/`server`.
+			// Nil-guarded: don't install a nil handler when the binary was
+			// built without WithCredentialHandler / WithCredfile (existing
+			// behavior preserved — tests that don't touch credentials still
+			// work). D-7.4-12: two-field thread (exts + credHandler), not
+			// a whole-cfg snapshot.
+			if cfg.credHandler != nil {
+				opts = append(opts, testingpkg.WithCredentialHandler(cfg.credHandler))
+			}
 			if runPattern != "" {
 				opts = append(opts, testingpkg.WithRunFilter(runPattern))
 			}

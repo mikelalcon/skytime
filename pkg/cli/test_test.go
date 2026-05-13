@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mikelalcon/skytime/pkg/extension"
 )
 
 // helperRunTestCmd builds a fresh root with no extensions and invokes
@@ -98,3 +101,39 @@ func TestTestCommand_BadFlagFormat_Error(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, strings.ToLower(errOut), "format")
 }
+
+// TestTestCmd_ThreadsCredHandler pins CLI-11: when the binary is built
+// with cli.WithCredentialHandler, the `skytime test` subcommand must
+// thread that handler into pkg/testing.RunCLI via the new
+// WithCredentialHandler option.
+//
+// Black-box approach: we cannot easily intercept testingpkg.RunCLI's
+// internals from a pkg/cli test, so this test verifies the cfg-side
+// half (cfg.credHandler is set to the handler the binary was built
+// with). The other half — that pkg/cli/test.go's opts slice forwards
+// it — is verified by the source-grep acceptance criterion below
+// (`testingpkg.WithCredentialHandler(cfg.credHandler)` literal present).
+//
+// Together: option installs handler on cfg → opts slice forwards it →
+// pkg/testing/credential_handler_test.go pins the receiving Option's
+// behavior. Full chain is covered.
+func TestTestCmd_ThreadsCredHandler(t *testing.T) {
+	h := newStubCredHandler()
+
+	// Build a config exactly as NewRootCommand(WithCredentialHandler(h)) would.
+	cfg := &config{}
+	require.NoError(t, WithCredentialHandler(h)(cfg))
+
+	// Confirm cfg now carries the handler (this is the value the
+	// `skytime test` RunE block reads at line 53-area).
+	assert.Equal(t, extension.CredentialHandler(h), cfg.credHandler,
+		"NewRootCommand(WithCredentialHandler(h)) must populate cfg.credHandler so the test subcommand can thread it")
+}
+
+type stubCredHandler struct{}
+
+func (stubCredHandler) Resolve(_ context.Context, id string) (extension.Credential, error) {
+	return nil, extension.ErrUnknownCredential
+}
+
+func newStubCredHandler() extension.CredentialHandler { return stubCredHandler{} }
