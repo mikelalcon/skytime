@@ -75,9 +75,12 @@ done
 # Quick Start step 4 BYTE-FOR-BYTE (modulo cwd: the README runs from the
 # example dir, this script runs from the repo root).
 echo "==> Running public_repo_check.star against api.github.com (octocat/Hello-World)"
+# Capture stderr too: the renderer (pkg/cli/run.go:88) prints progress lines
+# (incl. the `flow complete` terminator) to stderr; only the JSON result goes
+# to stdout. Without 2>&1 the grep below can never match.
 output=$("$EXTBIN" run examples/http-github-webhook/public_repo_check.star \
     --flow public_repo_check \
-    --input '{"repo":"octocat/Hello-World"}')
+    --input '{"repo":"octocat/Hello-World"}' 2>&1)
 
 echo "----- extbin run output -----"
 echo "$output"
@@ -91,7 +94,7 @@ echo "==> [m13 sanity] Re-running from inside examples/http-github-webhook/ (mir
 pushd "$REPO_ROOT/examples/http-github-webhook" >/dev/null
 output_relative=$("$EXTBIN" run public_repo_check.star \
     --flow public_repo_check \
-    --input '{"repo":"octocat/Hello-World"}')
+    --input '{"repo":"octocat/Hello-World"}' 2>&1)
 popd >/dev/null
 echo "----- relative-path run output -----"
 echo "$output_relative"
