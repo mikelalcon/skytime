@@ -108,6 +108,7 @@ func newRunCommand(cfg *config) *cobra.Command {
 			}
 			w, err := worker.NewWorker(c, worker.WorkerOptions{
 				RootDir:           filepath.Dir(file),
+				BuildID:           cfg.buildID, // CLI-09: empty → worker.defaultBuildID via applyDefaults
 				Extensions:        cfg.exts,
 				CredentialHandler: cfg.credHandler,
 				Logger:            cfg.sdkLogger,

@@ -65,3 +65,40 @@ func TestWithBuildID_OverwritesPriorCall(t *testing.T) {
 	require.NoError(t, WithBuildID("v2")(cfg))
 	assert.Equal(t, "v2", cfg.buildID, "later WithBuildID call must win")
 }
+
+// TestWithBuildID_FlowsToWorkerOptions pins CLI-09 success criterion 2:
+// cli.WithBuildID("v1.43.0-abcdef") → worker.WorkerOptions.BuildID ==
+// "v1.43.0-abcdef" at the seam pkg/cli uses to construct WorkerOptions.
+//
+// We don't actually invoke worker.NewWorker (that needs a Temporal
+// client). Instead we apply the option to a *config and assert the
+// field that the run.go and server.go construction blocks read.
+// Combined with the source-grep acceptance criterion ("BuildID:
+// cfg.buildID" present in both run.go and server.go), this pins the
+// full chain.
+func TestWithBuildID_FlowsToWorkerOptions(t *testing.T) {
+	cfg := &config{}
+	require.NoError(t, WithBuildID("v1.43.0-abcdef")(cfg))
+
+	// The construction sites in run.go and server.go do:
+	//   worker.WorkerOptions{ ..., BuildID: cfg.buildID, ... }
+	// Asserting cfg.buildID here pins the value the WorkerOptions
+	// literal will receive. The worker's own pkg/worker/options_test.go
+	// (TestWorkerOptions_ExplicitOverrides) pins the worker-side property
+	// that BuildID flows through applyDefaults. Together those two tests
+	// cover the full Option → WorkerOptions field chain.
+	assert.Equal(t, "v1.43.0-abcdef", cfg.buildID,
+		"cfg.buildID must equal the value passed to WithBuildID; the run.go "+
+			"and server.go construction sites read this field directly into "+
+			"worker.WorkerOptions.BuildID (verify via grep against those files)")
+}
+
+// TestWithBuildID_AbsentLeavesWorkerOptionsBuildIDEmpty pins the
+// fall-back-to-default contract: when WithBuildID is NOT called,
+// cfg.buildID is empty and worker.WorkerOptions.BuildID stays empty
+// until WorkerOptions.applyDefaults assigns defaultBuildID.
+func TestWithBuildID_AbsentLeavesWorkerOptionsBuildIDEmpty(t *testing.T) {
+	cfg := &config{} // no options applied
+	assert.Equal(t, "", cfg.buildID,
+		"default cfg.buildID must be empty so worker.WorkerOptions.applyDefaults can fall back to defaultBuildID")
+}

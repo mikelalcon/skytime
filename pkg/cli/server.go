@@ -180,6 +180,7 @@ func newServerCommand(cfg *config) *cobra.Command {
 			//    worker.WithSDKFactory(fakeFactory) here (D-7.1-13).
 			w, err := worker.NewWorker(c, worker.WorkerOptions{
 				RootDir:           rootdir,
+				BuildID:           cfg.buildID, // CLI-09: empty → worker.defaultBuildID via applyDefaults
 				TaskQueue:         taskQueue,
 				Extensions:        cfg.exts,
 				CredentialHandler: cfg.credHandler,
