@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.4-01-PLAN.md (parallel wave 1)
-last_updated: "2026-05-13T14:04:55.866Z"
+stopped_at: Completed 07.4-02-PLAN.md (WithBuildID Option + WorkerOptions threading)
+last_updated: "2026-05-13T14:12:02.255Z"
 last_activity: 2026-05-13
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 35
-  completed_plans: 33
+  completed_plans: 34
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.4 (extbin-consolidation-tech-debt-cleanup) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-05-13
 
@@ -145,6 +145,7 @@ Progress: [██████████] 100%
 | Phase 07.4 P05 | 5min | 3 tasks | 4 files |
 | Phase 07.4-extbin-consolidation-tech-debt-cleanup P03 | 5min | 3 tasks | 5 files |
 | Phase 07.4 P01 | 7min | 3 tasks | 6 files |
+| Phase 07.4 P02 | 3m | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -435,6 +436,9 @@ Recent decisions affecting current work:
 - [Phase 07.4]: Plan 01: WithCredfile declaration in options.go (D-7.4-04 LOCKED) + ~120-line implementation in pkg/cli/credfile.go; declaration body is one-line delegate to newCredfileHandler
 - [Phase 07.4]: Plan 01: applyCredfileFlag helper consolidates per-subcommand --credfile boilerplate (D-7.4-03 spirit); server.go and cron_plan.go each shrink from ~9 lines of inline type-assertion + friendly errors to a 3-line call site
 - [Phase 07.4]: Plan 01: 4-step resolution chain owned by credfileHandler — --credfile flag > SKYTIME_CREDFILE_PATH > WithCredfile(arg) > $HOME/.skytime-credentials; lazy init preserved (credfile.New called only on first Resolve under mutex)
+- [Phase 07.4]: WithBuildID closure does zero validation (empty string accepted as no-op) — matches WithExtensions/WithCredentialHandler precedent so callers safely pass os.Getenv("BUILD_ID") without guarding
+- [Phase 07.4]: WithBuildID inserted between WithExtensions and WithCredentialHandler in options.go (groups plain-config Options at the top, separating from test-seam WithScheduleClientFactory and convenience-wrapper WithCredfile)
+- [Phase 07.4]: UseBuildIDVersioning explicitly NOT touched in run.go/server.go — preserves the OPT-IN contract (production deployers register Build ID compatibility set on task queue first, THEN flip versioning manually)
 
 ### Pending Todos
 
@@ -466,6 +470,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-13T14:04:55.861Z
-Stopped at: Completed 07.4-01-PLAN.md (parallel wave 1)
+Last session: 2026-05-13T14:12:02.250Z
+Stopped at: Completed 07.4-02-PLAN.md (WithBuildID Option + WorkerOptions threading)
 Resume file: None
