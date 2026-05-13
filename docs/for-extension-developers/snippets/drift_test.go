@@ -32,6 +32,7 @@ func TestMarkdownSnippetDrift(t *testing.T) {
 		{"<!-- snippet: gcp.go -->", "gcp.go"},
 		{"<!-- snippet: aws.go -->", "aws.go"},
 		{"<!-- snippet: azure.go -->", "azure.go"},
+		{"<!-- snippet: mtls.go -->", "mtls.go"},
 	}
 
 	mdBytes, err := os.ReadFile(filepath.Join("..", "temporal-auth.md"))
