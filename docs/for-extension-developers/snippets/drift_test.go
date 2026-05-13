@@ -30,6 +30,7 @@ func TestMarkdownSnippetDrift(t *testing.T) {
 		// Wave 2 plans append rows here. Each row pairs a markdown
 		// fence marker with a .go file in this directory.
 		{"<!-- snippet: gcp.go -->", "gcp.go"},
+		{"<!-- snippet: aws.go -->", "aws.go"},
 	}
 
 	mdBytes, err := os.ReadFile(filepath.Join("..", "temporal-auth.md"))
