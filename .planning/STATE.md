@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.4-02-PLAN.md (WithBuildID Option + WorkerOptions threading)
-last_updated: "2026-05-13T14:12:02.255Z"
+stopped_at: Completed 07.4-04-PLAN.md (extbin collapse to 30 lines + teaching block migration to pkg/cli/doc.go)
+last_updated: "2026-05-13T14:20:15.872Z"
 last_activity: 2026-05-13
 progress:
   total_phases: 7
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 35
-  completed_plans: 34
+  completed_plans: 35
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.4 (extbin-consolidation-tech-debt-cleanup) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-05-13
 
@@ -146,6 +146,7 @@ Progress: [██████████] 100%
 | Phase 07.4-extbin-consolidation-tech-debt-cleanup P03 | 5min | 3 tasks | 5 files |
 | Phase 07.4 P01 | 7min | 3 tasks | 6 files |
 | Phase 07.4 P02 | 3m | 2 tasks | 4 files |
+| Phase 07.4 P04 | 5min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -439,6 +440,9 @@ Recent decisions affecting current work:
 - [Phase 07.4]: WithBuildID closure does zero validation (empty string accepted as no-op) — matches WithExtensions/WithCredentialHandler precedent so callers safely pass os.Getenv("BUILD_ID") without guarding
 - [Phase 07.4]: WithBuildID inserted between WithExtensions and WithCredentialHandler in options.go (groups plain-config Options at the top, separating from test-seam WithScheduleClientFactory and convenience-wrapper WithCredfile)
 - [Phase 07.4]: UseBuildIDVersioning explicitly NOT touched in run.go/server.go — preserves the OPT-IN contract (production deployers register Build ID compatibility set on task queue first, THEN flip versioning manually)
+- [Phase 07.4]: Plan 04: WithBuildID OMITTED from extbin per D-7.4-13 line budget (allowed by plan); teaching block at pkg/cli/doc.go documents the full Option surface so library users discover it via godoc, the example just doesn't exercise the third Option
+- [Phase 07.4]: Plan 04: Library teaching block belongs on the library package, not the example (D-7.4-14): pkg/cli/doc.go is the canonical 'build your own binary' godoc home; example binaries become thin reference implementations that point AT the godoc
+- [Phase 07.4]: Plan 04: Verbatim ≤N-line file-budget collapse strategies in priority order: 1) compress doc-comment to one line, 2) collapse function call into single line if gofmt accepts, 3) drop blank-line separators within a single import group. AVOID helper closures (they grow files, not shrink)
 
 ### Pending Todos
 
@@ -470,6 +474,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-13T14:12:02.250Z
-Stopped at: Completed 07.4-02-PLAN.md (WithBuildID Option + WorkerOptions threading)
+Last session: 2026-05-13T14:20:15.868Z
+Stopped at: Completed 07.4-04-PLAN.md (extbin collapse to 30 lines + teaching block migration to pkg/cli/doc.go)
 Resume file: None
