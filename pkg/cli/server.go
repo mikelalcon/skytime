@@ -59,6 +59,14 @@ var testForceExit = func(code int) { os.Exit(code) }
 // seam wiring is the only late addition.
 var testWorkerOptions []worker.Option
 
+// testListenerAddrFn is the package-private test seam for surfacing the
+// actual listener address (after net.Listen resolves "127.0.0.1:0" to a
+// concrete free port) to tests that need to make HTTP requests against
+// the live server. Production: nil. Tests assign to capture the bound
+// addr so http.Get("http://"+addr+"/api/events") can target the right
+// port — Phase 07.3 Plan 05 strict SSE-shutdown-frame assertion.
+var testListenerAddrFn func(addr string)
+
 // hookStage is a nil-safe wrapper around testDrainHook.
 func hookStage(stage string) {
 	if testDrainHook != nil {
@@ -318,6 +326,13 @@ func newServerCommand(cfg *config) *cobra.Command {
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "listener bind %s: %s\n", addr, err.Error())
 				return errSilent
+			}
+			// Surface the resolved addr to tests that pass --addr=127.0.0.1:0
+			// and need to dial the live server. Fires AFTER bind succeeds
+			// and BEFORE the listener goroutine begins serving so the test
+			// always sees a concrete addr it can dial.
+			if testListenerAddrFn != nil {
+				testListenerAddrFn(ln.Addr().String())
 			}
 
 			// 11. D-7.1-12 HTTP server defaults. Body-size limit (25MB)

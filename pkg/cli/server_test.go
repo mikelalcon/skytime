@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -341,6 +343,18 @@ func (nopCredHandler) Resolve(_ context.Context, _ string) (extension.Credential
 // (worker_started → listener_started → signal_received →
 // listener_shutdown_started → listener_shutdown_complete → drain_started
 // → drain_completed).
+//
+// Phase 07.3 Plan 05 Task 2 (m4 + B3 strict): the test now also subscribes
+// to /api/events in a goroutine BEFORE sending SIGTERM, asserts the first
+// SSE frame is `event: snapshot`, and asserts a literal `event: shutdown`
+// frame arrives on the SSE response stream BEFORE EOF after SIGTERM is
+// dispatched. The earlier permissive `OR __closed__` clause is removed —
+// a connection close without a shutdown frame is an EXPLICIT FAILURE
+// pointing at D-7.3-07 (shutdown lifecycle) and B3 (the
+// webResult.Shutdown() BEFORE srv.Shutdown(drainCtx) ordering). If a
+// future commit re-orders the shutdown so srv.Shutdown cancels request
+// contexts BEFORE the broadcaster publishes the shutdown event, this
+// test fails loudly instead of silently passing.
 func TestServerCmd_DrainOnSIGTERM(t *testing.T) {
 	installFakeClientFactory(t)
 
@@ -348,6 +362,25 @@ func TestServerCmd_DrainOnSIGTERM(t *testing.T) {
 	prevHook := testDrainHook
 	testDrainHook = rec.record
 	t.Cleanup(func() { testDrainHook = prevHook })
+
+	// Phase 07.3 Plan 05 m4: capture the actual listener addr (since we
+	// pass --addr=127.0.0.1:0 the OS resolves to a free port). Tests
+	// dial this addr to subscribe to /api/events for the strict SSE
+	// shutdown-frame assertion.
+	var listenerAddr string
+	var listenerAddrMu sync.Mutex
+	listenerAddrCh := make(chan string, 1)
+	prevListenerFn := testListenerAddrFn
+	testListenerAddrFn = func(addr string) {
+		listenerAddrMu.Lock()
+		listenerAddr = addr
+		listenerAddrMu.Unlock()
+		select {
+		case listenerAddrCh <- addr:
+		default:
+		}
+	}
+	t.Cleanup(func() { testListenerAddrFn = prevListenerFn })
 
 	var forceExitCalls int
 	var forceExitMu sync.Mutex
@@ -381,6 +414,67 @@ func TestServerCmd_DrainOnSIGTERM(t *testing.T) {
 	require.True(t, rec.waitFor("listener_started", 5*time.Second),
 		"listener_started must be recorded before sending SIGTERM")
 
+	// Pull the resolved listener addr (set inside server.go right
+	// after net.Listen succeeds, BEFORE listener_started fires — so
+	// it's always available by the time we get here).
+	var addr string
+	select {
+	case addr = <-listenerAddrCh:
+	default:
+		listenerAddrMu.Lock()
+		addr = listenerAddr
+		listenerAddrMu.Unlock()
+	}
+	require.NotEmpty(t, addr, "listener addr must be captured via testListenerAddrFn before SIGTERM")
+
+	// Phase 07.3 Plan 05 m4 (D-7.3-07 + B3): subscribe a fake browser
+	// to /api/events BEFORE dispatching SIGTERM. The handler writes
+	// `event: snapshot\ndata: ...\n\n` immediately on connect; then
+	// when the broadcaster closes the subscriber channel during
+	// shutdown, the handler writes a final `event: shutdown\n\n` frame
+	// and returns cleanly.
+	sseCtx, cancelSSE := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancelSSE)
+	sseReq, err := http.NewRequestWithContext(sseCtx, http.MethodGet, "http://"+addr+"/api/events", nil)
+	require.NoError(t, err)
+	sseResp, err := http.DefaultClient.Do(sseReq)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sseResp.Body.Close() })
+
+	// Scan the response body line-by-line; forward `event: <name>`
+	// values into a channel for the assertion loop. Send a sentinel
+	// `__closed__` on EOF (or any read error / EOF on connection close).
+	sseEvents := make(chan string, 16)
+	go func() {
+		defer func() {
+			select {
+			case sseEvents <- "__closed__":
+			case <-sseCtx.Done():
+			}
+		}()
+		scanner := bufio.NewScanner(sseResp.Body)
+		scanner.Buffer(make([]byte, 64*1024), 1<<20)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "event: ") {
+				name := strings.TrimPrefix(line, "event: ")
+				select {
+				case sseEvents <- name:
+				case <-sseCtx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	// Assert the first SSE frame is `event: snapshot` (D-7.3-05 spec).
+	select {
+	case ev := <-sseEvents:
+		require.Equal(t, "snapshot", ev, "first SSE event must be snapshot per D-7.3-05")
+	case <-time.After(2 * time.Second):
+		t.Fatal("did not receive snapshot SSE event within 2s of /api/events connect")
+	}
+
 	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
 
 	// Wait for drain_completed.
@@ -407,8 +501,39 @@ func TestServerCmd_DrainOnSIGTERM(t *testing.T) {
 	}, stages, "exact 7-stage sequence for clean drain (Plan 06 adds 3 listener stages)")
 
 	forceExitMu.Lock()
-	defer forceExitMu.Unlock()
 	assert.Zero(t, forceExitCalls, "testForceExit must NOT be called on clean drain")
+	forceExitMu.Unlock()
+
+	// Phase 07.3 Plan 05 m4 (D-7.3-07 + B3 STRICT): assert the SSE
+	// stream observed a literal `event: shutdown` frame BEFORE EOF.
+	// The permissive `OR __closed__` clause from earlier drafts is
+	// REMOVED — a connection close without a shutdown frame is an
+	// explicit FAIL pointing at the B3 ordering regression mode
+	// (srv.Shutdown(drainCtx) running BEFORE webResult.Shutdown()
+	// would cancel SSE request contexts before the broadcaster could
+	// publish the final frame).
+	var sawShutdownFrame bool
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && !sawShutdownFrame {
+		select {
+		case ev := <-sseEvents:
+			if ev == "shutdown" {
+				sawShutdownFrame = true
+			}
+			if ev == "__closed__" {
+				// Connection closed without ever seeing `shutdown` —
+				// this is the B3 regression mode. Fail with a
+				// diagnostic naming D-7.3-07 + B3.
+				require.Fail(t,
+					"SSE connection closed without 'event: shutdown' frame",
+					"D-7.3-07 + B3 strict (Phase 07.3 m4): webResult.Shutdown() MUST run BEFORE srv.Shutdown(drainCtx) so the broadcaster publishes the shutdown event WHILE the listener is still alive. If you see this failure, check pkg/cli/server.go shutdown ordering: grep -n 'webResult.Shutdown\\|srv.Shutdown' pkg/cli/server.go must show webResult first.")
+				return
+			}
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	require.True(t, sawShutdownFrame,
+		"SSE subscriber did not observe an 'event: shutdown' frame within 5s after SIGTERM — D-7.3-07 + B3 strict (Phase 07.3 m4): expected `event: shutdown` before EOF, but neither shutdown nor close arrived. Likely cause: broadcaster never closes the subscriber channel, or the SSE handler exits via a different code path than the closed-channel branch in handlers.go.")
 }
 
 // TestServerCmd_DrainTimeoutExpiry: --drain-timeout fires before
