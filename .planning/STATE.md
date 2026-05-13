@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Phase 7.5 context gathered
-last_updated: "2026-05-13T17:40:14.836Z"
+stopped_at: Completed 07.5-01-snippets-module-scaffold-PLAN.md
+last_updated: "2026-05-13T18:30:02.456Z"
 last_activity: 2026-05-13
 progress:
   total_phases: 7
   completed_phases: 6
-  total_plans: 35
-  completed_plans: 35
+  total_plans: 42
+  completed_plans: 36
   percent: 100
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A flow-author team can take an extension catalog and a customer brief, write a `.star` file, and have a production-grade durable workflow running on Temporal — without touching Go and without giving up Temporal's retry/timeout/child-workflow guarantees.
-**Current focus:** Phase 07.4 — extbin-consolidation-tech-debt-cleanup
+**Current focus:** Phase 07.5 — auth-documentation
 
 ## Current Position
 
-Phase: 7.5
-Plan: Not started
+Phase: 07.5 (auth-documentation) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
 Last activity: 2026-05-13
 
@@ -147,6 +147,7 @@ Progress: [██████████] 100%
 | Phase 07.4 P01 | 7min | 3 tasks | 6 files |
 | Phase 07.4 P02 | 3m | 2 tasks | 4 files |
 | Phase 07.4 P04 | 5min | 3 tasks | 2 files |
+| Phase 07.5 P01 | 3min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -443,6 +444,10 @@ Recent decisions affecting current work:
 - [Phase 07.4]: Plan 04: WithBuildID OMITTED from extbin per D-7.4-13 line budget (allowed by plan); teaching block at pkg/cli/doc.go documents the full Option surface so library users discover it via godoc, the example just doesn't exercise the third Option
 - [Phase 07.4]: Plan 04: Library teaching block belongs on the library package, not the example (D-7.4-14): pkg/cli/doc.go is the canonical 'build your own binary' godoc home; example binaries become thin reference implementations that point AT the godoc
 - [Phase 07.4]: Plan 04: Verbatim ≤N-line file-budget collapse strategies in priority order: 1) compress doc-comment to one line, 2) collapse function call into single line if gofmt accepts, 3) drop blank-line separators within a single import group. AVOID helper closures (they grow files, not shrink)
+- [Phase 07.5]: Snippets module is standalone (no go.work) — D-7.5-06 discretionary resolution; no go.work exists at repo root
+- [Phase 07.5]: Drift-test uses stdlib os.ReadFile + regexp.MustCompile anchor parsing (no embedmd, no markdown AST library) — D-7.5-05 discretionary resolution
+- [Phase 07.5]: Drift-test whitespace normalization via strings.TrimSpace on both fence body and file body before byte comparison
+- [Phase 07.5]: Initial snippets/go.mod scoped to Temporal SDK only — Wave 2 plans add cloud SDK requires via go mod tidy after introducing imports (avoids tidy stripping unused requires)
 
 ### Pending Todos
 
@@ -474,6 +479,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-13T17:40:14.826Z
-Stopped at: Phase 7.5 context gathered
-Resume file: .planning/phases/07.5-auth-documentation/07.5-CONTEXT.md
+Last session: 2026-05-13T18:29:53.599Z
+Stopped at: Completed 07.5-01-snippets-module-scaffold-PLAN.md
+Resume file: None
