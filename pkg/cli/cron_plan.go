@@ -42,18 +42,12 @@ func newCronPlanCommand(cfg *config) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logger := setupServerLogging(cfg.debug, jsonLog)
 
-			// credfile sanity check (mirrors server.go's handling).
-			if credfilePath != "" {
-				if cfg.credHandler == nil {
-					return fmt.Errorf("--credfile=%s requires the binary to be built with cli.WithCredentialHandler (see docs/cli-binary.md)", credfilePath)
-				}
-				setter, ok := cfg.credHandler.(interface{ SetCredfilePath(string) error })
-				if !ok {
-					return fmt.Errorf("--credfile=%s: this binary's credential handler does not support runtime path overrides", credfilePath)
-				}
-				if err := setter.SetCredfilePath(credfilePath); err != nil {
-					return fmt.Errorf("--credfile=%s: %w", credfilePath, err)
-				}
+			// credfile path resolution (D-7.4-03 — same single helper as
+			// server.go uses; cron-plan needs JIT credential resolution
+			// too since the FlowRegistry parser may reach credential
+			// factories at parse time via the extension SDK).
+			if err := applyCredfileFlag(cfg, credfilePath); err != nil {
+				return err
 			}
 
 			// Parse the rootdir BEFORE dialing Temporal — fast feedback on

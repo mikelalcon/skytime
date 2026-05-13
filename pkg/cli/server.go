@@ -152,27 +152,16 @@ func newServerCommand(cfg *config) *cobra.Command {
 					"value", drainTimeout)
 			}
 
-			// 3. credfile path resolution (D-07-19 + 7.1 follow-up).
-			//    --credfile requires (a) a credential handler wired into
-			//    the binary AND (b) that handler to expose
-			//    `SetCredfilePath(string) error` so the flag's value can
-			//    override the build-time default. Without (a) we surface
-			//    the "no handler wired" error; without (b) we error rather
-			//    than silently no-op the flag (the earlier behavior was a
-			//    confusing footgun for readers following the walkthrough).
-			//    Phase 7.4's cli.WithCredfile(path) Option lift will move
-			//    this wiring into the option chain and obsolete this block.
-			if credfilePath != "" {
-				if cfg.credHandler == nil {
-					return fmt.Errorf("--credfile=%s requires the binary to be built with cli.WithCredentialHandler (see docs/cli-binary.md); current binary has no credential handler wired", credfilePath)
-				}
-				setter, ok := cfg.credHandler.(interface{ SetCredfilePath(string) error })
-				if !ok {
-					return fmt.Errorf("--credfile=%s: this binary's credential handler does not support runtime path overrides; the handler must implement SetCredfilePath(string) error, or rebuild with a path-aware handler", credfilePath)
-				}
-				if err := setter.SetCredfilePath(credfilePath); err != nil {
-					return fmt.Errorf("--credfile=%s: %w", credfilePath, err)
-				}
+			// 3. credfile path resolution (D-7.4-03 — owned entirely by
+			//    applyCredfileFlag in pkg/cli/credfile.go to avoid
+			//    duplicating ~9 lines of type-assertion + friendly-error
+			//    plumbing across every subcommand). The flag is the
+			//    highest-precedence layer of the resolution chain:
+			//      --credfile > SKYTIME_CREDFILE_PATH > WithCredfile(arg) > $HOME/.skytime-credentials
+			//    The helper short-circuits on empty flagValue, so the
+			//    outer `if credfilePath != ""` guard is unnecessary.
+			if err := applyCredfileFlag(cfg, credfilePath); err != nil {
+				return err
 			}
 
 			// 4. Connect Temporal via D4-08 variant routing. Reuses
