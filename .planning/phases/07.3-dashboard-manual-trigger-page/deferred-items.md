@@ -2,7 +2,9 @@
 
 Out-of-scope discoveries during execution that should be addressed separately.
 
-## 2026-05-12 — Pre-existing TestNoDevServerLiteralRemains failure
+## 2026-05-12 — Pre-existing TestNoDevServerLiteralRemains failure  ✓ RESOLVED 2026-05-13
+
+**Resolved by:** commit `9384279` `fix(07.2.1): remove stale 'dev-server' literal in cron-schedules-smoke.sh (D-07-22)` — one-line edit on `docs/walkthroughs/cron-schedules-smoke.sh:192` during Phase 7.3 regression-gate review at user's explicit request. Full suite green after fix.
 
 **Discovered during:** Plan 07.3-00 overall verification (Task 3)
 **Test:** `tests/dev_server_grep_test.go::TestNoDevServerLiteralRemains`
