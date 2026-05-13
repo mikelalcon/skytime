@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
-status: executing
-stopped_at: Completed 07.5-07-ci-snippets-build-PLAN.md
-last_updated: "2026-05-13T18:59:09.771Z"
+status: verifying
+stopped_at: Completed 07.5-06-readme-and-project-edits-PLAN.md
+last_updated: "2026-05-13T19:00:58.082Z"
 last_activity: 2026-05-13
 progress:
   total_phases: 7
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 42
-  completed_plans: 41
+  completed_plans: 42
   percent: 100
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 Phase: 07.5 (auth-documentation) — EXECUTING
 Plan: 7 of 7
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-13
 
 Progress: [██████████] 100%
@@ -153,6 +153,7 @@ Progress: [██████████] 100%
 | Phase 07.5 P04 | 3min | 3 tasks | 5 files |
 | Phase 07.5 P05 | 3min | 3 tasks | 3 files |
 | Phase 07.5 P07 | 2min | 1 tasks | 1 files |
+| Phase 07.5 P06 | 3min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -469,6 +470,9 @@ Recent decisions affecting current work:
 - [Phase 07.5]: Re-dial after reload (not in-place tls.Config mutation) — client.Options.ConnectionOptions.TLS is consumed by client.Dial once; rotation requires fresh Dial + swap + old.Close()
 - [Phase 07.5]: No go mod tidy needed — mtls.go uses only stdlib (crypto/tls, crypto/x509, os/signal, syscall) + already-present go.temporal.io/sdk/client
 - [Phase 07.5]: 07-07: Appended single snippets-build step to existing ci.yml (D-7.5-07 unified workflow); chose step-within-job over separate job to reuse Set up Go
+- [Phase 07.5]: Plan 06: PROJECT.md Web UI / dashboard carve-out preserved byte-for-byte from D-7.5-10 / v1.43-DRAFT-PLAN.md line 141 (no tonal polish per locked text)
+- [Phase 07.5]: Plan 06: top-level README bullet enumerates all four cloud-IAM matrices in link text (GCP WIF, AWS IRSA, Azure WI, mTLS+SIGHUP) so SC4 traceability is hinted before reader clicks through
+- [Phase 07.5]: Plan 06: sub-index bullet text surfaces the cluster-vs-application credential distinction (single most common conflation point for the audience landing in for-extension-developers/)
 
 ### Pending Todos
 
@@ -500,6 +504,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-13T18:59:09.766Z
-Stopped at: Completed 07.5-07-ci-snippets-build-PLAN.md
+Last session: 2026-05-13T19:00:49.162Z
+Stopped at: Completed 07.5-06-readme-and-project-edits-PLAN.md
 Resume file: None

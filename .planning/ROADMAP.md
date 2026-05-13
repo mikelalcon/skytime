@@ -166,7 +166,7 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
 - [x] 07.5-03-snippet-aws-irsa-PLAN.md — aws.go (newAWSCredentials via AWS Secrets Manager + IRSA) + AWS section in temporal-auth.md + drift-test row (AUTH-02)
 - [x] 07.5-04-snippet-azure-wi-PLAN.md — azure.go (newAzureCredentials via Azure Key Vault + Workload Identity) + Azure section in temporal-auth.md + drift-test row (AUTH-03)
 - [x] 07.5-05-snippet-mtls-sighup-PLAN.md — mtls.go (newMTLSReloader: SIGHUP-driven cert reload + re-Dial) + Self-hosted section in temporal-auth.md + drift-test row (AUTH-04)
-- [ ] 07.5-06-readme-and-project-edits-PLAN.md — README.md doc-index link + for-extension-developers/README.md sub-index + PROJECT.md verbatim Web UI / dashboard Out-of-Scope carve-out (D-7.5-10)
+- [x] 07.5-06-readme-and-project-edits-PLAN.md — README.md doc-index link + for-extension-developers/README.md sub-index + PROJECT.md verbatim Web UI / dashboard Out-of-Scope carve-out (D-7.5-10)
 - [x] 07.5-07-ci-snippets-build-PLAN.md — Append snippets-build step (go build + vet + test) to existing .github/workflows/ci.yml; no new workflow file (D-7.5-07)
 **UI hint**: no
 
