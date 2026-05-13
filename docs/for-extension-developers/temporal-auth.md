@@ -36,7 +36,81 @@ Every snippet is a drop-in Go function. Paste it into your binary's package, cal
 
 ## GCP — Workload Identity Federation + Secret Manager
 
-> _Snippet body for AUTH-01 lands in Plan 07.5-02._
+Workload Identity Federation (WIF) is GCP's recommended way to grant a workload (a GKE pod, a Cloud Run service, etc.) the ability to act as a service account without a downloaded JSON key — the platform issues short-lived tokens directly to the workload. Combined with Google Secret Manager, you get a pattern where the only long-lived secret in your deployment is the Temporal Cloud API key stored in GSM, and your worker reads it on every RPC through a credentialed connection your pod already has.
+
+**Assumes:**
+- You have a Temporal Cloud namespace with API key auth enabled — see <https://docs.temporal.io/cloud/api-keys>.
+- Your GKE / Cloud Run / GCE workload runs as a GCP service account that has `roles/secretmanager.secretAccessor` on the secret.
+- Workload Identity Federation is configured for your workload — see <https://cloud.google.com/iam/docs/workload-identity-federation>. Inside the pod, Application Default Credentials (ADC) Just Works; no JSON key file is mounted.
+- You have stored the Temporal Cloud API key as a Secret Manager secret (any region). Re-versioning the secret rotates the credential; the snippet always reads `versions/latest`.
+
+**Substitute:**
+- `projectID` — your GCP project ID (the project that owns the Secret Manager secret).
+- `secretName` — the Secret Manager secret holding the Temporal Cloud API key.
+
+<!-- snippet: gcp.go -->
+```go
+package snippets
+
+import (
+	"context"
+	"fmt"
+
+	secretmanager "cloud.google.com/go/secretmanager/apiv1"
+	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
+	"go.temporal.io/sdk/client"
+)
+
+// newGCPCredentials returns Temporal Cloud client credentials backed by a
+// Google Secret Manager secret. The Secret Manager client uses Application
+// Default Credentials — when running on GKE with Workload Identity
+// Federation configured for the pod's service account, ADC transparently
+// exchanges the WIF token for a short-lived GCP access token. No JSON key
+// file is needed in the container.
+//
+// The returned Credentials is the rotation-friendly variant: Temporal's
+// SDK calls accessLatest before each RPC, so re-versioning the secret in
+// GSM propagates without restarting the worker. Cache the value in a
+// package-level var with a TTL if your RPC volume makes per-call GSM
+// reads expensive.
+//
+// The Temporal SDK auto-enables TLS when Credentials are set (v1.39+);
+// do NOT disable TLS via ConnectionOptions on the returned client.Options.
+func newGCPCredentials(ctx context.Context, projectID, secretName string) (client.Credentials, error) {
+	sm, err := secretmanager.NewClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("gcp: construct secret manager client: %w", err)
+	}
+	// Note: this snippet leaks the secretmanager client on intentional shutdown
+	// — production binaries should keep a package-level handle and call sm.Close()
+	// from their shutdown path.
+
+	accessLatest := func(ctx context.Context) (string, error) {
+		resp, err := sm.AccessSecretVersion(ctx, &secretmanagerpb.AccessSecretVersionRequest{
+			Name: fmt.Sprintf("projects/%s/secrets/%s/versions/latest", projectID, secretName),
+		})
+		if err != nil {
+			return "", fmt.Errorf("gcp: access secret %q in project %q: %w", secretName, projectID, err)
+		}
+		return string(resp.Payload.Data), nil
+	}
+	return client.NewAPIKeyDynamicCredentials(accessLatest), nil
+}
+```
+
+Caller site (your binary's `main`):
+
+```go
+creds, err := newGCPCredentials(ctx, os.Getenv("GCP_PROJECT_ID"), os.Getenv("TEMPORAL_API_KEY_SECRET"))
+if err != nil {
+	return fmt.Errorf("auth: %w", err)
+}
+c, err := client.Dial(client.Options{
+	HostPort:    os.Getenv("TEMPORAL_HOSTPORT"),  // e.g. <namespace>.<account>.tmprl.cloud:7233
+	Namespace:   os.Getenv("TEMPORAL_NAMESPACE"),
+	Credentials: creds,
+})
+```
 
 ## AWS — IRSA + Secrets Manager
 
