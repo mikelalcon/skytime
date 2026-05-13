@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: verifying
-stopped_at: "Phase 07.3 complete — all 6 plans done; final browser UAT approved; ready for /gsd:verify-work"
-last_updated: "2026-05-13T02:23:56.144Z"
+stopped_at: Completed quick 260512-w7c — interpolation lambda-ID collision fix + regression backstops
+last_updated: "2026-05-13T03:26:57.449Z"
 last_activity: 2026-05-13
 progress:
   total_phases: 7
@@ -141,6 +141,7 @@ Progress: [██████████] 100%
 | Phase 07.3 P04 | 20m | 3 tasks | 10 files |
 | Phase 07.3 P05 | 18min | 3 tasks | 5 files |
 | Phase 07.3 P05 | finalize 2min (+browser UAT cycle 2026-05-13) | 4 tasks | 6 files |
+| Phase quick-260512-w7c P01 | 7min | 4 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -423,6 +424,7 @@ Recent decisions affecting current work:
 - [Phase 07.3-dashboard-manual-trigger-page]: Open Q1 resolved: BuildWorkflowInput is the shared seam (Option 1) — 4 paths converge on flowlaunch, env.ExecuteWorkflow filtered out of firewall by qualifier name
 - [Phase 07.3]: m4 strict — TestServerCmd_DrainOnSIGTERM asserts literal event: shutdown frame before EOF (no permissive __closed__ fallback); catches B3 ordering regression mode
 - [Phase 07.3]: testListenerAddrFn seam — fires inside RunE after net.Listen succeeds and before listener_started hookStage; surfaces OS-resolved port to tests using --addr=127.0.0.1:0
+- [Phase quick-260512-w7c]: Disambiguator appended to D-18 lambda ID (vs. encoded into hash input) preserves byte-identical IDs for empty-disambiguator callers (flow.name, step.name, script.id, fail.msg, log.msg, result.value); kwargs-desugarer uses kwarg key as the disambiguator
 
 ### Pending Todos
 
@@ -453,6 +455,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-13T01:00:00.000Z
-Stopped at: Phase 07.3 complete — all 6 plans done; final browser UAT approved; ready for /gsd:verify-work
+Last session: 2026-05-13T03:26:47.972Z
+Stopped at: Completed quick 260512-w7c — interpolation lambda-ID collision fix + regression backstops
 Resume file: None
