@@ -58,7 +58,7 @@ Requirements for the v1.43.0 milestone. Each maps to a roadmap phase.
 
 - [x] **AUTH-01**: `docs/for-extension-developers/temporal-auth.md` ships with a working WIF → Google Secret Manager → Temporal Cloud snippet (Go code). Customer's GCP workload identity issues short-lived tokens, secret manager hands a Temporal Cloud API key, `client.Credentials` rotates on a refresh callback.
 - [x] **AUTH-02**: An IRSA → AWS Secrets Manager → Temporal Cloud snippet in temporal-auth.md. Customer's k8s service account assumes an IAM role, secret manager hands the Temporal credential, rotation handled the same way.
-- [ ] **AUTH-03**: An Azure Workload Identity → Key Vault → Temporal Cloud snippet in temporal-auth.md.
+- [x] **AUTH-03**: An Azure Workload Identity → Key Vault → Temporal Cloud snippet in temporal-auth.md.
 - [ ] **AUTH-04**: A self-hosted mTLS reload-on-SIGHUP snippet in temporal-auth.md. Production cluster rotates client certs; SIGHUP triggers `client.Options.ConnectionOptions.TLS` reload without restart.
 
 ### Structured Logging Step Builtin
@@ -130,7 +130,7 @@ Explicit exclusions for v1.43 with reasoning.
 | EX-05 | Phase 7.1 | — | Pending |
 | AUTH-01 | Phase 7.5 | 07.5-02-snippet-gcp-wif | Complete |
 | AUTH-02 | Phase 7.5 | 07.5-03-snippet-aws-irsa | Complete |
-| AUTH-03 | Phase 7.5 | — | Pending |
+| AUTH-03 | Phase 7.5 | 07.5-04-snippet-azure-wi | Complete |
 | AUTH-04 | Phase 7.5 | — | Pending |
 | LOG-01 | Phase 07.2.1 | 07.2.1-02-parser-builtins, 07.2.1-05-migration-walkthrough | Complete |
 | LOG-02 | Phase 07.2.1 | 07.2.1-01-dag-logstep-type, 07.2.1-03-walker-counter-replay, 07.2.1-04-renderer-suppression, 07.2.1-05-migration-walkthrough | Complete |

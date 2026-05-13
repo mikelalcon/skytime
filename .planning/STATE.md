@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.5-03-snippet-aws-irsa-PLAN.md
-last_updated: "2026-05-13T18:42:06.101Z"
+stopped_at: Completed 07.5-04-snippet-azure-wi-PLAN.md
+last_updated: "2026-05-13T18:48:34.819Z"
 last_activity: 2026-05-13
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 42
-  completed_plans: 38
+  completed_plans: 39
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.5 (auth-documentation) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
 Last activity: 2026-05-13
 
@@ -150,6 +150,7 @@ Progress: [██████████] 100%
 | Phase 07.5 P01 | 3min | 3 tasks | 5 files |
 | Phase 07.5 P02 | 3min | 3 tasks | 5 files |
 | Phase 07.5 P03 | 2min | 3 tasks | 5 files |
+| Phase 07.5 P04 | 3min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -458,6 +459,9 @@ Recent decisions affecting current work:
 - [Phase 07.5]: Plan 03: Explicit SecretString-nil check guards against SecretBinary path with descriptive error — Temporal Cloud API keys never use binary secrets, but defense-in-depth is Go-idiomatic
 - [Phase 07.5]: Plan 03: Reused Plan 02's TLSDisabled-comment reword verbatim (do NOT disable TLS via ConnectionOptions) — same firewall reconciliation; aws.go and markdown fence both use the paraphrase
 - [Phase 07.5]: Plan 03: AWS SDK v2 versions resolved by go mod tidy at execution time (aws-sdk-go-v2 v1.41.7, config v1.32.17, secretsmanager v1.41.7, smithy-go v1.25.1) — no manual pin; matches Plan 02 stance
+- [Phase 07.5]: Azure WI snippet uses azidentity.NewDefaultAzureCredential — federated token at $AZURE_FEDERATED_TOKEN_FILE picked up by default chain; no explicit WorkloadIdentityCredential import needed
+- [Phase 07.5]: Function param named vaultURL (matches Azure SDK), caller env var AZURE_VAULT_URL; secretName separate so reader can rotate secret without rebuilding
+- [Phase 07.5]: TLS warning comment reworded to 'do NOT disable TLS via ConnectionOptions' — inherits same firewall reword from Plans 02 and 03; carried through azure.go and the markdown fence body
 
 ### Pending Todos
 
@@ -489,6 +493,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-13T18:42:06.095Z
-Stopped at: Completed 07.5-03-snippet-aws-irsa-PLAN.md
+Last session: 2026-05-13T18:48:34.812Z
+Stopped at: Completed 07.5-04-snippet-azure-wi-PLAN.md
 Resume file: None
