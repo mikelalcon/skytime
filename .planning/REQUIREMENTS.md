@@ -43,7 +43,7 @@ Requirements for the v1.43.0 milestone. Each maps to a roadmap phase.
 
 ### CLI Surface (continuing from CLI-07)
 
-- [ ] **CLI-08**: A new `cli.WithCredfile(path string)` option lifts `lazyCredfileHandler` from `extbin/main.go` into `pkg/cli`. `path` empty falls back to default `$HOME/.skytime-credentials`. Lazy construction: defers `credfile.New()` until first `Resolve()` call.
+- [x] **CLI-08**: A new `cli.WithCredfile(path string)` option lifts `lazyCredfileHandler` from `extbin/main.go` into `pkg/cli`. `path` empty falls back to default `$HOME/.skytime-credentials`. Lazy construction: defers `credfile.New()` until first `Resolve()` call.
 - [ ] **CLI-09**: A new `cli.WithBuildID(string)` option lets custom binaries set the worker Build ID without resorting to `-ldflags` injection. Default still `defaultBuildID` (typically `dev` or build-time-injected git SHA) when option is absent.
 - [x] **CLI-10**: A new `pkg/testing.WithCredentialHandler(h)` option threads a credential handler into the Tier-3 test harness. Future tests using partial mocks against real credentials can satisfy `Resolve()` calls without spawning the full activity environment.
 - [x] **CLI-11**: `pkg/cli/test.go` threads `cfg.credHandler` to `pkg/testing.RunCLI`. The CLI test path uses the same credential handler that `run` and `validate` use.

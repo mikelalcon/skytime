@@ -144,7 +144,7 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
   4. `examples/http-github-webhook/cmd/extbin/main.go` is ≤30 lines (verified by `wc -l`); it consists of extension registration + a single `cli.NewRootCommand(...)` chain + `ExecuteContext(ctx)`, with no `lazyCredfileHandler` definition remaining
   5. The Phase 6 walkthrough (`gh webhook forward` smoke) and webhook + cron + dashboard end-to-end paths still pass after the consolidation; CI gates remain green with the slimmer extbin
 **Plans**: 5 plans
-- [ ] 07.4-01-PLAN.md — Lift lazyCredfileHandler to pkg/cli; cli.WithCredfile + single-resolution-chain consolidation (CLI-08, D-7.4-03)
+- [x] 07.4-01-PLAN.md — Lift lazyCredfileHandler to pkg/cli; cli.WithCredfile + single-resolution-chain consolidation (CLI-08, D-7.4-03)
 - [ ] 07.4-02-PLAN.md — cli.WithBuildID Option + thread to worker.WorkerOptions.BuildID (CLI-09)
 - [x] 07.4-03-PLAN.md — pkg/testing.WithCredentialHandler + NewFakeCredentialHandler; thread cfg.credHandler through pkg/cli/test.go (CLI-10, CLI-11)
 - [ ] 07.4-04-PLAN.md — Collapse extbin/main.go to ≤30 lines; move build-your-own-binary teaching block to pkg/cli/doc.go (CLI-12, D-7.4-13, D-7.4-14)

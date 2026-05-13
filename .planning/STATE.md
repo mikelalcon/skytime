@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.4-03-PLAN.md
-last_updated: "2026-05-13T14:02:42.205Z"
+stopped_at: Completed 07.4-01-PLAN.md (parallel wave 1)
+last_updated: "2026-05-13T14:04:55.866Z"
 last_activity: 2026-05-13
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 35
-  completed_plans: 32
+  completed_plans: 33
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.4 (extbin-consolidation-tech-debt-cleanup) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-05-13
 
@@ -144,6 +144,7 @@ Progress: [██████████] 100%
 | Phase quick-260512-w7c P01 | 7min | 4 tasks | 8 files |
 | Phase 07.4 P05 | 5min | 3 tasks | 4 files |
 | Phase 07.4-extbin-consolidation-tech-debt-cleanup P03 | 5min | 3 tasks | 5 files |
+| Phase 07.4 P01 | 7min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -431,6 +432,9 @@ Recent decisions affecting current work:
 - [Phase 07.4]: Plan 05 (D-7.4-07): generic_http_check.star is parse-only, exercises http.endpoint(...) + .head + .get; no live runtime test (matches corpus convention; D-7.4-08 explicit defer).
 - [Phase 07.4-extbin-consolidation-tech-debt-cleanup]: Plan 07.4-03: NewFakeCredentialHandler defensive-copies its input map and wraps extension.ErrUnknownCredential via %w: %s — production-vs-test errors.Is parity with credfile.Resolver
 - [Phase 07.4-extbin-consolidation-tech-debt-cleanup]: Plan 07.4-03: pkg/cli/test.go threads cfg.credHandler nil-guarded — D-7.4-12 two-field thread (exts + credHandler), zero behavior change for cred-less binaries
+- [Phase 07.4]: Plan 01: WithCredfile declaration in options.go (D-7.4-04 LOCKED) + ~120-line implementation in pkg/cli/credfile.go; declaration body is one-line delegate to newCredfileHandler
+- [Phase 07.4]: Plan 01: applyCredfileFlag helper consolidates per-subcommand --credfile boilerplate (D-7.4-03 spirit); server.go and cron_plan.go each shrink from ~9 lines of inline type-assertion + friendly errors to a 3-line call site
+- [Phase 07.4]: Plan 01: 4-step resolution chain owned by credfileHandler — --credfile flag > SKYTIME_CREDFILE_PATH > WithCredfile(arg) > $HOME/.skytime-credentials; lazy init preserved (credfile.New called only on first Resolve under mutex)
 
 ### Pending Todos
 
@@ -462,6 +466,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-13T14:02:34.716Z
-Stopped at: Completed 07.4-03-PLAN.md
+Last session: 2026-05-13T14:04:55.861Z
+Stopped at: Completed 07.4-01-PLAN.md (parallel wave 1)
 Resume file: None
