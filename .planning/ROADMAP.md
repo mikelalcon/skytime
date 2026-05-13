@@ -163,7 +163,7 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
 **Plans**: 7 plans
 - [x] 07.5-01-snippets-module-scaffold-PLAN.md — Standalone Go module under docs/for-extension-developers/snippets/ + drift-test scaffold + temporal-auth.md skeleton (intro, Pick-your-section directory, four section anchors, cluster-vs-application clarification)
 - [x] 07.5-02-snippet-gcp-wif-PLAN.md — gcp.go (newGCPCredentials via Google Secret Manager + WIF) + GCP section in temporal-auth.md + drift-test row (AUTH-01)
-- [ ] 07.5-03-snippet-aws-irsa-PLAN.md — aws.go (newAWSCredentials via AWS Secrets Manager + IRSA) + AWS section in temporal-auth.md + drift-test row (AUTH-02)
+- [x] 07.5-03-snippet-aws-irsa-PLAN.md — aws.go (newAWSCredentials via AWS Secrets Manager + IRSA) + AWS section in temporal-auth.md + drift-test row (AUTH-02)
 - [ ] 07.5-04-snippet-azure-wi-PLAN.md — azure.go (newAzureCredentials via Azure Key Vault + Workload Identity) + Azure section in temporal-auth.md + drift-test row (AUTH-03)
 - [ ] 07.5-05-snippet-mtls-sighup-PLAN.md — mtls.go (newMTLSReloader: SIGHUP-driven cert reload + re-Dial) + Self-hosted section in temporal-auth.md + drift-test row (AUTH-04)
 - [ ] 07.5-06-readme-and-project-edits-PLAN.md — README.md doc-index link + for-extension-developers/README.md sub-index + PROJECT.md verbatim Web UI / dashboard Out-of-Scope carve-out (D-7.5-10)

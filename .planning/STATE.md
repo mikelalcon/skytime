@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.5-02-snippet-gcp-wif-PLAN.md
-last_updated: "2026-05-13T18:36:58.045Z"
+stopped_at: Completed 07.5-03-snippet-aws-irsa-PLAN.md
+last_updated: "2026-05-13T18:42:06.101Z"
 last_activity: 2026-05-13
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 42
-  completed_plans: 37
+  completed_plans: 38
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.5 (auth-documentation) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-05-13
 
@@ -149,6 +149,7 @@ Progress: [██████████] 100%
 | Phase 07.4 P04 | 5min | 3 tasks | 2 files |
 | Phase 07.5 P01 | 3min | 3 tasks | 5 files |
 | Phase 07.5 P02 | 3min | 3 tasks | 5 files |
+| Phase 07.5 P03 | 2min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -453,6 +454,10 @@ Recent decisions affecting current work:
 - [Phase 07.5]: Plan 02: secretmanager.Client constructed once outside rotation callback (closure capture) — per-call construction would negate dynamic-credentials benefit; intentional shutdown leak documented inline so production binaries know to keep a package-level handle for Close()
 - [Phase 07.5]: Plan 02: TLS-auto-enabled warning comment reworded to avoid literal token TLSDisabled — same reword applied to gcp.go AND the markdown fence body (so drift-test passes); satisfies project firewall gate while preserving reader warning
 - [Phase 07.5]: Plan 02: go mod tidy resolves cloud.google.com/go/secretmanager version at execution time (no manual pin) — matches Plan 01 stance; main module's go.mod stays untouched per D-7.5-06 (snippets module is standalone)
+- [Phase 07.5]: Plan 03: AWS SDK v2 default credential chain via config.LoadDefaultConfig picks up IRSA $AWS_WEB_IDENTITY_TOKEN_FILE automatically — no explicit AssumeRoleWithWebIdentity wiring in the snippet; cloud-IAM plumbing delegated to SDK default
+- [Phase 07.5]: Plan 03: Explicit SecretString-nil check guards against SecretBinary path with descriptive error — Temporal Cloud API keys never use binary secrets, but defense-in-depth is Go-idiomatic
+- [Phase 07.5]: Plan 03: Reused Plan 02's TLSDisabled-comment reword verbatim (do NOT disable TLS via ConnectionOptions) — same firewall reconciliation; aws.go and markdown fence both use the paraphrase
+- [Phase 07.5]: Plan 03: AWS SDK v2 versions resolved by go mod tidy at execution time (aws-sdk-go-v2 v1.41.7, config v1.32.17, secretsmanager v1.41.7, smithy-go v1.25.1) — no manual pin; matches Plan 02 stance
 
 ### Pending Todos
 
@@ -484,6 +489,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-13T18:36:47.561Z
-Stopped at: Completed 07.5-02-snippet-gcp-wif-PLAN.md
+Last session: 2026-05-13T18:42:06.095Z
+Stopped at: Completed 07.5-03-snippet-aws-irsa-PLAN.md
 Resume file: None
