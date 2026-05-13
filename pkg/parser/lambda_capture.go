@@ -77,7 +77,19 @@ func (p *Parser) captureLambda(thread *starlark.Thread, kwargName string, val st
 // a lambda with no closures and skips the D-19 module-level binding
 // check (which would mis-attribute the synthetic file as the owning
 // file; see RESEARCH §Pitfall 3).
-func (p *Parser) captureLambdaAtPosition(fn *starlark.Function, userPos, bodyPos syntax.Position) (*dag.CapturedLambda, error) {
+//
+//  4. disambiguator (NEW, quick 260512-w7c) — when non-empty, appended
+//     as ":"+disambiguator to the base D-18 ID. Used by the kwargs-
+//     desugarer (D4.1-05) to distinguish multiple ${...} kwargs that
+//     share a single openPos (the parent ActionRef's call position).
+//     Empty string preserves the historical ID format and is what every
+//     other caller (flow.name, step.name, script.id, fail.msg, log.msg,
+//     result.value) passes. Without this disambiguator, two kwargs on
+//     the same factory call (e.g. owner+repo both ${ctx.rp.*}) would
+//     hash to identical IDs and p.lambdas[id]=captured would clobber
+//     the first with the second — both kwargs would then point at the
+//     second lambda's body at workflow-resolve time.
+func (p *Parser) captureLambdaAtPosition(fn *starlark.Function, userPos, bodyPos syntax.Position, disambiguator string) (*dag.CapturedLambda, error) {
 	fileBytes, ok := p.fileBytes[userPos.Filename()]
 	if !ok || fileBytes == nil {
 		return nil, &dag.ParseError{
@@ -86,6 +98,9 @@ func (p *Parser) captureLambdaAtPosition(fn *starlark.Function, userPos, bodyPos
 		}
 	}
 	id := dag.ComputeLambdaID(fileBytes, userPos)
+	if disambiguator != "" {
+		id = id + ":" + disambiguator
+	}
 	freeVars := starlark.StringDict{}
 	freeVars.Freeze()
 	captured := &dag.CapturedLambda{

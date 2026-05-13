@@ -119,7 +119,7 @@ func (p *Parser) captureResultValueLambda(
 	// Capture with userPos at the value-expr start (so ctx-validation
 	// errors land on user source), BodyPos at the synthetic file (so
 	// the D4-02 walker re-parses the synthetic AST).
-	return p.captureLambdaAtPosition(fn, startPos, bodyPos)
+	return p.captureLambdaAtPosition(fn, startPos, bodyPos, "")
 }
 
 // lineColToByteOffset walks src and returns the byte offset for the

@@ -168,7 +168,7 @@ func (p *Parser) builtinFlow(thread *starlark.Thread, fn *starlark.Builtin, args
 	// duplicate check above already keyed on the literal name).
 	var flowNameFn *dag.CapturedLambda
 	if strings.Contains(name, "${") {
-		desugared, derr := p.desugarInterpolation(name, pos)
+		desugared, derr := p.desugarInterpolation(name, pos, "")
 		if derr != nil {
 			return nil, derr
 		}
@@ -379,7 +379,7 @@ func (p *Parser) builtinStep(thread *starlark.Thread, fn *starlark.Builtin, args
 			}
 		}
 		raw := string(nameStr)
-		desugared, err := p.desugarInterpolation(raw, pos)
+		desugared, err := p.desugarInterpolation(raw, pos, "")
 		if err != nil {
 			return nil, err
 		}
@@ -508,7 +508,19 @@ func (p *Parser) desugarActionRefKwargs(ar *dag.ActionRef) error {
 			continue
 		}
 		raw := string(valStr)
-		captured, err := p.desugarInterpolation(raw, ar.Pos)
+		// quick 260512-w7c: pass the kwarg KEY as the disambiguator so
+		// multiple ${...} kwargs sharing a single ar.Pos hash to
+		// distinct lambda IDs. Without this, the first kwarg's lambda
+		// is clobbered by the second (last-wins on p.lambdas[id]) and
+		// both kwargs resolve to the same value at runtime.
+		keyStr, isKeyStr := key.(starlark.String)
+		if !isKeyStr {
+			return &dag.ParseError{
+				Pos: ar.Pos,
+				Msg: fmt.Sprintf("internal: ActionRef kwarg key is %s, expected string (D-11)", key.Type()),
+			}
+		}
+		captured, err := p.desugarInterpolation(raw, ar.Pos, string(keyStr))
 		if err != nil {
 			return err
 		}
@@ -664,7 +676,7 @@ func (p *Parser) builtinFail(thread *starlark.Thread, fn *starlark.Builtin, args
 	// existing user-attribution.
 	var msgFn *dag.CapturedLambda
 	if strings.Contains(msg, "${") {
-		desugared, err := p.desugarInterpolation(msg, callPos)
+		desugared, err := p.desugarInterpolation(msg, callPos, "")
 		if err != nil {
 			return nil, err
 		}
@@ -1121,7 +1133,7 @@ func (p *Parser) builtinScript(thread *starlark.Thread, fn *starlark.Builtin, ar
 	// *CapturedLambda when interpolation is present.
 	var scriptIDFn *dag.CapturedLambda
 	if strings.Contains(id, "${") {
-		desugared, derr := p.desugarInterpolation(id, pos)
+		desugared, derr := p.desugarInterpolation(id, pos, "")
 		if derr != nil {
 			return nil, derr
 		}

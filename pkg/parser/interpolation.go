@@ -332,7 +332,18 @@ func starlarkQuote(s string) string {
 //  7. Build *CapturedLambda via captureLambdaAtPosition with Pos =
 //     openPos (user attribution) and BodyPos = the synthetic position.
 //  8. Register in p.lambdas and return.
-func (p *Parser) desugarInterpolation(raw string, openPos syntax.Position) (*dag.CapturedLambda, error) {
+//
+// disambiguator (quick 260512-w7c kwargs path): when non-empty, threaded
+// to captureLambdaAtPosition where it is appended as ":"+disambiguator
+// to the synthesized lambda's ID. Used exclusively by
+// desugarActionRefKwargs to distinguish multiple ${...} kwargs sharing a
+// single ActionRef call position (otherwise p.lambdas[id] = captured
+// would last-wins collide — the first kwarg's lambda would be silently
+// overwritten by the second's, so both kwargs would resolve to the
+// second value at workflow-resolve time). Every other caller (flow
+// name, step name, script id, fail msg, log msg) passes "" — their IDs
+// are byte-identical to the pre-fix output.
+func (p *Parser) desugarInterpolation(raw string, openPos syntax.Position, disambiguator string) (*dag.CapturedLambda, error) {
 	scanned, err := scanInterpolation(raw, openPos)
 	if err != nil {
 		return nil, err
@@ -401,7 +412,7 @@ func (p *Parser) desugarInterpolation(raw string, openPos syntax.Position) (*dag
 	const resultPrefix = "result = "
 	bodyPos := syntax.MakePosition(&syntheticName, 1, int32(len(resultPrefix)+1))
 
-	return p.captureLambdaAtPosition(fn, openPos, bodyPos)
+	return p.captureLambdaAtPosition(fn, openPos, bodyPos, disambiguator)
 }
 
 // lambdaTimeGlobalsForDesugar returns the locked D-20 subset used as

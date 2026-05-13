@@ -172,7 +172,7 @@ func TestScanInterpolation_DollarSignAlone(t *testing.T) {
 // stores the literal string unchanged.
 func TestDesugarInterpolation_NoMarkers(t *testing.T) {
 	p := newTestParser(t)
-	cl, err := p.desugarInterpolation("plain string", userPos())
+	cl, err := p.desugarInterpolation("plain string", userPos(), "")
 	require.NoError(t, err)
 	require.Nil(t, cl, "no markers → no CapturedLambda")
 }
@@ -183,7 +183,7 @@ func TestDesugarInterpolation_NoMarkers(t *testing.T) {
 func TestDesugarInterpolation_BasicRoundtrip(t *testing.T) {
 	p := newTestParser(t)
 	openPos := makeUserPos(t, p, "TestDesugar.star", "x = \"prefix${ctx.x}suffix\"")
-	cl, err := p.desugarInterpolation("prefix${ctx.x}suffix", openPos)
+	cl, err := p.desugarInterpolation("prefix${ctx.x}suffix", openPos, "")
 	require.NoError(t, err)
 	require.NotNil(t, cl)
 	require.NotNil(t, cl.Fn)
@@ -206,7 +206,7 @@ func TestDesugarInterpolation_BasicRoundtrip(t *testing.T) {
 func TestDesugarInterpolation_StableID(t *testing.T) {
 	p := newTestParser(t)
 	openPos := makeUserPos(t, p, "TestStableID.star", "x = \"prefix${ctx.x}suffix\"")
-	cl, err := p.desugarInterpolation("prefix${ctx.x}suffix", openPos)
+	cl, err := p.desugarInterpolation("prefix${ctx.x}suffix", openPos, "")
 	require.NoError(t, err)
 	require.NotNil(t, cl)
 	// D-18 format: 8 hex chars + ":" + line + ":" + col
@@ -220,7 +220,7 @@ func TestDesugarInterpolation_StableID(t *testing.T) {
 func TestDesugarInterpolation_PosAtUserSource(t *testing.T) {
 	p := newTestParser(t)
 	openPos := makeUserPos(t, p, "TestPosUser.star", "x = \"${ctx.x}\"")
-	cl, err := p.desugarInterpolation("${ctx.x}", openPos)
+	cl, err := p.desugarInterpolation("${ctx.x}", openPos, "")
 	require.NoError(t, err)
 	require.NotNil(t, cl)
 	assert.Equal(t, openPos.Filename(), cl.Pos.Filename(),
@@ -237,7 +237,7 @@ func TestDesugarInterpolation_PosAtUserSource(t *testing.T) {
 func TestDesugarInterpolation_BodyPosAtSynthetic(t *testing.T) {
 	p := newTestParser(t)
 	openPos := makeUserPos(t, p, "TestBodyPos.star", "x = \"${ctx.x}\"")
-	cl, err := p.desugarInterpolation("${ctx.x}", openPos)
+	cl, err := p.desugarInterpolation("${ctx.x}", openPos, "")
 	require.NoError(t, err)
 	require.NotNil(t, cl)
 	assert.True(t, cl.BodyPos.IsValid(), "BodyPos must be valid for synthesized lambda")
@@ -250,7 +250,7 @@ func TestDesugarInterpolation_BodyPosAtSynthetic(t *testing.T) {
 func TestDesugarInterpolation_StoredInLambdasMap(t *testing.T) {
 	p := newTestParser(t)
 	openPos := makeUserPos(t, p, "TestStored.star", "x = \"${ctx.x}\"")
-	cl, err := p.desugarInterpolation("${ctx.x}", openPos)
+	cl, err := p.desugarInterpolation("${ctx.x}", openPos, "")
 	require.NoError(t, err)
 	require.NotNil(t, cl)
 	got, ok := p.Lambdas()[cl.ID]
@@ -264,7 +264,7 @@ func TestDesugarInterpolation_StoredInLambdasMap(t *testing.T) {
 func TestDesugarInterpolation_FileBytesCached(t *testing.T) {
 	p := newTestParser(t)
 	openPos := makeUserPos(t, p, "TestCached.star", "x = \"prefix${ctx.x}suffix\"")
-	cl, err := p.desugarInterpolation("prefix${ctx.x}suffix", openPos)
+	cl, err := p.desugarInterpolation("prefix${ctx.x}suffix", openPos, "")
 	require.NoError(t, err)
 	require.NotNil(t, cl)
 	src, ok := p.FileBytes()[cl.BodyPos.Filename()]
@@ -287,7 +287,7 @@ func TestDesugarInterpolation_FileBytesCached(t *testing.T) {
 func TestDesugarInterpolation_StrWrapUnconditional(t *testing.T) {
 	p := newTestParser(t)
 	openPos := makeUserPos(t, p, "TestStrWrap.star", "x = \"x=${ctx.n}\"")
-	cl, err := p.desugarInterpolation("x=${ctx.n}", openPos)
+	cl, err := p.desugarInterpolation("x=${ctx.n}", openPos, "")
 	require.NoError(t, err)
 	require.NotNil(t, cl)
 	thread := &starlark.Thread{Name: "test-eval"}
@@ -307,7 +307,7 @@ func TestDesugarInterpolation_StrWrapUnconditional(t *testing.T) {
 func TestDesugarInterpolation_InnerExprSyntaxErrorReports(t *testing.T) {
 	p := newTestParser(t)
 	openPos := makeUserPos(t, p, "TestExprErr.star", "x = \"${ctx..bad}\"")
-	_, err := p.desugarInterpolation("${ctx..bad}", openPos)
+	_, err := p.desugarInterpolation("${ctx..bad}", openPos, "")
 	require.Error(t, err)
 	var pe *dag.ParseError
 	require.True(t, errors.As(err, &pe), "expected *dag.ParseError, got %T: %v", err, err)
@@ -334,7 +334,7 @@ func TestCtxWalk_RespectsBodyPos(t *testing.T) {
 	p.fileBytes[userFilename] = userSrc
 
 	userPosForLambda := syntax.MakePosition(&userFilename, 5, 10)
-	cl, err := p.desugarInterpolation("${ctx.tyop}", userPosForLambda)
+	cl, err := p.desugarInterpolation("${ctx.tyop}", userPosForLambda, "")
 	require.NoError(t, err)
 	require.NotNil(t, cl)
 	require.True(t, cl.BodyPos.IsValid(), "synthesized lambda must populate BodyPos")
@@ -353,7 +353,7 @@ func TestCtxWalk_RespectsBodyPos(t *testing.T) {
 	// And the positive: when state HAS the attr, no error.
 	p2 := newTestParser(t)
 	p2.fileBytes[userFilename] = userSrc
-	cl2, err := p2.desugarInterpolation("${ctx.repo}", userPosForLambda)
+	cl2, err := p2.desugarInterpolation("${ctx.repo}", userPosForLambda, "")
 	require.NoError(t, err)
 	state2 := newStateSchema()
 	state2.addUntyped("repo")

@@ -80,7 +80,7 @@ func (p *Parser) buildLogStep(level string, thread *starlark.Thread, args starla
 	// successfully desugared; (nil, *dag.ParseError) for empty/unterminated.
 	var msgFn *dag.CapturedLambda
 	if strings.Contains(msg, "${") {
-		desugared, derr := p.desugarInterpolation(msg, pos)
+		desugared, derr := p.desugarInterpolation(msg, pos, "")
 		if derr != nil {
 			return nil, derr
 		}
