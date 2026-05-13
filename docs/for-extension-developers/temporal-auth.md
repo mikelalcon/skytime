@@ -194,7 +194,81 @@ c, err := client.Dial(client.Options{
 
 ## Azure — Workload Identity + Key Vault
 
-> _Snippet body for AUTH-03 lands in Plan 07.5-04._
+Azure Workload Identity is the AKS equivalent of GCP's WIF and AWS's IRSA — your pod's Kubernetes service account is federated with an AAD application, and the pod obtains short-lived AAD tokens without a client secret or certificate file on disk. Combined with Azure Key Vault, you get the same pattern as the GCP and AWS sections: the Temporal Cloud API key lives in Key Vault, and your worker re-reads it on every RPC through the Workload-Identity-issued AAD token.
+
+**Assumes:**
+- You have a Temporal Cloud namespace with API key auth enabled.
+- Azure Workload Identity is enabled on the AKS cluster and configured for the pod's service account — see <https://learn.microsoft.com/en-us/azure/aks/workload-identity-overview>. Inside the pod, the federated token at `$AZURE_FEDERATED_TOKEN_FILE` Just Works with `azidentity.NewDefaultAzureCredential`.
+- The managed identity bound to the federated credential has `Key Vault Secrets User` (or `Get` via access policy) on the target vault — see <https://learn.microsoft.com/en-us/azure/key-vault/general/rbac-guide>.
+- You have stored the Temporal Cloud API key as a Key Vault secret (the secret value is the raw API key string).
+
+**Substitute:**
+- `vaultURL` — the full Key Vault URL, e.g. `https://myvault.vault.azure.net/`.
+- `secretName` — the name of the secret holding the Temporal Cloud API key.
+
+<!-- snippet: azure.go -->
+```go
+package snippets
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azsecrets"
+	"go.temporal.io/sdk/client"
+)
+
+// newAzureCredentials returns Temporal Cloud client credentials backed by
+// an Azure Key Vault secret. The Key Vault client uses the default Azure
+// credential chain — when running on AKS with Workload Identity configured
+// for the pod's service account, the chain reads the federated token from
+// $AZURE_FEDERATED_TOKEN_FILE and exchanges it for short-lived AAD tokens.
+// No client secret or certificate is needed in the container.
+//
+// The returned Credentials calls fetchSecret on every RPC, so re-versioning
+// the secret in Key Vault propagates without restarting the worker. Cache
+// with a TTL if your RPC volume makes per-call reads expensive.
+//
+// The Temporal SDK auto-enables TLS when Credentials are set (v1.39+);
+// do NOT disable TLS via ConnectionOptions on the returned client.Options.
+func newAzureCredentials(ctx context.Context, vaultURL, secretName string) (client.Credentials, error) {
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		return nil, fmt.Errorf("azure: construct default credential (Workload Identity / managed identity / env): %w", err)
+	}
+	kv, err := azsecrets.NewClient(vaultURL, cred, nil)
+	if err != nil {
+		return nil, fmt.Errorf("azure: construct key vault client for %q: %w", vaultURL, err)
+	}
+
+	fetchSecret := func(ctx context.Context) (string, error) {
+		resp, err := kv.GetSecret(ctx, secretName, "", nil)
+		if err != nil {
+			return "", fmt.Errorf("azure: get secret %q from vault %q: %w", secretName, vaultURL, err)
+		}
+		if resp.Value == nil {
+			return "", fmt.Errorf("azure: secret %q has no value", secretName)
+		}
+		return *resp.Value, nil
+	}
+	return client.NewAPIKeyDynamicCredentials(fetchSecret), nil
+}
+```
+
+Caller site (your binary's `main`):
+
+```go
+creds, err := newAzureCredentials(ctx, os.Getenv("AZURE_VAULT_URL"), os.Getenv("TEMPORAL_API_KEY_SECRET_NAME"))
+if err != nil {
+	return fmt.Errorf("auth: %w", err)
+}
+c, err := client.Dial(client.Options{
+	HostPort:    os.Getenv("TEMPORAL_HOSTPORT"),  // e.g. <namespace>.<account>.tmprl.cloud:7233
+	Namespace:   os.Getenv("TEMPORAL_NAMESPACE"),
+	Credentials: creds,
+})
+```
 
 ## Self-hosted — mTLS with SIGHUP reload
 
