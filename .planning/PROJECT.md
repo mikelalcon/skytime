@@ -70,6 +70,7 @@ A consultant team can take an extension catalog and a customer brief, write a `.
 - **Hot-reload of `.star` files** — design must not preclude it, but no implementation in v1
 - **Plugin / gRPC / out-of-process extensions** — only static or dynamic-local Go extensions in v1
 - **Production observability UI** — Phase 7.3 ships a minimal teaching dashboard with `skytime server` so the durability story is visually demoable (workflow list + webhook deliveries + manual trigger; stdlib `net/http` + `html/template` only). Production observability (search/filter, time-range, cancellation/signal UI, auth, multi-tenant view) lives in the Temporal Web UI and is intentionally out of scope.
+- **Web UI / dashboard** — example dashboard ships under `examples/.../server/web/` as a teaching reference for the customer integration pattern; not a Skytime product feature, no framework dependencies, no roadmap for expansion.
 - **Multi-tenant hosted SaaS** — Skytime is a library; productizing it as a service is a separate decision
 - **CEL or string-based expressions** — explicitly rejected; lambdas only (parser-time syntactic sugar that desugars to lambdas — e.g., `${ctx.expr}` → `lambda ctx: str(ctx.expr)` — is permitted per D4.1-22 carve-out; runtime template engines remain forbidden)
 - **Starlark unit-test tier** (Tier 2 in spec) — deferred; Static (Tier 1) and Starlark E2E (Tier 3) ship in v1, pure-Starlark unit testing of `def` blocks moves to v2
