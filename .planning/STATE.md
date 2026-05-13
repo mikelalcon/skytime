@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.43.0
 milestone_name: Durability + Triggers
 status: executing
-stopped_at: Completed 07.4-05-PLAN.md (Wave 1, parallel with Plans 01 + 03)
-last_updated: "2026-05-13T14:00:53.251Z"
-last_activity: 2026-05-13 -- Phase 07.4 execution started
+stopped_at: Completed 07.4-03-PLAN.md
+last_updated: "2026-05-13T14:02:42.205Z"
+last_activity: 2026-05-13
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 35
-  completed_plans: 31
+  completed_plans: 32
   percent: 100
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 07.4 (extbin-consolidation-tech-debt-cleanup) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 07.4
-Last activity: 2026-05-13 -- Phase 07.4 execution started
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-05-13
 
 Progress: [██████████] 100%
 
@@ -143,6 +143,7 @@ Progress: [██████████] 100%
 | Phase 07.3 P05 | finalize 2min (+browser UAT cycle 2026-05-13) | 4 tasks | 6 files |
 | Phase quick-260512-w7c P01 | 7min | 4 tasks | 8 files |
 | Phase 07.4 P05 | 5min | 3 tasks | 4 files |
+| Phase 07.4-extbin-consolidation-tech-debt-cleanup P03 | 5min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -428,6 +429,8 @@ Recent decisions affecting current work:
 - [Phase quick-260512-w7c]: Disambiguator appended to D-18 lambda ID (vs. encoded into hash input) preserves byte-identical IDs for empty-disambiguator callers (flow.name, step.name, script.id, fail.msg, log.msg, result.value); kwargs-desugarer uses kwarg key as the disambiguator
 - [Phase 07.4]: Plan 05 (D-7.4-06): trace-table column semantics — Source Plan stays 'Phase 3', Status flips Pending→Complete (file convention wins over CONTEXT phrasing).
 - [Phase 07.4]: Plan 05 (D-7.4-07): generic_http_check.star is parse-only, exercises http.endpoint(...) + .head + .get; no live runtime test (matches corpus convention; D-7.4-08 explicit defer).
+- [Phase 07.4-extbin-consolidation-tech-debt-cleanup]: Plan 07.4-03: NewFakeCredentialHandler defensive-copies its input map and wraps extension.ErrUnknownCredential via %w: %s — production-vs-test errors.Is parity with credfile.Resolver
+- [Phase 07.4-extbin-consolidation-tech-debt-cleanup]: Plan 07.4-03: pkg/cli/test.go threads cfg.credHandler nil-guarded — D-7.4-12 two-field thread (exts + credHandler), zero behavior change for cred-less binaries
 
 ### Pending Todos
 
@@ -459,6 +462,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-13T14:00:53.246Z
-Stopped at: Completed 07.4-05-PLAN.md (Wave 1, parallel with Plans 01 + 03)
+Last session: 2026-05-13T14:02:34.716Z
+Stopped at: Completed 07.4-03-PLAN.md
 Resume file: None
