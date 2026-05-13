@@ -160,7 +160,14 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
   2. Each Go snippet compiles cleanly against `go.temporal.io/sdk@v1.42.0` (verified by a `go vet` or build test running over snippets extracted from the markdown), and uses `client.Credentials` rotation patterns rather than ad-hoc one-shot reads
   3. The mTLS reload-on-SIGHUP snippet shows a complete pattern: `signal.Notify(c, syscall.SIGHUP)` → reload `client.Options.ConnectionOptions.TLS` → reconnect without a process restart; readers can adapt verbatim for production cert rotation
   4. The four snippets collectively cover the three-cloud + self-hosted matrix the milestone targets; a reader operating in any of those environments has a starting point that does not require Skytime-internal knowledge to adopt
-**Plans**: TBD
+**Plans**: 7 plans
+- [ ] 07.5-01-snippets-module-scaffold-PLAN.md — Standalone Go module under docs/for-extension-developers/snippets/ + drift-test scaffold + temporal-auth.md skeleton (intro, Pick-your-section directory, four section anchors, cluster-vs-application clarification)
+- [ ] 07.5-02-snippet-gcp-wif-PLAN.md — gcp.go (newGCPCredentials via Google Secret Manager + WIF) + GCP section in temporal-auth.md + drift-test row (AUTH-01)
+- [ ] 07.5-03-snippet-aws-irsa-PLAN.md — aws.go (newAWSCredentials via AWS Secrets Manager + IRSA) + AWS section in temporal-auth.md + drift-test row (AUTH-02)
+- [ ] 07.5-04-snippet-azure-wi-PLAN.md — azure.go (newAzureCredentials via Azure Key Vault + Workload Identity) + Azure section in temporal-auth.md + drift-test row (AUTH-03)
+- [ ] 07.5-05-snippet-mtls-sighup-PLAN.md — mtls.go (newMTLSReloader: SIGHUP-driven cert reload + re-Dial) + Self-hosted section in temporal-auth.md + drift-test row (AUTH-04)
+- [ ] 07.5-06-readme-and-project-edits-PLAN.md — README.md doc-index link + for-extension-developers/README.md sub-index + PROJECT.md verbatim Web UI / dashboard Out-of-Scope carve-out (D-7.5-10)
+- [ ] 07.5-07-ci-snippets-build-PLAN.md — Append snippets-build step (go build + vet + test) to existing .github/workflows/ci.yml; no new workflow file (D-7.5-07)
 **UI hint**: no
 
 ## Backlog
@@ -189,7 +196,7 @@ Phases execute in numeric order: 7 → 7.1 / 7.2 (parallel) → 7.2.1 → 7.3 �
 | 7.2.1. Structured logging step | v1.43.0 | 5/5 | Complete | 2026-05-12 |
 | 7.3. Dashboard | v1.43.0 | 6/6 | Complete (awaiting /gsd:verify-work) | 2026-05-13 |
 | 7.4. extbin consolidation | v1.43.0 | 0/5 | Not started | — |
-| 7.5. Auth docs | v1.43.0 | 0/TBD | Not started | — |
+| 7.5. Auth docs | v1.43.0 | 0/7 | Not started | — |
 
 ---
 *Roadmap created: 2026-04-26*
