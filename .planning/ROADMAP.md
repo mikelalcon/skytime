@@ -143,7 +143,12 @@ Full draft plan: [`v1.43-DRAFT-PLAN.md`](v1.43-DRAFT-PLAN.md)
   3. `pkg/testing.WithCredentialHandler(h)` threads `h` into the Tier-3 test harness; a Go test demonstrates a partial-mock test using a real credential handler and a router callback for action mocks, exercising the same `Resolve()` path production uses
   4. `examples/http-github-webhook/cmd/extbin/main.go` is ≤30 lines (verified by `wc -l`); it consists of extension registration + a single `cli.NewRootCommand(...)` chain + `ExecuteContext(ctx)`, with no `lazyCredfileHandler` definition remaining
   5. The Phase 6 walkthrough (`gh webhook forward` smoke) and webhook + cron + dashboard end-to-end paths still pass after the consolidation; CI gates remain green with the slimmer extbin
-**Plans**: TBD
+**Plans**: 5 plans
+- [ ] 07.4-01-PLAN.md — Lift lazyCredfileHandler to pkg/cli; cli.WithCredfile + single-resolution-chain consolidation (CLI-08, D-7.4-03)
+- [ ] 07.4-02-PLAN.md — cli.WithBuildID Option + thread to worker.WorkerOptions.BuildID (CLI-09)
+- [ ] 07.4-03-PLAN.md — pkg/testing.WithCredentialHandler + NewFakeCredentialHandler; thread cfg.credHandler through pkg/cli/test.go (CLI-10, CLI-11)
+- [ ] 07.4-04-PLAN.md — Collapse extbin/main.go to ≤30 lines; move build-your-own-binary teaching block to pkg/cli/doc.go (CLI-12, D-7.4-13, D-7.4-14)
+- [ ] 07.4-05-PLAN.md — INTRP-03/04/05 checkbox flip + parse-only http.endpoint-using flow (D-7.4-06, D-7.4-07)
 **UI hint**: no
 
 ### Phase 7.5: Auth documentation
@@ -183,9 +188,9 @@ Phases execute in numeric order: 7 → 7.1 / 7.2 (parallel) → 7.2.1 → 7.3 �
 | 7.2. Cron triggers | v1.43.0 | 4/4 | Complete | 2026-05-11 |
 | 7.2.1. Structured logging step | v1.43.0 | 5/5 | Complete | 2026-05-12 |
 | 7.3. Dashboard | v1.43.0 | 6/6 | Complete (awaiting /gsd:verify-work) | 2026-05-13 |
-| 7.4. extbin consolidation | v1.43.0 | 0/TBD | Not started | — |
+| 7.4. extbin consolidation | v1.43.0 | 0/5 | Not started | — |
 | 7.5. Auth docs | v1.43.0 | 0/TBD | Not started | — |
 
 ---
 *Roadmap created: 2026-04-26*
-*Last updated: 2026-05-13 — Phase 7.3 COMPLETE: Plan 05 (walkthrough doc + dashboard-smoke.sh + strict SSE-shutdown assertion + headings firewall) shipped and browser UAT approved; all 6 plans done; phase ready for /gsd:verify-work + README updated to surface the dashboard*
+*Last updated: 2026-05-13 — Phase 7.4 plans created: 5 plans across 3 waves (CLI-08/09/10/11/12 + INTRP-03/04/05 checkbox flip + parse-only http.endpoint flow); ready for /gsd:execute-phase 07.4*
