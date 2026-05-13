@@ -88,3 +88,36 @@ func WithScheduleClientFactory(f func(c client.Client) client.ScheduleClient) Op
 		return nil
 	}
 }
+
+// WithCredfile installs a lazy credfile-backed CredentialHandler — the
+// convenience option for the dotfile-backed credfile pattern (CLI-08).
+// Path resolution order (D-7.4-03 — KEEP THIS PRECEDENCE EXACTLY):
+//
+//  1. SetCredfilePath(path) — the --credfile flag's setter hook
+//     (applied via applyCredfileFlag in credfile.go before first Resolve())
+//  2. WithCredfile(path)    — the explicit option argument
+//  3. SKYTIME_CREDFILE_PATH — env var fallback when (1) and (2) are empty
+//  4. credfile defaultPath  — $HOME/.skytime-credentials (D-7.4-05 LOCKED)
+//
+// Lazy construction (CLI-08 success criterion 1): credfile.New() is NOT
+// called at NewRootCommand time — the underlying file is opened on first
+// Resolve(). The headline demo (extbin run public_repo_check.star) uses
+// the public GitHub API and never resolves any credential — eager
+// construction would fail at startup with "stat: no such file" before
+// any subcommand runs.
+//
+// Last-wins (D-7.4-02): If WithCredentialHandler also appears in the
+// same NewRootCommand chain, whichever Option is invoked later wins
+// silently. This is the standard Go option idiom.
+//
+// The handler implementation (struct, constructor, Resolve, SetCredfilePath,
+// applyCredfileFlag helper) lives in pkg/cli/credfile.go — this declaration
+// is intentionally placed here per D-7.4-04 LOCKED so the Option surface is
+// discoverable in one file alongside WithExtensions / WithCredentialHandler /
+// WithScheduleClientFactory.
+func WithCredfile(path string) Option {
+	return func(c *config) error {
+		c.credHandler = newCredfileHandler(path)
+		return nil
+	}
+}
