@@ -43,3 +43,11 @@ jobs:
         env:
           EXTBIN: /tmp/extbin
         run: bash .github/workflows/scripts/walkthrough_smoke.sh
+
+      - name: snippets build + vet + test (auth-docs drift-test)
+        working-directory: docs/for-extension-developers/snippets
+        run: |
+          go mod download
+          go build ./...
+          go vet ./...
+          go test -count=1 ./...
