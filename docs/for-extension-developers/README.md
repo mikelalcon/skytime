@@ -50,6 +50,13 @@ per-extension activity registration, no string-compilation surface.
   that render cleanly.
 - **[Builtins Reference](../reference/builtins.md)** — the DSL surface
   flow-authors call into your extension from.
+- **[Temporal Authentication Patterns](temporal-auth.md)** — four
+  production credential-rotation snippets (GCP WIF, AWS IRSA, Azure
+  Workload Identity, self-hosted mTLS+SIGHUP) for connecting your
+  worker to Temporal Cloud or a self-hosted cluster with rotation-
+  friendly `client.Credentials`. Distinguishes *cluster* credentials
+  (Temporal cluster connection) from *application* credentials (the
+  credfile / `cli.WithCredentialHandler` surface above).
 
 ## Credential resolution: `pkg/extension/credfile/`
 
