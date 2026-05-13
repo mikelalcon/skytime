@@ -3,6 +3,7 @@ package cli
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/client"
 )
@@ -35,4 +36,32 @@ func TestWithScheduleClientFactory_NilAccepted(t *testing.T) {
 	cfg := &config{}
 	require.NoError(t, WithScheduleClientFactory(nil)(cfg))
 	require.Nil(t, cfg.scheduleFactory)
+}
+
+// TestWithBuildID_SetsConfigField pins the Option closure → buildID
+// field assignment (CLI-09 surface contract).
+func TestWithBuildID_SetsConfigField(t *testing.T) {
+	cfg := &config{}
+	require.NoError(t, WithBuildID("v1.43.0-abcdef")(cfg))
+	assert.Equal(t, "v1.43.0-abcdef", cfg.buildID,
+		"WithBuildID must store the value verbatim on cfg.buildID")
+}
+
+// TestWithBuildID_EmptyAcceptedNoOp pins the no-validation contract:
+// empty string is accepted (matches WithExtensions / WithCredentialHandler
+// precedent). Callers can pass `os.Getenv("BUILD_ID")` without guarding.
+func TestWithBuildID_EmptyAcceptedNoOp(t *testing.T) {
+	cfg := &config{}
+	require.NoError(t, WithBuildID("")(cfg))
+	assert.Equal(t, "", cfg.buildID,
+		"WithBuildID(empty) must be a no-op no-error (callers pass os.Getenv freely)")
+}
+
+// TestWithBuildID_OverwritesPriorCall pins last-wins semantics for
+// repeated calls in the same option chain (standard Go option idiom).
+func TestWithBuildID_OverwritesPriorCall(t *testing.T) {
+	cfg := &config{}
+	require.NoError(t, WithBuildID("v1")(cfg))
+	require.NoError(t, WithBuildID("v2")(cfg))
+	assert.Equal(t, "v2", cfg.buildID, "later WithBuildID call must win")
 }

@@ -24,6 +24,7 @@ type Option func(*config) error
 type config struct {
 	// Construction-time fields (set via Option):
 	exts            []extension.Extension
+	buildID         string                // Phase 7.4 CLI-09 — overrides worker.defaultBuildID per-binary; empty = use defaultBuildID at applyDefaults time
 	credHandler     extension.CredentialHandler
 	scheduleFactory scheduleClientFactory // NEW (Phase 7.2 Plan 03) — test seam for ScheduleClient injection
 
@@ -46,6 +47,33 @@ type config struct {
 func WithExtensions(exts ...extension.Extension) Option {
 	return func(c *config) error {
 		c.exts = append(c.exts, exts...)
+		return nil
+	}
+}
+
+// WithBuildID overrides the worker's Temporal Build ID for this binary
+// instance (CLI-09). Without this option, worker.WorkerOptions.BuildID
+// stays empty at construction and falls back to worker.defaultBuildID
+// (typically "dev", or whatever -ldflags -X
+// github.com/mikelalcon/skytime/pkg/worker.defaultBuildID injected at
+// build time) inside WorkerOptions.applyDefaults.
+//
+// With this option set, both `skytime run` and `skytime server` build
+// their worker.WorkerOptions with BuildID = the value passed here. The
+// value is forwarded verbatim — no validation (matches WithExtensions /
+// WithCredentialHandler ergonomics; empty string is accepted as a no-op).
+//
+// Production deployers of custom binaries (extbin, etc.) typically pass
+// the git SHA at build time via this Option instead of the older
+// -ldflags injection pattern. Surface ergonomics for INTRP-02 / WORK-02
+// per v1.42.0 audit.
+//
+// Per-call scope: this Option configures a single NewRootCommand
+// invocation. Mirrors WithScheduleClientFactory's per-call isolation
+// (Phase 7.2 D-7.2-09).
+func WithBuildID(s string) Option {
+	return func(c *config) error {
+		c.buildID = s
 		return nil
 	}
 }
