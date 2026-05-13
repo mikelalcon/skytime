@@ -386,6 +386,13 @@ Where to go next depends on what you want to do:
 - **Build an extension** —
   [`docs/for-extension-developers/README.md`](docs/for-extension-developers/README.md)
   is the landing page for Go developers writing extensions.
+- **Connect to production Temporal clusters** —
+  [`docs/for-extension-developers/temporal-auth.md`](docs/for-extension-developers/temporal-auth.md)
+  ships four working credential-rotation snippets (GCP WIF →
+  Secret Manager, AWS IRSA → Secrets Manager, Azure Workload
+  Identity → Key Vault, self-hosted mTLS with SIGHUP reload) so
+  your worker can authenticate to Temporal Cloud or a self-hosted
+  cluster with rotation-friendly `client.Credentials`.
 - **Build a custom CLI** —
   [`docs/cli-binary.md`](docs/cli-binary.md) shows how to register your
   own extensions via `cli.NewRootCommand(WithExtensions(...))`.
