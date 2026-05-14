@@ -101,33 +101,33 @@ Explicit exclusions for v1.43 with reasoning.
 
 | Requirement | Phase | Source Plan | Status |
 |-------------|-------|-------------|--------|
-| TRIG-01 | Phase 7 | — | Pending |
-| TRIG-02 | Phase 7 | — | Pending |
-| TRIG-03 | Phase 7 | — | Pending |
-| TRIG-04 | Phase 7 | — | Pending |
-| TRIG-05 | Phase 7 | — | Pending |
-| TRIG-06 | Phase 7.1 | — | Pending |
-| TRIG-07 | Phase 7.1 | — | Pending |
-| TRIG-08 | Phase 7.1 | — | Pending |
-| TRIG-09 | Phase 7.1 | — | Pending |
-| TRIG-10 | Phase 7.1 | — | Pending |
-| SERVER-01 | Phase 7 | — | Pending |
-| SERVER-02 | Phase 7 | — | Pending |
-| SERVER-03 | Phase 7 | — | Pending |
-| SCHED-01 | Phase 7.2 | — | Pending |
-| SCHED-02 | Phase 7.2 | — | Pending |
-| SCHED-03 | Phase 7.2 | — | Pending |
-| UI-01 | Phase 7.3 | — | Pending |
-| UI-02 | Phase 7.3 | — | Pending |
-| UI-03 | Phase 7.3 | — | Pending |
-| UI-04 | Phase 7.3 | — | Pending |
-| CLI-08 | Phase 7.4 | — | Pending |
-| CLI-09 | Phase 7.4 | — | Pending |
-| CLI-10 | Phase 7.4 | — | Pending |
-| CLI-11 | Phase 7.4 | — | Pending |
-| CLI-12 | Phase 7.4 | — | Pending |
-| CLI-13 | Phase 7 | — | Pending |
-| EX-05 | Phase 7.1 | — | Pending |
+| TRIG-01 | Phase 7 | 07-03-parser-trigger-builtin | Complete |
+| TRIG-02 | Phase 7 | 07-02-extension-triggersource | Complete |
+| TRIG-03 | Phase 7 | 07-01-dag-trigger-node | Complete |
+| TRIG-04 | Phase 7 | 07-03-parser-trigger-builtin | Complete |
+| TRIG-05 | Phase 7 | 07-04-trigger-registry-and-boot | Complete |
+| TRIG-06 | Phase 7.1 | 07.1-04, 07.1-05, 07.1-06 | Complete |
+| TRIG-07 | Phase 7.1 | 07.1-03, 07.1-04b | Complete |
+| TRIG-08 | Phase 7.1 | 07.1-02, 07.1-04b | Complete |
+| TRIG-09 | Phase 7.1 | 07.1-01, 07.1-04b, 07.1-08 | Complete |
+| TRIG-10 | Phase 7.1 | 07.1-01, 07.1-04b | Complete |
+| SERVER-01 | Phase 7 | 07-05-server-subcommand | Complete |
+| SERVER-02 | Phase 7 | 07-05-server-subcommand | Complete |
+| SERVER-03 | Phase 7 | 07-05-server-subcommand | Complete |
+| SCHED-01 | Phase 7.2 | 07.2-01-core-cron-factory, 07.2-04-example-walkthrough | Complete |
+| SCHED-02 | Phase 7.2 | 07.2-02-schedules-package, 07.2-04-example-walkthrough | Complete |
+| SCHED-03 | Phase 7.2 | 07.2-02-schedules-package, 07.2-03-cli-wiring, 07.2-04-example-walkthrough | Complete |
+| UI-01 | Phase 7.3 | 07.3-00, 07.3-03, 07.3-04, 07.3-05 | Complete |
+| UI-02 | Phase 7.3 | 07.3-00, 07.3-02, 07.3-04, 07.3-05 | Complete |
+| UI-03 | Phase 7.3 | 07.3-00, 07.3-04, 07.3-05 | Complete |
+| UI-04 | Phase 7.3 | 07.3-00, 07.3-01, 07.3-04, 07.3-05 | Complete |
+| CLI-08 | Phase 7.4 | 07.4-01 | Complete |
+| CLI-09 | Phase 7.4 | 07.4-02 | Complete |
+| CLI-10 | Phase 7.4 | 07.4-03 | Complete |
+| CLI-11 | Phase 7.4 | 07.4-03 | Complete |
+| CLI-12 | Phase 7.4 | 07.4-04 | Complete |
+| CLI-13 | Phase 7 | 07-06-rename-and-firewalls | Complete |
+| EX-05 | Phase 7.1 | 07.1-07, 07.1-08 | Complete |
 | AUTH-01 | Phase 7.5 | 07.5-02-snippet-gcp-wif | Complete |
 | AUTH-02 | Phase 7.5 | 07.5-03-snippet-aws-irsa | Complete |
 | AUTH-03 | Phase 7.5 | 07.5-04-snippet-azure-wi | Complete |
@@ -135,7 +135,7 @@ Explicit exclusions for v1.43 with reasoning.
 | LOG-01 | Phase 07.2.1 | 07.2.1-02-parser-builtins, 07.2.1-05-migration-walkthrough | Complete |
 | LOG-02 | Phase 07.2.1 | 07.2.1-01-dag-logstep-type, 07.2.1-03-walker-counter-replay, 07.2.1-04-renderer-suppression, 07.2.1-05-migration-walkthrough | Complete |
 
-**Total:** 33 requirements across 8 categories, mapped to 7 phases. `Source Plan` column is `—` placeholder; `/gsd:plan-phase` fills it as plans land.
+**Total:** 33 requirements across 8 categories, mapped to 7 phases. All Complete as of 2026-05-13 (v1.43.0 milestone closing audit).
 
 ## Coverage Summary
 

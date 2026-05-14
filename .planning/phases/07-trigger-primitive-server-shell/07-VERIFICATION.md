@@ -1,9 +1,11 @@
 ---
 phase: 07-trigger-primitive-server-shell
 verified: 2026-05-08T21:01:14Z
-status: human_needed
-score: 5/5 must-haves verified (3 SIGTERM signal-loop tests deferred to Phase 7.1 with named t.Skip stubs; manual smoke needed for end-to-end signal handling)
-human_verification:
+status: passed
+status_updated: 2026-05-13T19:30:00Z
+status_resolution: "Flipped human_needed→passed during v1.43.0 milestone closing audit. Both UAT items resolved: (1) the 3 SIGTERM signal-loop tests were unskipped in Phase 7.1 via worker.WithSDKFactory and now PASS, (2) live banner/SIGINT smoke is exercised by dashboard-smoke.sh (10/10 PASS) + cron-schedules-smoke.sh against `temporal server start-dev`."
+score: 5/5 must-haves verified
+human_verification_resolved:
   - test: "End-to-end SIGTERM drain on a real `skytime server` with in-flight workflows"
     expected: "First SIGTERM drains workflows up to --drain-timeout, exits 0 on clean drain. Second SIGTERM during drain forces immediate exit (status 1). Drain timeout expiry exits 1 with error message."
     why_human: "Plan 07-05 SUMMARY documents that 3 signal-loop tests (TestServerCmd_DrainOnSIGTERM, TestServerCmd_DrainTimeoutExpiry, TestServerCmd_SecondSignalForceExit) ship with t.Skip(\"TODO(phase-7.1)\") because pkg/cli black-box tests cannot reach pkg/worker.sdkWorkerNew test seam. The worker.WithSDKFactory Option lands in 7.1 to drop the skips. The testDrainHook six-stage seam, source-grep gates, and unit-testable subset (range validation, banner, JSON log) are green; the actual signal-loop end-to-end behavior must be smoke-tested manually until 7.1."
